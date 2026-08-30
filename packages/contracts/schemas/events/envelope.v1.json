@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clearcut.app/schemas/events/envelope.v1.json",
+  "title": "DomainEventEnvelopeV1",
+  "description": "Immutable envelope schema for domain and audit events",
+  "type": "object",
+  "required": [
+    "eventId",
+    "eventType",
+    "occurredAt",
+    "orgId",
+    "actor",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "UUIDv7 event identifier"
+    },
+    "eventType": {
+      "type": "string",
+      "description": "Dotted event taxonomy name (e.g. clearance.item.decision_recorded)"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp"
+    },
+    "orgId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Authenticated organization UUIDv7"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Project UUIDv7 if project-scoped"
+    },
+    "actor": {
+      "type": "object",
+      "required": ["actorId", "actorType"],
+      "properties": {
+        "actorId": { "type": "string" },
+        "actorType": {
+          "type": "string",
+          "enum": ["user", "system", "service_account"]
+        },
+        "role": {
+          "type": "string",
+          "enum": ["owner", "admin", "editor", "reviewer"]
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific structured data payload"
+    }
+  },
+  "additionalProperties": false
+}

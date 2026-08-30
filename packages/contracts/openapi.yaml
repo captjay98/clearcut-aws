@@ -1,0 +1,497 @@
+openapi: 3.1.0
+info:
+  title: ClearCut API
+  version: 1.0.0
+  description: Screenplay Pre-Clearance Evidence Workspace API
+servers:
+  - url: /
+    description: Current origin
+paths:
+  /healthz:
+    get:
+      summary: Health check endpoint
+      operationId: getHealth
+      tags:
+        - health
+      responses:
+        '200':
+          description: Service is operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '500':
+          description: Service error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/session-context:
+    get:
+      summary: Retrieve current authenticated session and tenancy context
+      operationId: getSessionContext
+      tags:
+        - session
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current session context
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SessionContext'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/sessions:
+    post:
+      summary: Create a new authenticated session
+      operationId: createSession
+      tags:
+        - session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SessionContext'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          description: Invalid credentials or payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/sessions/current:
+    delete:
+      summary: Revoke current session
+      operationId: deleteCurrentSession
+      tags:
+        - session
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Session revoked successfully
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/organizations:
+    get:
+      summary: List organizations for current user
+      operationId: listOrganizations
+      tags:
+        - organizations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of accessible organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    post:
+      summary: Create a new organization
+      operationId: createOrganization
+      tags:
+        - organizations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Organization'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/organizations/{orgId}/projects:
+    get:
+      summary: List film projects within an organization
+      operationId: listProjects
+      tags:
+        - projects
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Projects list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    post:
+      summary: Create a new film project
+      operationId: createProject
+      tags:
+        - projects
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Project'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  parameters:
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      description: Organization UUIDv7
+      schema:
+        $ref: '#/components/schemas/UUIDv7'
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: Project UUIDv7
+      schema:
+        $ref: '#/components/schemas/UUIDv7'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-provided idempotency key for safe retries
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: clearcut_session
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    UUIDv7:
+      type: string
+      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      description: UUID version 7 identifier
+
+    ISODateTime:
+      type: string
+      format: date-time
+      description: ISO-8601 UTC timestamp
+
+    UserRole:
+      type: string
+      enum:
+        - owner
+        - admin
+        - editor
+        - reviewer
+
+    RunStatus:
+      type: string
+      description: Durable closed job status vocabulary
+      enum:
+        - queued
+        - claimed
+        - running
+        - retry_wait
+        - succeeded
+        - failed
+        - manual_retry
+        - cancelled
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+      properties:
+        status:
+          type: string
+          example: "ok"
+        timestamp:
+          $ref: '#/components/schemas/ISODateTime'
+        version:
+          type: string
+          example: "0.1.0"
+
+    SessionContext:
+      type: object
+      required:
+        - authenticated
+      properties:
+        authenticated:
+          type: boolean
+        userId:
+          $ref: '#/components/schemas/UUIDv7'
+        email:
+          type: string
+          format: email
+        activeOrgId:
+          $ref: '#/components/schemas/UUIDv7'
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    CreateSessionRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    Organization:
+      type: object
+      required:
+        - orgId
+        - name
+        - slug
+        - createdAt
+      properties:
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        name:
+          type: string
+        slug:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    CreateOrganizationRequest:
+      type: object
+      required:
+        - name
+        - slug
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        slug:
+          type: string
+          pattern: "^[a-z0-9-]+$"
+
+    Project:
+      type: object
+      required:
+        - projectId
+        - orgId
+        - title
+        - createdAt
+      properties:
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        title:
+          type: string
+        description:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    CreateProjectRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+
+    ResponseMeta:
+      type: object
+      required:
+        - requestId
+      properties:
+        requestId:
+          type: string
+        nextCursor:
+          type: string
+          nullable: true
+        totalCount:
+          type: integer
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+            - retryable
+          properties:
+            code:
+              type: string
+              enum:
+                - validation_failed
+                - authentication_required
+                - permission_denied
+                - not_found
+                - conflict_stale_version
+                - rate_limited
+                - research_provider_unavailable
+                - research_provider_rate_limited
+                - model_provider_error
+                - rejected_output
+                - internal_error
+            message:
+              type: string
+            requestId:
+              type: string
+            retryable:
+              type: boolean
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  issue:
+                    type: string

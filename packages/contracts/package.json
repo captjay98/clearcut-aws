@@ -1,0 +1,13 @@
+{
+  "name": "@clearcut/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./generated/typescript/index.ts",
+  "types": "./generated/typescript/index.ts",
+  "scripts": {
+    "contract:lint": "node ../../scripts/check-contract-drift.mjs --lint-only",
+    "contract:generate": "node ../../scripts/generate-clients.mjs",
+    "contract:check": "node ../../scripts/check-contract-drift.mjs"
+  }
+}

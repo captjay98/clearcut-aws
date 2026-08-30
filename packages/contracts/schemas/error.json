@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clearcut.app/schemas/error.json",
+  "title": "ErrorEnvelope",
+  "description": "Standard ClearCut API error envelope response",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "requestId", "retryable"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Deterministic error code classification",
+          "enum": [
+            "validation_failed",
+            "authentication_required",
+            "permission_denied",
+            "not_found",
+            "conflict_stale_version",
+            "rate_limited",
+            "research_provider_unavailable",
+            "research_provider_rate_limited",
+            "model_provider_error",
+            "rejected_output",
+            "internal_error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable explanation of the error"
+        },
+        "requestId": {
+          "type": "string",
+          "description": "Unique request correlation identifier"
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "Indicates if the client may safely retry the operation"
+        },
+        "details": {
+          "type": "array",
+          "description": "Granular field-level or diagnostic details",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": { "type": "string" },
+              "issue": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
