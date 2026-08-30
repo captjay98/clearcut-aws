@@ -1,0 +1,14 @@
+{
+  "name": "clearcut",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "check:toolchains": "node scripts/check-package-managers.mjs",
+    "agents:build": "bun .agents/scripts/build.mjs",
+    "agents:lint": "bun .agents/scripts/lint.mjs",
+    "agents:verify": "bun .agents/scripts/verify.mjs",
+    "test:foundation": "uv run pytest tests/foundation -v"
+  },
+  "devDependencies": {}
+}

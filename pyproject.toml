@@ -1,0 +1,41 @@
+[project]
+name = "clearcut"
+version = "0.1.0"
+description = "Screenplay pre-clearance research desk and evidence workspace"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.9.0",
+    "pyright>=1.1.390",
+    "import-linter>=2.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.9.0",
+    "pyright>=1.1.390",
+    "import-linter>=2.1",
+]
+
+[tool.uv.workspace]
+members = ["services/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = []
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+include = ["services", "tests"]
