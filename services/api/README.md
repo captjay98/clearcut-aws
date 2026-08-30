@@ -1,9 +1,3 @@
-# ClearCut API Service (`clearcut-api`)
+# ClearCut API
 
-Modular monolith backend API for the ClearCut screenplay pre-clearance workspace.
-
-## Structure
-
-* `src/clearcut/main.py`: FastAPI application entry point.
-* `src/clearcut/bootstrap/`: Application initialization and adapter registration.
-* `tests/architecture/`: Architecture and boundary linter tests.
+FastAPI modular monolith backend for ClearCut pre-clearance evidence workspace.

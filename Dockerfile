@@ -13,8 +13,8 @@ RUN bun run build
 FROM python:3.12-slim AS py-deps
 RUN pip install --no-cache-dir uv
 WORKDIR /app/api
-COPY services/api/pyproject.toml services/api/uv.lock* ./
-RUN uv sync --frozen --no-dev || uv sync --no-dev
+COPY services/api/pyproject.toml services/api/uv.lock* services/api/README.md* ./
+RUN uv sync --frozen --no-dev --no-install-project || uv sync --no-dev --no-install-project
 
 # ---- Stage 3: Runtime Stage ----
 FROM python:3.12-slim AS runtime
@@ -31,6 +31,9 @@ COPY --from=py-deps /app/api/.venv /app/api/.venv
 ENV PATH="/app/api/.venv/bin:$PATH"
 COPY services/api/ /app/api
 COPY --from=web-build /app/apps/web/dist /app/web-dist
+
+WORKDIR /app/api
+RUN pip install --no-cache-dir -e .
 
 RUN chown -R 1001:1001 /app
 USER 1001
