@@ -13,6 +13,9 @@ from clearcut.organizations.application.bootstrap import OrganizationBootstrapSe
 from clearcut.organizations.delivery.http import router as organization_router
 from clearcut.projects.adapters.in_memory import InMemoryProjectRepository
 from clearcut.projects.application.project_service import ProjectService
+from clearcut.scripts.adapters.in_memory_storage import InMemoryObjectStorage
+from clearcut.scripts.application.upload_service import UploadService
+from clearcut.scripts.delivery.http import router as scripts_router
 
 app = FastAPI(
     title="ClearCut API",
@@ -34,6 +37,9 @@ org_service = OrganizationBootstrapService(repository=org_repo)
 project_repo = InMemoryProjectRepository()
 project_service = ProjectService(repository=project_repo)
 
+storage = InMemoryObjectStorage()
+upload_service = UploadService(storage=storage)
+
 app.state.identity_repo = identity_repo
 app.state.identity_provider = identity_provider
 app.state.session_service = session_service
@@ -41,9 +47,12 @@ app.state.org_repo = org_repo
 app.state.org_service = org_service
 app.state.project_repo = project_repo
 app.state.project_service = project_service
+app.state.storage = storage
+app.state.upload_service = upload_service
 
 app.include_router(identity_router)
 app.include_router(organization_router)
+app.include_router(scripts_router)
 
 
 @app.get("/healthz")
