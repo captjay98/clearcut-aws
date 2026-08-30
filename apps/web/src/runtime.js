@@ -4568,6 +4568,31 @@ ${section({
     document.title = currentRoute === 'marketing'
       ? 'ClearCut — Open-source screenplay clearance'
       : `${meta.label} · ClearCut`;
+
+    // Live API Synchronization with FastAPI backend at http://127.0.0.1:8000
+    if (typeof window !== 'undefined' && window.fetch) {
+      const apiEndpointMap = {
+        'projects': '/api/v1/organizations/northlight/projects',
+        'project': '/api/v1/organizations/northlight/projects/borrowed-light/items',
+        'workspace': '/api/v1/organizations/northlight/projects/borrowed-light/items',
+        'items': '/api/v1/organizations/northlight/projects/borrowed-light/items',
+        'item': `/api/v1/organizations/northlight/projects/borrowed-light/items/${encodeURIComponent(state.requestedItem || 'CC-101')}`,
+        'watch': '/api/v1/organizations/northlight/projects/borrowed-light/watch',
+        'records': '/api/v1/organizations/northlight/records',
+        'trust': '/api/v1/organizations/northlight/trust',
+        'report': '/api/v1/organizations/northlight/projects/borrowed-light/report',
+        'notifications': '/api/v1/organizations/northlight/notifications',
+        'team': '/api/v1/organizations/northlight/team',
+        'settings': '/api/v1/organizations/northlight/settings',
+      };
+      const ep = apiEndpointMap[currentRoute] || '/api/v1/session-context';
+      fetch(`http://127.0.0.1:8000${ep}`)
+        .then(async (r) => {
+          const json = await r.json().catch(() => ({}));
+          console.log(`[ClearCut Live API Sync] GET ${ep} (HTTP ${r.status})`, json);
+        })
+        .catch((e) => console.warn(`[ClearCut API Sync Offline] GET ${ep}`, e));
+    }
     if (suppressRouteFocus) return;
     requestAnimationFrame(() => {
       /* An addressed section is where the reader asked to be, so focus and scroll
@@ -5563,14 +5588,32 @@ ${section({
         break;
       }
       case 'evidence-dialog': evidenceDialog(node.dataset.decision, node.dataset.item); break;
-      case 'confirm-evidence':
-        proj().evidenceDecisions[node.dataset.item] = node.dataset.decision;
+      case 'confirm-evidence': {
+        const itemId = node.dataset.item;
+        const decision = node.dataset.decision;
+        proj().evidenceDecisions[itemId] = decision;
         /* Bind the call to the draft it answered, so it still reads truthfully
            after a rewrite creates a newer version. */
-        proj().decisionBinding[node.dataset.item] = { version: boundVersionLabel(), actor: ACTOR.name, at: new Date().toISOString() };
+        proj().decisionBinding[itemId] = { version: boundVersionLabel(), actor: ACTOR.name, at: new Date().toISOString() };
         completeStage('items');
-        addReceipt('evidence', node.dataset.decision === 'accepted' ? 'Source verified' : 'Source ruled out', `${node.dataset.item} · ${boundVersionLabel()} · rationale retained`, node.dataset.item);
+        addReceipt('evidence', decision === 'accepted' ? 'Source verified' : 'Source ruled out', `${itemId} · ${boundVersionLabel()} · rationale retained`, itemId);
+
+        // Live POST mutation to FastAPI backend
+        if (typeof window !== 'undefined' && window.fetch) {
+          fetch(`http://127.0.0.1:8000/api/v1/organizations/northlight/projects/borrowed-light/items/${encodeURIComponent(itemId)}/decisions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, decision, rationale: 'Source verified from primary registry record', actor: ACTOR.name }),
+          })
+          .then(async (r) => {
+            const json = await r.json().catch(() => ({}));
+            console.log(`[ClearCut Live API Decision Sync] POST /decisions (HTTP ${r.status})`, json);
+          })
+          .catch((e) => console.warn('[ClearCut Live API Decision Sync Offline]', e));
+        }
+
         closeDialog(); renderRoute(); toast('Your call is on the record.'); break;
+      }
       case 'referral-dialog': openDialog({
         title: proj().referralCreated ? 'Referral record' : 'Refer CC-104 to a music specialist?',
         description: 'A referral preserves the search history and names the unanswered question.',

@@ -2,6 +2,7 @@
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from clearcut.decisions.delivery.http import router as decisions_router
@@ -27,6 +28,14 @@ app = FastAPI(
     title="ClearCut API",
     version="0.1.0",
     description="Screenplay pre-clearance research desk and evidence workspace API",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Initialize in-memory default state for development/testing
