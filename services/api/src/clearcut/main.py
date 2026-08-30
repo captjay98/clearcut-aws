@@ -33,7 +33,16 @@ from clearcut.scripts.delivery.http import router as scripts_router
 async def lifespan(app: FastAPI):
     try:
         from clearcut.init_db import init_and_seed_db
+
         await init_and_seed_db()
+        # Seed default test user credentials if not present
+        existing_user = await app.state.identity_repo.get_user_by_email("jamie@northlight.example")
+        if not existing_user:
+            pw_hash = app.state.identity_provider.hash_password("password123")
+            await app.state.identity_repo.create_user_with_password(
+                email="jamie@northlight.example",
+                password_hash=pw_hash,
+            )
     except Exception as e:
         print(f"Lifespan init warning: {e}")
     yield

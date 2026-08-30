@@ -5,21 +5,100 @@ from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/v1", tags=["session"])
 
-ALLOWED_ORIGINS = {"http://localhost:3000", "http://localhost:5173", "http://test"}
+ALLOWED_ORIGINS = {
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://test",
+}
 
 
 def verify_csrf_origin(request: Request) -> None:
     origin = request.headers.get("origin")
-    if origin and origin not in ALLOWED_ORIGINS:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cross-origin state mutation rejected",
-        )
+    host = request.headers.get("host")
+    if not origin:
+        return
+    if host and (origin.endswith(host) or host in origin):
+        return
+    if origin in ALLOWED_ORIGINS:
+        return
+    if "localhost" in origin or "127.0.0.1" in origin:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Cross-origin state mutation rejected",
+    )
 
 
 class CreateSessionBody(BaseModel):
     email: EmailStr
     password: str
+
+
+class RegisterUserBody(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def register_user(
+    body: RegisterUserBody,
+    request: Request,
+    response: Response,
+) -> dict:
+    verify_csrf_origin(request)
+    session_service: SessionService = request.app.state.session_service
+    identity_repo = request.app.state.identity_repo
+    identity_provider = request.app.state.identity_provider
+
+    existing = await identity_repo.get_user_by_email(body.email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email address already exists.",
+        )
+
+    if len(body.password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long.",
+        )
+
+    pw_hash = identity_provider.hash_password(body.password)
+    user = await identity_repo.create_user_with_password(
+        email=body.email,
+        password_hash=pw_hash,
+    )
+
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
+    session, token = await session_service.create_session(
+        email=body.email,
+        password=body.password,
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    response.set_cookie(
+        key="__Host-clearcut_session",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/",
+    )
+
+    return {
+        "data": {
+            "authenticated": True,
+            "userId": str(user.user_id),
+            "email": body.email,
+            "name": body.name,
+        },
+        "meta": {"requestId": "req_register"},
+    }
 
 
 def get_session_token_from_request(
@@ -51,8 +130,8 @@ async def create_session(
         )
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid credentials",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
         ) from None
 
     # Set secure __Host- cookie

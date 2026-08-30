@@ -5228,7 +5228,7 @@ ${section({
      Viewer the "Read records and exports" the role matrix grants them. The
      mutating confirm-* actions above carry the guard instead. */
 
-  function handleAction(action, node) {
+  async function handleAction(action, node) {
     const need = ACTION_CAPABILITY[action];
     if (need && !can(need)) {
       toast(`${actorRole()} cannot ${CAPABILITY_LABELS[need] || 'do this'}.`, true);
@@ -5304,6 +5304,7 @@ ${section({
         const email = emailInput ? emailInput.value.trim() : '';
         const password = passwordInput ? passwordInput.value : '';
         const errContainer = document.querySelector('#auth-error-container');
+        const submitBtn = document.querySelector('[data-action="sign-up"]');
 
         if (!name) {
           if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Name required', message: 'Please enter your full name.' });
@@ -5321,39 +5322,109 @@ ${section({
           break;
         }
 
-        state.auth = true;
-        state.isDemo = false;
-        state.orgReady = false;
-        state.user = { name, email, role: 'Owner' };
-        saveState();
-        completeStage('auth');
-        addReceipt('auth', 'Account registered', `${name} (${email})`);
-        toast(`Welcome, ${name}! Set up your organization to get started.`);
-        go('onboarding');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Creating account…';
+        }
+
+        try {
+          const res = await fetch('/api/v1/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password }),
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const msg = errData.detail || 'Registration failed. Please try again.';
+            if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '✗', title: 'Could not create account', message: msg });
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Create account & continue';
+            }
+            break;
+          }
+
+          const resData = await res.json();
+          state.auth = true;
+          state.isDemo = false;
+          state.orgReady = false;
+          state.user = { name: resData.data?.name || name, email: resData.data?.email || email, role: 'Owner' };
+          saveState();
+          completeStage('auth');
+          addReceipt('auth', 'Account registered', `${name} (${email})`);
+          toast(`Welcome, ${name}! Set up your organization to get started.`);
+          go('onboarding');
+        } catch (err) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '✗', title: 'Network error', message: 'Could not connect to authentication server.' });
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create account & continue';
+          }
+        }
         break;
       }
       /* Signing in resolves which organization you are working in. Real credentials
-         authenticate the session and switch out of demo sandbox mode. */
+         authenticate the session against the identity provider and database. */
       case 'sign-in': {
         const emailInput = document.querySelector('#auth-email');
         const passwordInput = document.querySelector('#auth-password');
         const email = emailInput ? emailInput.value.trim() : '';
+        const password = passwordInput ? passwordInput.value : '';
         const errContainer = document.querySelector('#auth-error-container');
+        const submitBtn = document.querySelector('[data-action="sign-in"]');
 
         if (!email) {
           if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Email required', message: 'Please enter your work email address.' });
           if (emailInput) emailInput.focus();
           break;
         }
+        if (!password) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Password required', message: 'Please enter your password.' });
+          if (passwordInput) passwordInput.focus();
+          break;
+        }
 
-        state.auth = true;
-        state.isDemo = false;
-        state.user = { email: email, name: email.split('@')[0] };
-        saveState();
-        completeStage('auth');
-        addReceipt('auth', 'Signed in', `${email} · Production session active`);
-        toast(`Signed in as ${email}`);
-        go(state.orgReady ? 'resolver' : 'onboarding');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Signing in…';
+        }
+
+        try {
+          const res = await fetch('/api/v1/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const msg = errData.detail || 'Invalid email or password. Please verify your credentials or create an account.';
+            if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '✗', title: 'Invalid credentials', message: msg });
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Sign in';
+            }
+            if (passwordInput) passwordInput.value = '';
+            break;
+          }
+
+          const resData = await res.json();
+          state.auth = true;
+          state.isDemo = false;
+          state.user = { email: resData.data?.email || email, name: email.split('@')[0] };
+          saveState();
+          completeStage('auth');
+          addReceipt('auth', 'Signed in', `${email} · Production session active`);
+          toast(`Signed in as ${email}`);
+          go(state.orgReady ? 'resolver' : 'onboarding');
+        } catch (err) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '✗', title: 'Network error', message: 'Could not connect to authentication server.' });
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Sign in';
+          }
+        }
         break;
       }
       case 'resolve-org': {
