@@ -1,0 +1,61 @@
+name: ClearCut CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Workspace, Contracts, Architecture & Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.11"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.0
+
+      - name: Check package managers and toolchains
+        run: node scripts/check-package-managers.mjs
+
+      - name: Check feature coverage
+        run: node scripts/check-feature-coverage.mjs
+
+      - name: Verify API contract integrity and zero drift
+        run: bun scripts/check-contract-drift.mjs
+
+      - name: Validate AI Agent definitions and skills
+        run: |
+          bun .agents/scripts/build.mjs
+          bun .agents/scripts/lint.mjs
+          bun .agents/scripts/verify.mjs
+
+      - name: Run Python Architecture and Foundation Tests
+        run: uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v
+
+      - name: Run Python Linters
+        run: uv run ruff check .

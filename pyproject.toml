@@ -32,6 +32,9 @@ members = ["services/*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+exclude = [".venv", ".agents", "packages/contracts/generated"]
+
+
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
@@ -41,3 +44,12 @@ ignore = []
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 include = ["services", "tests"]
+extraPaths = ["services/api/src"]
+venvPath = "."
+venv = ".venv"
+
+
+[tool.pytest.ini_options]
+pythonpath = ["services/api/src"]
+asyncio_mode = "strict"
+

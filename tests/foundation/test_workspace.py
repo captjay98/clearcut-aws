@@ -1,6 +1,6 @@
-from pathlib import Path
-import tomllib
 import json
+import tomllib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -16,6 +16,7 @@ PROHIBITED_AI_DEPENDENCIES = {
     "haystack-ai",
 }
 
+
 def test_required_public_governance_files_exist():
     required_files = [
         "LICENSE",
@@ -29,6 +30,7 @@ def test_required_public_governance_files_exist():
         assert path.exists(), f"Required governance file missing: {filename}"
         assert path.stat().st_size > 0, f"Governance file is empty: {filename}"
 
+
 def test_toolchain_pinning_and_manifests_exist():
     manifests = [
         ".tool-versions",
@@ -41,6 +43,7 @@ def test_toolchain_pinning_and_manifests_exist():
         path = ROOT / manifest
         assert path.exists(), f"Required toolchain manifest missing: {manifest}"
 
+
 def test_single_lockfile_per_ecosystem():
     # Python ecosystem
     assert (ROOT / "uv.lock").exists(), "Python lockfile uv.lock is missing"
@@ -51,6 +54,7 @@ def test_single_lockfile_per_ecosystem():
     assert (ROOT / "pnpm-lock.yaml").exists(), "TypeScript lockfile pnpm-lock.yaml is missing"
     assert not (ROOT / "package-lock.json").exists(), "Extraneous package-lock.json found"
     assert not (ROOT / "yarn.lock").exists(), "Extraneous yarn.lock found"
+
 
 def test_no_prohibited_ai_dependencies():
     pyproject_path = ROOT / "pyproject.toml"
@@ -63,15 +67,22 @@ def test_no_prohibited_ai_dependencies():
             deps.update(group)
         dep_names = {d.split()[0].split("=")[0].split(">")[0].split("<")[0].lower() for d in deps}
         prohibited_found = dep_names.intersection(PROHIBITED_AI_DEPENDENCIES)
-        assert not prohibited_found, f"Prohibited AI dependencies found in pyproject.toml: {prohibited_found}"
+        assert not prohibited_found, (
+            f"Prohibited AI dependencies found in pyproject.toml: {prohibited_found}"
+        )
 
     package_json_path = ROOT / "package.json"
     if package_json_path.exists():
-        with open(package_json_path, "r", encoding="utf-8") as f:
+        with open(package_json_path, encoding="utf-8") as f:
             data = json.load(f)
-        js_deps = set(data.get("dependencies", {}).keys()).union(data.get("devDependencies", {}).keys())
+        js_deps = set(data.get("dependencies", {}).keys()).union(
+            data.get("devDependencies", {}).keys()
+        )
         prohibited_found_js = js_deps.intersection(PROHIBITED_AI_DEPENDENCIES)
-        assert not prohibited_found_js, f"Prohibited AI dependencies found in package.json: {prohibited_found_js}"
+        assert not prohibited_found_js, (
+            f"Prohibited AI dependencies found in package.json: {prohibited_found_js}"
+        )
+
 
 def test_workspace_roots_and_definitions():
     pnpm_ws_path = ROOT / "pnpm-workspace.yaml"
@@ -85,4 +96,5 @@ def test_workspace_roots_and_definitions():
     with open(pyproject_path, "rb") as f:
         py_data = tomllib.load(f)
     members = py_data.get("tool", {}).get("uv", {}).get("workspace", {}).get("members", [])
-    assert "services/api" in members or "services/*" in members, "pyproject.toml must include services in uv workspace members"
+    has_services = "services/api" in members or "services/*" in members
+    assert has_services, "pyproject.toml must include services in uv workspace members"
