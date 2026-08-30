@@ -1,15 +1,26 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Page, Badge } from "@clearcut/design-system";
+import { loadProjectItems } from "../../../../../../lib/loaders.ts";
 
-export function ItemWorklistRoute() {
+export function ItemWorklistRoute({
+  params,
+}: {
+  params?: { orgSlug: string; projectId: string };
+}) {
+  const [items, setItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadProjectItems(
+      params?.orgSlug || "acme-films",
+      params?.projectId || "proj-01"
+    ).then(setItems);
+  }, [params?.orgSlug, params?.projectId]);
+
   return (
     <Page
       title="Clearance Item Worklist"
       subtitle="Filterable list and board of all candidate clearance items across 10 categories"
-      trail={[
-        { label: "Overview", href: "." },
-        { label: "Items" },
-      ]}
+      trail={[{ label: "Overview", href: ".." }, { label: "Items" }]}
     >
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
         <div className="flex items-center space-x-3 mb-4">
@@ -18,11 +29,6 @@ export function ItemWorklistRoute() {
             placeholder="Search items..."
             className="p-2 border border-slate-300 dark:border-slate-700 rounded text-xs w-64 bg-transparent"
           />
-          <select className="p-2 border border-slate-300 dark:border-slate-700 rounded text-xs bg-transparent">
-            <option>All Categories</option>
-            <option>Products & Trademarks</option>
-            <option>Real Persons</option>
-          </select>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
           <div className="py-3 flex items-center justify-between">

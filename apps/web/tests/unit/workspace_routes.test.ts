@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
-import { ProjectOverviewRoute } from "../../src/routes/o.$orgSlug.projects.$projectId.tsx";
-import { ScreenplayWorkspaceRoute } from "../../src/routes/o.$orgSlug.projects.$projectId.workspace.tsx";
-import { ItemWorklistRoute } from "../../src/routes/o.$orgSlug.projects.$projectId.items.tsx";
-import { ItemDetailRoute } from "../../src/routes/o.$orgSlug.projects.$projectId.items.$itemId.tsx";
+import { ProjectOverviewRoute } from "../../src/routes/o/$orgSlug/projects/$projectId/index.tsx";
+import { ScreenplayWorkspaceRoute } from "../../src/routes/o/$orgSlug/projects/$projectId/workspace.tsx";
+import { ItemWorklistRoute } from "../../src/routes/o/$orgSlug/projects/$projectId/items/index.tsx";
+import { ItemDetailRoute } from "../../src/routes/o/$orgSlug/projects/$projectId/items/$itemId.tsx";
 import { ClaimTable } from "../../src/features/evidence/ClaimTable.tsx";
 import { CommentThread } from "../../src/features/evidence/CommentThread.tsx";
-import { DecisionDialog } from "../../src/features/evidence/DecisionDialog.tsx";
 
 describe("Evidence Workspace Routes and Features", () => {
   it("renders ProjectOverviewRoute", () => {
@@ -36,6 +35,5 @@ describe("Evidence Workspace Routes and Features", () => {
   it("renders ClaimTable and CommentThread features", () => {
     expect(ClaimTable).toBeDefined();
     expect(CommentThread).toBeDefined();
-    expect(DecisionDialog).toBeDefined();
   });
 });

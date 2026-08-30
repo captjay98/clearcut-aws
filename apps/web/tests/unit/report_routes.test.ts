@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
-import { ProjectReportRoute } from "../../src/routes/o.$orgSlug.projects.$projectId.report.tsx";
+import { ProjectReportRoute } from "../../src/routes/o/$orgSlug/projects/$projectId/report.tsx";
 import { ReportPage } from "../../src/features/report/ReportPage.tsx";
 import { ReleaseDialog } from "../../src/features/report/ReleaseDialog.tsx";
 

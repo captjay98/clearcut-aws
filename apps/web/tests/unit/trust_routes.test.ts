@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
-import { OrgTrustRoute } from "../../src/routes/o.$orgSlug.trust.tsx";
+import { OrgTrustRoute } from "../../src/routes/o/$orgSlug/trust.tsx";
 import { TrustPage } from "../../src/features/trust/TrustPage.tsx";
 
 describe("Trust and Learning Governance UI Routes and Features", () => {
