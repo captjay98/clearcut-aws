@@ -2378,52 +2378,82 @@ docker compose up</code></pre></div><p class="lp-lede gap-t-4">Then open <span c
     const authState = Object.hasOwn(AUTH_STATES, routeQuery().state || '') ? routeQuery().state : null;
     const problem = authState ? AUTH_STATES[authState] : null;
     const busy = routeQuery().state === 'authenticating';
+    const mode = routeQuery().mode === 'signup' ? 'signup' : 'signin';
+
+    const signinForm = `
+      <form id="signin-form" class="stack gap-4" onsubmit="return false;">
+        <div class="field">
+          <label class="field-label" for="auth-email">Work email</label>
+          <input class="input" type="email" id="auth-email" name="email" placeholder="name@studio.com" required autocomplete="email" value="${state.authEmail || ''}" />
+        </div>
+        <div class="field">
+          <div class="cluster justify-between">
+            <label class="field-label" for="auth-password">Password</label>
+            <a class="small muted" href="#auth?state=recovery">Forgot password?</a>
+          </div>
+          <input class="input" type="password" id="auth-password" name="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <div id="auth-error-container"></div>
+        <div class="gap-t-2" aria-busy="${busy ? 'true' : 'false'}">
+          ${busy
+            ? `<span class="spinner" role="status" aria-label="Signing in"></span><span class="small muted">Signing in…</span>`
+            : `<button class="button button-primary" type="button" data-action="sign-in" style="width:100%;">Sign in</button>`}
+        </div>
+      </form>
+      <p class="small muted gap-t-4 text-center">Don't have an account? <button class="link-btn" type="button" data-action="switch-auth-tab" data-tab="signup">Create account</button></p>`;
+
+    const signupForm = `
+      <form id="signup-form" class="stack gap-4" onsubmit="return false;">
+        <div class="field">
+          <label class="field-label" for="auth-name">Full name</label>
+          <input class="input" type="text" id="auth-name" name="name" placeholder="e.g. Maya Lin" required autocomplete="name" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="auth-email">Work email</label>
+          <input class="input" type="email" id="auth-email" name="email" placeholder="name@studio.com" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="auth-password">Password</label>
+          <input class="input" type="password" id="auth-password" name="password" placeholder="Create a secure password" required autocomplete="new-password" />
+          <span class="field-hint">Must be at least 8 characters.</span>
+        </div>
+        <div id="auth-error-container"></div>
+        <div class="gap-t-2" aria-busy="${busy ? 'true' : 'false'}">
+          ${busy
+            ? `<span class="spinner" role="status" aria-label="Creating account"></span><span class="small muted">Creating account…</span>`
+            : `<button class="button button-primary" type="button" data-action="sign-up" style="width:100%;">Create account &amp; continue</button>`}
+        </div>
+      </form>
+      <p class="small muted gap-t-4 text-center">Already have an account? <button class="link-btn" type="button" data-action="switch-auth-tab" data-tab="signin">Sign in</button></p>`;
 
     return page({
       width: 'narrow',
-      eyebrow: 'Account access',
-      title: 'Sign in to ClearCut',
-      lede: 'Access your screenplay clearance projects, live Parallel research jobs, and immutable audit ledgers.',
+      eyebrow: mode === 'signup' ? 'Get started' : 'Welcome back',
+      title: mode === 'signup' ? 'Create your ClearCut account' : 'Sign in to ClearCut',
+      lede: mode === 'signup'
+        ? 'Sign up to start organizing screenplay clearance evidence, provenance snapshots, and team decisions.'
+        : 'Access your screenplay clearance projects, live Parallel research jobs, and immutable audit ledgers.',
       body: `${problem ? `<div class="gap-b-6">${banner(problem)}</div>` : ''}
-      ${card({
-        accent: true,
-        body: `<form id="signin-form" class="stack gap-4" onsubmit="return false;">
-          <div class="field">
-            <label class="field-label" for="auth-email">Work email</label>
-            <input class="input" type="email" id="auth-email" name="email" placeholder="name@company.com" required autocomplete="email" value="${state.authEmail || ''}" />
-          </div>
-          <div class="field">
-            <div class="cluster justify-between">
-              <label class="field-label" for="auth-password">Password</label>
-              <a class="small muted" href="#auth?state=recovery">Forgot password?</a>
-            </div>
-            <input class="input" type="password" id="auth-password" name="password" placeholder="••••••••" required autocomplete="current-password" />
-          </div>
-          <div id="auth-error-container"></div>
-          <div class="gap-t-2" aria-busy="${busy ? 'true' : 'false'}">
-            ${busy
-              ? `<span class="spinner" role="status" aria-label="Signing in"></span><span class="small muted">Signing in…</span>`
-              : `<button class="button button-primary" type="button" data-action="sign-in" style="width:100%;">Sign in</button>`}
-          </div>
-        </form>
-        <p class="small muted gap-t-4 text-center">First time setting up? <button class="link-btn" type="button" data-action="go" data-route="onboarding">Create an organization</button></p>`,
-      })}
+      <div class="auth-box">
+        <div class="tabs gap-b-5" role="tablist" aria-label="Authentication mode">
+          <button class="tab" role="tab" type="button" aria-selected="${mode === 'signin'}" data-action="switch-auth-tab" data-tab="signin" style="flex:1;text-align:center;">Sign In</button>
+          <button class="tab" role="tab" type="button" aria-selected="${mode === 'signup'}" data-action="switch-auth-tab" data-tab="signup" style="flex:1;text-align:center;">Create Account</button>
+        </div>
+        ${card({
+          accent: true,
+          body: mode === 'signup' ? signupForm : signinForm,
+        })}
+      </div>
       
-      <div class="auth-divider"><span>OR</span></div>
-
-      ${card({
-        quiet: true,
-        body: `<div class="stack gap-3">
-          <div class="cluster gap-2">
-            <span class="badge is-accent">Demo Sandbox</span>
-            <strong class="text-sm">Explore without an account</strong>
+      <div class="demo-eval-card">
+        <div class="cluster justify-between align-center">
+          <div class="cluster gap-2 align-center">
+            <span class="badge is-accent">Demo</span>
+            <span class="small">Looking to evaluate first?</span>
           </div>
-          <p class="small muted">Evaluate ClearCut with the pre-loaded <em>Borrowed Light</em> screenplay, 10 sample clearance categories, Parallel source snapshots, and tamper-evident audit receipts.</p>
-          <div class="gap-t-2">
-            <button class="button button-secondary" type="button" data-action="start-demo" style="width:100%;">Launch Demo Sandbox</button>
-          </div>
-        </div>`,
-      })}`,
+          <button class="button button-secondary button-sm" type="button" data-action="start-demo">Launch Demo Sandbox →</button>
+        </div>
+      </div>`,
     });
   }
 
@@ -2568,26 +2598,27 @@ docker compose up</code></pre></div><p class="lp-lede gap-t-4">Then open <span c
   }
 
   function renderOnboarding() {
+    const ownerName = (state.user && state.user.name) ? state.user.name : ACTOR.name;
     return page({
       width: 'narrow',
-      eyebrow: 'Step 1 of 1',
-      title: 'Create your organization',
-      lede: 'An organization owns projects, members, policies, and exports. Roles are fixed so review authority stays legible.',
+      eyebrow: 'Step 2 of 2',
+      title: 'Set up your organization',
+      lede: 'An organization owns projects, members, clearance policies, and released dossiers. Roles are fixed so review authority stays verifiable.',
       body: `${card({
         body: `<div class="form-grid">
-          <label class="field field-full"><span class="field-label">Organization name</span><input id="org-name" value="${esc(state.org.name)}"></label>
-          <label class="field"><span class="field-label">Owner</span><input value="${esc(ACTOR.name)}" readonly></label>
+          <label class="field field-full"><span class="field-label">Production company / Organization name</span><input id="org-name" placeholder="e.g. Northlight Pictures" value="${esc(state.org.name || '')}"></label>
+          <label class="field"><span class="field-label">Account Owner</span><input value="${esc(ownerName)}" readonly></label>
           <label class="field"><span class="field-label">Default monitoring cadence</span><select id="org-cadence">${['weekly', 'daily', 'manual'].map((v) => `<option value="${v}" ${v === state.org.cadence ? 'selected' : ''}>${esc(cadenceLabel(v))}</option>`).join('')}</select></label>
-          <label class="field field-full"><span class="field-label">Invite a reviewer (optional)</span><input id="org-invite" type="email" value="mara@northlight.example"><span class="field-hint">They receive a Reviewer invitation you can revoke at any time.</span></label>
+          <label class="field field-full"><span class="field-label">Invite a clearance reviewer (optional)</span><input id="org-invite" type="email" placeholder="reviewer@studio.com"><span class="field-hint">They receive a Reviewer invitation with accountable review privileges.</span></label>
         </div>`,
       })}
       ${section({
-        title: 'Fixed roles',
-        description: 'Five roles instead of custom permission combinations.',
+        title: 'Fixed governance roles',
+        description: 'Five fixed roles (Owner, Admin, Reviewer, Editor, Viewer) instead of error-prone custom permission matrices.',
         body: rolesTable(),
       })}
       <div class="cluster gap-t-8">
-        <button class="button button-primary" type="button" data-action="finish-onboarding">Create organization</button>
+        <button class="button button-primary" type="button" data-action="finish-onboarding">Complete setup &amp; open workspace</button>
       </div>`,
     });
   }
@@ -5258,6 +5289,47 @@ ${section({
         saveState();
         toast('Entered Demo Sandbox (Borrowed Light)');
         go('project');
+        break;
+      }
+      case 'switch-auth-tab': {
+        const tab = node.dataset.tab || 'signin';
+        go(`auth?mode=${tab}`);
+        break;
+      }
+      case 'sign-up': {
+        const nameInput = document.querySelector('#auth-name');
+        const emailInput = document.querySelector('#auth-email');
+        const passwordInput = document.querySelector('#auth-password');
+        const name = nameInput ? nameInput.value.trim() : '';
+        const email = emailInput ? emailInput.value.trim() : '';
+        const password = passwordInput ? passwordInput.value : '';
+        const errContainer = document.querySelector('#auth-error-container');
+
+        if (!name) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Name required', message: 'Please enter your full name.' });
+          if (nameInput) nameInput.focus();
+          break;
+        }
+        if (!email) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Email required', message: 'Please enter your work email address.' });
+          if (emailInput) emailInput.focus();
+          break;
+        }
+        if (!password || password.length < 8) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Password too short', message: 'Password must be at least 8 characters long.' });
+          if (passwordInput) passwordInput.focus();
+          break;
+        }
+
+        state.auth = true;
+        state.isDemo = false;
+        state.orgReady = false;
+        state.user = { name, email, role: 'Owner' };
+        saveState();
+        completeStage('auth');
+        addReceipt('auth', 'Account registered', `${name} (${email})`);
+        toast(`Welcome, ${name}! Set up your organization to get started.`);
+        go('onboarding');
         break;
       }
       /* Signing in resolves which organization you are working in. Real credentials

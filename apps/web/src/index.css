@@ -2086,6 +2086,18 @@
 }
 
 @layer components {
+  .auth-box {
+    max-width: 440px;
+    margin: 0 auto;
+  }
+  .demo-eval-card {
+    max-width: 440px;
+    margin: var(--space-5) auto 0;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+  }
   .auth-divider {
     display: flex;
     align-items: center;
