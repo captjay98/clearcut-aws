@@ -32,7 +32,7 @@ services:
       PORT: 8080
       PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
       GCP_PROJECT: ${GCP_PROJECT:-clearcut-workspace}
-      VERTEX_LOCATION: ${VERTEX_LOCATION:-us-central1}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-global}
     depends_on:
       db:
         condition: service_healthy

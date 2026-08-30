@@ -106,7 +106,7 @@ DATABASE_URL=postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcu
 PARALLEL_API_KEY=
 # Google Cloud Vertex AI settings
 GCP_PROJECT=clearcut-workspace
-VERTEX_LOCATION=us-central1
+VERTEX_LOCATION=global
 EOF
   fi
   echo -e "${GREEN}✓ Environment configured.${NC}"

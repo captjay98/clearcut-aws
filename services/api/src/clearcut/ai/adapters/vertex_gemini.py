@@ -10,15 +10,15 @@ import httpx
 logger = logging.getLogger(__name__)
 
 VERTEX_MODEL = os.getenv("VERTEX_MODEL", "gemini-1.5-flash")
-DEFAULT_REGION = os.getenv("VERTEX_LOCATION", os.getenv("GCP_REGION", "us-central1"))
+DEFAULT_LOCATION = os.getenv("VERTEX_LOCATION", "global")
 
 
 class VertexGeminiAdapter:
     """Enterprise Vertex AI runtime using native Google Cloud IAM authentication and Workload Identity."""
 
-    def __init__(self, project_id: str | None = None, region: str = DEFAULT_REGION) -> None:
+    def __init__(self, project_id: str | None = None, location: str = DEFAULT_LOCATION) -> None:
         self.project_id = project_id or os.getenv("GCP_PROJECT", os.getenv("GOOGLE_CLOUD_PROJECT", "clearcut-workspace"))
-        self.region = region
+        self.location = location
 
     def _get_access_token(self) -> str | None:
         """Fetch ambient OAuth2 token from Cloud Run metadata server or local gcloud auth ADC."""
@@ -48,18 +48,29 @@ class VertexGeminiAdapter:
 
         return None
 
+    def _get_endpoint_url(self) -> str:
+        """Construct Vertex AI REST endpoint URL supporting global and regional routing."""
+        if self.location in ("global", ""):
+            host = "aiplatform.googleapis.com"
+            location_path = "global"
+        else:
+            host = f"{self.location}-aiplatform.googleapis.com"
+            location_path = self.location
+
+        return (
+            f"https://{host}/v1/projects/{self.project_id}/"
+            f"locations/{location_path}/publishers/google/models/{VERTEX_MODEL}:generateContent"
+        )
+
     async def generate_completion(self, prompt: str, system_instruction: str | None = None) -> str:
-        """Generate text completion directly from Google Cloud Vertex AI."""
+        """Generate text completion directly from Google Cloud Vertex AI global endpoint."""
         token = self._get_access_token()
         if not token or not self.project_id:
             raise RuntimeError(
                 f"Vertex AI authentication failed: No Google Cloud IAM credentials or project found (project='{self.project_id}')."
             )
 
-        url = (
-            f"https://{self.region}-aiplatform.googleapis.com/v1/projects/{self.project_id}/"
-            f"locations/{self.region}/publishers/google/models/{VERTEX_MODEL}:generateContent"
-        )
+        url = self._get_endpoint_url()
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
