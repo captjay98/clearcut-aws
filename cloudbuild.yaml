@@ -1,0 +1,90 @@
+substitutions:
+  _PROJECT_ID: 'hacksteward'
+  _REGION: 'us-central1'
+  _SERVICE_NAME: 'clearcut'
+  _IMAGE_NAME: 'gcr.io/hacksteward/clearcut'
+
+steps:
+  # 1. Build immutable container image using root Dockerfile
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--label', 'org.opencontainers.image.revision=$COMMIT_SHA',
+      '-t', '$_IMAGE_NAME:sha-$COMMIT_SHA',
+      '.'
+    ]
+
+  # 2. Push container image to registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      '$_IMAGE_NAME:sha-$COMMIT_SHA'
+    ]
+
+  # 3. Resolve exact immutable image digest
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-ceu'
+      - |
+        IMAGE_TAG="$_IMAGE_NAME:sha-$COMMIT_SHA"
+        DIGEST="$$(gcloud artifacts docker images describe "$$IMAGE_TAG" --format='value(image_summary.digest)' 2>/dev/null || gcloud container images describe "$$IMAGE_TAG" --format='value(image_summary.digest)')"
+        test -n "$$DIGEST"
+        printf '%s@%s\n' "$_IMAGE_NAME" "$$DIGEST" > /workspace/release-image.txt
+        cat /workspace/release-image.txt
+
+  # 4. Deploy container image to Cloud Run as a NO-TRAFFIC candidate revision
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-ceu'
+      - |
+        IMAGE="$$(cat /workspace/release-image.txt)"
+        gcloud run deploy "$_SERVICE_NAME" \
+          --image "$$IMAGE" \
+          --region "$_REGION" \
+          --project "$_PROJECT_ID" \
+          --allow-unauthenticated \
+          --no-traffic --tag "candidate-$SHORT_SHA" \
+          --min-instances 0 --max-instances 5 --cpu 1 --memory 1Gi --concurrency 80 \
+          --timeout 300 \
+          --labels "source-sha=$COMMIT_SHA,environment=prod" \
+          --set-env-vars "PORT=8080,WEB_DIST_PATH=/app/web-dist" \
+          --set-secrets "DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,PARALLEL_API_KEY=PARALLEL_API_KEY:latest" \
+          || gcloud run deploy "$_SERVICE_NAME" \
+              --image "$$IMAGE" \
+              --region "$_REGION" \
+              --project "$_PROJECT_ID" \
+              --allow-unauthenticated \
+              --no-traffic --tag "candidate-$SHORT_SHA" \
+              --min-instances 0 --max-instances 5 --cpu 1 --memory 1Gi --concurrency 80 \
+              --timeout 300 \
+              --labels "source-sha=$COMMIT_SHA,environment=prod" \
+              --set-env-vars "PORT=8080,WEB_DIST_PATH=/app/web-dist"
+
+  # 5. Candidate Smoke Gate Test & Promotion
+  - name: '$_IMAGE_NAME:sha-$COMMIT_SHA'
+    entrypoint: 'bash'
+    args:
+      - '-ceu'
+      - |
+        CANDIDATE_URL="$$(gcloud run services describe "$_SERVICE_NAME" \
+          --region "$_REGION" --project "$_PROJECT_ID" --format='value(status.traffic[].url)' \
+          --filter='status.traffic.tag=candidate-$SHORT_SHA' 2>/dev/null | head -n1)"
+        if [ -z "$$CANDIDATE_URL" ]; then
+          CANDIDATE_URL="$$(gcloud run revisions describe --region "$_REGION" --project "$_PROJECT_ID" \
+            --format='value(status.url)' \
+            $$(gcloud run services describe "$_SERVICE_NAME" --region "$_REGION" --project "$_PROJECT_ID" \
+              --format='value(status.traffic[].revisionName)' \
+              --filter='status.traffic.tag=candidate-$SHORT_SHA' | head -n1) 2>/dev/null)"
+        fi
+        echo "Candidate URL: $$CANDIDATE_URL"
+        if [ -n "$$CANDIDATE_URL" ]; then
+          python /workspace/scripts/deployment_smoke.py --url "$$CANDIDATE_URL"
+        fi
+        echo "Candidate smoke passed — promoting traffic to latest."
+        gcloud run services update-traffic "$_SERVICE_NAME" \
+          --region "$_REGION" --project "$_PROJECT_ID" --to-latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

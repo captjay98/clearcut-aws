@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: clearcut-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clearcut
+      POSTGRES_PASSWORD: clearcut_dev_password
+      POSTGRES_DB: clearcut
+    ports:
+      - "5432:5432"
+    volumes:
+      - clearcut_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clearcut -d clearcut"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clearcut-app
+    restart: unless-stopped
+    ports:
+      - "8000:8080"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
+      PORT: 8080
+      WEB_DIST_PATH: /app/web-dist
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python scripts/seed_db.py &&
+             uvicorn clearcut.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 60"
+
+volumes:
+  clearcut_pgdata:
+    driver: local

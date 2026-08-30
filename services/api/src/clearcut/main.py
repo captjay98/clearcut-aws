@@ -85,3 +85,29 @@ async def healthz() -> JSONResponse:
             "version": "0.1.0",
         }
     )
+
+
+# Optional Unified SPA Serving (for single-container self-hosted & Cloud Run deployment)
+import os
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+web_dist_env = os.getenv("WEB_DIST_PATH")
+if web_dist_env and Path(web_dist_env).is_dir():
+    assets_dir = Path(web_dist_env) / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Don't intercept API routes
+        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        target = Path(web_dist_env) / full_path
+        if target.is_file():
+            return FileResponse(target)
+        index_path = Path(web_dist_env) / "index.html"
+        if index_path.is_file():
+            return FileResponse(index_path)
+        return JSONResponse({"detail": "SPA index.html not found"}, status_code=404)
