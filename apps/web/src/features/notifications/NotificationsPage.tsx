@@ -1,10 +1,25 @@
 import React, { useState } from "react";
 import { Page, Card, Badge } from "@clearcut/design-system";
 
-export function NotificationsPage() {
+export interface NotificationItem {
+  id: string;
+  tier: "urgent" | "standard" | "informational";
+  title: string;
+  body?: string;
+  message?: string;
+  time?: string;
+  createdAt?: string;
+  read?: boolean;
+}
+
+export function NotificationsPage({
+  notifications = [],
+}: {
+  notifications?: NotificationItem[];
+}) {
   const [filterTier, setFilterTier] = useState<string>("all");
 
-  const sampleNotifications = [
+  const defaultNotifications: NotificationItem[] = [
     {
       id: "n1",
       tier: "urgent",
@@ -23,10 +38,13 @@ export function NotificationsPage() {
     },
   ];
 
+  const displayList =
+    notifications && notifications.length > 0 ? notifications : defaultNotifications;
+
   const filtered =
     filterTier === "all"
-      ? sampleNotifications
-      : sampleNotifications.filter((n) => n.tier === filterTier);
+      ? displayList
+      : displayList.filter((n) => n.tier === filterTier);
 
   return (
     <Page
@@ -76,9 +94,9 @@ export function NotificationsPage() {
                       variant={n.tier === "urgent" ? "danger" : "primary"}
                     />
                   </div>
-                  <p className="text-slate-600 dark:text-slate-400">{n.body}</p>
+                  <p className="text-slate-600 dark:text-slate-400">{n.body || n.message}</p>
                 </div>
-                <span className="text-[11px] text-slate-400">{n.time}</span>
+                <span className="text-[11px] text-slate-400">{n.time || n.createdAt || "Just now"}</span>
               </div>
             ))}
           </div>

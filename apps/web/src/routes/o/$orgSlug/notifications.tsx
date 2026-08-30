@@ -9,5 +9,5 @@ export function OrgNotificationsRoute({ params }: { params?: { orgSlug: string }
     loadNotifications(params?.orgSlug || "acme-films").then(setData);
   }, [params?.orgSlug]);
 
-  return <NotificationsPage />;
+  return <NotificationsPage notifications={data} />;
 }

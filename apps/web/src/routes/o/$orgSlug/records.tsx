@@ -9,5 +9,5 @@ export function OrgRecordsRoute({ params }: { params?: { orgSlug: string } }) {
     loadRecords(params?.orgSlug || "acme-films").then(setRecords);
   }, [params?.orgSlug]);
 
-  return <RecordsPage />;
+  return <RecordsPage records={records} />;
 }

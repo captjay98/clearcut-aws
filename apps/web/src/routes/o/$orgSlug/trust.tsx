@@ -9,5 +9,5 @@ export function OrgTrustRoute({ params }: { params?: { orgSlug: string } }) {
     loadTrustAndRubric(params?.orgSlug || "acme-films").then(setTrustData);
   }, [params?.orgSlug]);
 
-  return <TrustPage />;
+  return <TrustPage trustData={trustData} />;
 }

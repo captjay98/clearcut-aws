@@ -2,9 +2,20 @@ import React, { useState } from "react";
 import { Page, Card, Badge, Banner } from "@clearcut/design-system";
 import { ReleaseDialog } from "./ReleaseDialog.tsx";
 
-export function ReportPage() {
+export interface ReportStatus {
+  snapshot_id: string;
+  version_label: string;
+  content_hash: string;
+  is_released: boolean;
+}
+
+export function ReportPage({
+  reportStatus,
+}: {
+  reportStatus?: ReportStatus | null;
+}) {
   const [isReleaseOpen, setIsReleaseOpen] = useState(false);
-  const [isReleased, setIsReleased] = useState(false);
+  const [isReleased, setIsReleased] = useState(reportStatus?.is_released ?? false);
 
   return (
     <Page
@@ -27,7 +38,7 @@ export function ReportPage() {
             <div className="space-y-1 text-xs">
               <div className="flex items-center space-x-2">
                 <span className="font-semibold text-slate-900 dark:text-white">
-                  Snapshot v2-2026-08-30
+                  Snapshot {reportStatus?.version_label || "v2-2026-08-30"}
                 </span>
                 <Badge
                   label={isReleased ? "Released" : "Generated (Draft)"}
@@ -35,7 +46,7 @@ export function ReportPage() {
                 />
               </div>
               <p className="text-slate-500 font-mono text-[11px]">
-                Content Hash: sha256:8f49a88c... • Bound to v2 (Blue Revision)
+                Content Hash: {reportStatus?.content_hash || "sha256:8f49a88c..."} • Bound to {reportStatus?.version_label || "v2 (Blue Revision)"}
               </p>
             </div>
 
@@ -67,7 +78,7 @@ export function ReportPage() {
             setIsReleased(true);
             setIsReleaseOpen(false);
           }}
-          versionLabel="v2 (Blue Revision)"
+          versionLabel={reportStatus?.version_label || "v2 (Blue Revision)"}
         />
       </div>
     </Page>

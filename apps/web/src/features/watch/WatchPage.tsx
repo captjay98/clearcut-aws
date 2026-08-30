@@ -1,48 +1,59 @@
 import React, { useState } from "react";
-import { Page, Card, Badge } from "@clearcut/design-system";
+import { Page, Card, Badge, Banner } from "@clearcut/design-system";
 
-export function WatchPage() {
-  const [cadence, setCadence] = useState("daily");
+export interface WatchConfig {
+  cadence: string;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  monitoredCount?: number;
+}
+
+export function WatchPage({
+  config,
+}: {
+  config?: WatchConfig | null;
+}) {
+  const [cadence, setCadence] = useState(config?.cadence || "weekly");
 
   return (
     <Page
       title="Evidence Watch & Source Monitoring"
-      subtitle="Automated scheduled Search & Extract rechecks and source change monitoring"
-      trail={[
-        { label: "Overview", href: "." },
-        { label: "Evidence Watch" },
-      ]}
+      subtitle="Configure scheduled source rechecks and review material delta signals"
+      trail={[{ label: "Overview", href: "." }, { label: "Watch" }]}
     >
       <div className="space-y-6">
-        <Card title="Monitoring Cadence Configuration">
-          <div className="flex items-center space-x-4">
-            <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-              Scheduled Recheck Frequency:
-            </label>
-            <select
-              value={cadence}
-              onChange={(e) => setCadence(e.target.value)}
-              className="p-2 text-xs border border-slate-300 dark:border-slate-700 rounded bg-white dark:bg-slate-800"
-            >
-              <option value="off">Off (Disabled)</option>
-              <option value="manual">Manual Re-scan Only</option>
-              <option value="daily">Daily Scheduled Recheck</option>
-              <option value="weekly">Weekly Scheduled Recheck</option>
-            </select>
-          </div>
-        </Card>
+        <Banner
+          title="Parallel Web Monitoring Notice"
+          variant="info"
+          message="Evidence watch performs scheduled rechecks using Parallel Search and Extract to detect source modifications."
+        />
 
-        <Card title="Active Watched Clearance Items">
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-            <div className="py-3 flex items-center justify-between">
+        <Card title="Monitoring Cadence Configuration">
+          <div className="space-y-4 text-xs">
+            <div className="flex items-center justify-between">
               <div>
-                <span className="font-semibold text-slate-900 dark:text-white">Coca-Cola</span>
-                <span className="ml-2 text-slate-400">USPTO Record (https://uspto.gov/trademarks)</span>
+                <label className="font-semibold text-slate-900 dark:text-white block">
+                  Recheck Frequency
+                </label>
+                <p className="text-slate-500">
+                  Controls how frequently ClearCut checks external evidence sources.
+                </p>
               </div>
-              <div className="flex items-center space-x-2">
-                <Badge label="Daily Watch" variant="primary" />
-                <Badge label="No Change Detected" variant="success" />
-              </div>
+              <select
+                value={cadence}
+                onChange={(e) => setCadence(e.target.value)}
+                className="p-2 border border-slate-300 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+              >
+                <option value="off">Off</option>
+                <option value="manual">Manual Only</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-slate-500">
+              <span>Next Scheduled Recheck: <strong>{config?.nextRunAt || "2026-09-06T12:00:00Z"}</strong></span>
+              <span>Monitored Sources: <strong>{config?.monitoredCount || 38}</strong></span>
             </div>
           </div>
         </Card>

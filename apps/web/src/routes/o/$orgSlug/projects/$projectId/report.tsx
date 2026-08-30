@@ -16,5 +16,5 @@ export function ProjectReportRoute({
     ).then(setReport);
   }, [params?.orgSlug, params?.projectId]);
 
-  return <ReportPage />;
+  return <ReportPage reportStatus={report} />;
 }

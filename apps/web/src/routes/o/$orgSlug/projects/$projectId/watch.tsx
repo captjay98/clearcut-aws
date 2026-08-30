@@ -16,5 +16,5 @@ export function ProjectWatchRoute({
     ).then(setConfig);
   }, [params?.orgSlug, params?.projectId]);
 
-  return <WatchPage />;
+  return <WatchPage config={config} />;
 }

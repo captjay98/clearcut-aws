@@ -1,65 +1,71 @@
-import React, { useState } from "react";
-import { Page, Card, Badge } from "@clearcut/design-system";
+import React from "react";
+import { Page, Card, Badge, Banner } from "@clearcut/design-system";
 
-export function RecordsPage() {
-  const [filterType, setFilterType] = useState("all");
+export interface AuditRecord {
+  event_id: string;
+  action: string;
+  target_type: string;
+  actor_id: string;
+  created_at: string;
+  redacted_summary: string;
+}
 
-  const sampleRecords = [
+export function RecordsPage({
+  records = [],
+}: {
+  records?: AuditRecord[];
+}) {
+  const defaultRecords: AuditRecord[] = [
     {
-      id: "rec-1",
-      action: "evidence_decision_recorded",
-      target: "Item CC-101 (Coca-Cola)",
-      actor: "Sarah (Reviewer)",
-      time: "10 mins ago",
-      status: "Committed",
+      event_id: "aud-001",
+      action: "report_snapshot_released",
+      target_type: "report_release",
+      actor_id: "user-01",
+      created_at: "2026-08-30T15:58:30Z",
+      redacted_summary: "Released Pre-Clearance Dossier for v2 (Blue Revision)",
     },
     {
-      id: "rec-2",
+      event_id: "aud-002",
       action: "rewrite_proposal_approved",
-      target: "Rewrite RW-201",
-      actor: "David (Admin)",
-      time: "1 hour ago",
-      status: "Committed",
+      target_type: "rewrite_proposal",
+      actor_id: "user-02",
+      created_at: "2026-08-30T15:20:10Z",
+      redacted_summary: "Approved Greeking substitution for item CC-104",
     },
   ];
 
+  const displayRecords =
+    records && records.length > 0 ? records : defaultRecords;
+
   return (
     <Page
-      title="Operations & Audit Records"
-      subtitle="Immutable cross-module activity ledger, tool executions, and decision receipts"
-      trail={[{ label: "Operations Records" }]}
+      title="Audit & Operations Ledger"
+      subtitle="Tenant-scoped immutable record of all state-mutating clearance decisions, rewrites, and releases"
+      trail={[{ label: "Records" }]}
     >
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {["all", "decisions", "rewrites", "system"].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilterType(f)}
-                className={`px-3 py-1 text-xs rounded capitalize font-medium ${
-                  filterType === f
-                    ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-slate-500">Zero raw script text or secrets logged</span>
-        </div>
+        <Banner
+          title="Redaction Boundary Guarantee"
+          variant="info"
+          message="Records contain structured event metadata and receipt projections. Raw screenplay dialogue and third-party secrets are strictly excluded."
+        />
 
-        <Card title="Authoritative Audit Trail">
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-xs">
-            {sampleRecords.map((r) => (
-              <div key={r.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold text-slate-900 dark:text-white">{r.action}</span>
-                  <span className="ml-2 text-slate-500 font-sans">{r.target} • {r.actor}</span>
+        <Card title="Authoritative Audit Events">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+            {displayRecords.map((r) => (
+              <div key={r.event_id} className="py-3 flex items-start justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {r.action}
+                    </span>
+                    <Badge label={r.target_type} variant="neutral" />
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400">{r.redacted_summary}</p>
                 </div>
-                <div className="flex items-center space-x-2 font-sans">
-                  <Badge label={r.status} variant="success" />
-                  <span className="text-slate-400">{r.time}</span>
+                <div className="text-right text-[11px] text-slate-400">
+                  <span className="font-mono">{r.created_at}</span>
+                  <div>Actor: {r.actor_id}</div>
                 </div>
               </div>
             ))}
