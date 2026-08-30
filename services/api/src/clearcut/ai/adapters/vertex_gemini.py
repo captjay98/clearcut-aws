@@ -51,43 +51,39 @@ class VertexGeminiAdapter:
     async def generate_completion(self, prompt: str, system_instruction: str | None = None) -> str:
         """Generate text completion directly from Google Cloud Vertex AI."""
         token = self._get_access_token()
-        if token and self.project_id:
-            try:
-                url = (
-                    f"https://{self.region}-aiplatform.googleapis.com/v1/projects/{self.project_id}/"
-                    f"locations/{self.region}/publishers/google/models/{VERTEX_MODEL}:generateContent"
-                )
-                headers = {
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                }
-                body: dict[str, Any] = {
-                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                    "generationConfig": {
-                        "temperature": 0.2,
-                        "maxOutputTokens": 2048,
-                    },
-                }
-                if system_instruction:
-                    body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+        if not token or not self.project_id:
+            raise RuntimeError(
+                f"Vertex AI authentication failed: No Google Cloud IAM credentials or project found (project='{self.project_id}')."
+            )
 
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    res = await client.post(url, headers=headers, json=body)
-                    if res.status_code == 200:
-                        data = res.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            return candidates[0]["content"]["parts"][0]["text"]
-                    else:
-                        logger.warning(f"Vertex AI returned HTTP {res.status_code}: {res.text}")
-            except Exception as e:
-                logger.warning(f"Vertex AI request failed: {e}")
-
-        # Deterministic Structured Demo Fallback when credentials are not present
-        return (
-            "ClearCut Pre-Clearance Analysis (Vertex AI Engine): Identified screenplay entities evaluated against "
-            "authoritative source records. Grounded in primary public registries with strict human governance boundary."
+        url = (
+            f"https://{self.region}-aiplatform.googleapis.com/v1/projects/{self.project_id}/"
+            f"locations/{self.region}/publishers/google/models/{VERTEX_MODEL}:generateContent"
         )
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        body: dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 2048,
+            },
+        }
+        if system_instruction:
+            body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(url, headers=headers, json=body)
+            if res.status_code == 200:
+                data = res.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    return candidates[0]["content"]["parts"][0]["text"]
+                raise RuntimeError("Vertex AI returned no candidate completions")
+            else:
+                raise RuntimeError(f"Vertex AI error HTTP {res.status_code}: {res.text}")
 
 
 # Alias for backwards compatibility with test harness

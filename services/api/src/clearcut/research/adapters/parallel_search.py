@@ -27,29 +27,13 @@ class ParallelSearchAdapter(WebSearchPort):
         self.api_key = api_key or os.getenv("PARALLEL_API_KEY", "")
 
     def search(self, request: SearchRequest) -> ProviderResult:
-        """Execute search with live Parallel Search API or verified fallback snapshot."""
+        """Execute real search against the live Parallel Search API."""
         start_time = time.monotonic()
 
         if not self.api_key:
-            logger.info("PARALLEL_API_KEY not configured: using structured verified demo registry results.")
-            return SearchResponse(
-                search_id=f"srch_demo_{int(time.time())}",
-                session_id=request.session_id or "sess_demo",
-                results=[
-                    SearchResultItem(
-                        url="https://uspto.gov/trademarks",
-                        title="USPTO Trademark Database Record",
-                        publisher="USPTO Primary Registry",
-                        snippet=f"Official trademark registration and live status details for term '{request.query}'.",
-                    ),
-                    SearchResultItem(
-                        url="https://cocatalog.loc.gov/cgi-bin/Pwebrecon.cgi",
-                        title="U.S. Copyright Office Public Records Catalog",
-                        publisher="U.S. Copyright Office",
-                        snippet=f"Archival copyright registration and renewal data matching '{request.query}'.",
-                    ),
-                ],
-                duration_ms=int((time.monotonic() - start_time) * 1000),
+            return ProviderFailure(
+                kind="authentication",
+                message="PARALLEL_API_KEY is not configured. Parallel Search requires an authentic API key.",
             )
 
         # Live Parallel Search API Call
@@ -82,7 +66,7 @@ class ParallelSearchAdapter(WebSearchPort):
                 if resp.is_error:
                     return ProviderFailure(
                         kind="upstream_error",
-                        message=f"Parallel API error: HTTP {resp.status_code}",
+                        message=f"Parallel API error: HTTP {resp.status_code} - {resp.text}",
                     )
 
                 data = resp.json()
@@ -90,8 +74,8 @@ class ParallelSearchAdapter(WebSearchPort):
                 for item in data.get("results", []):
                     results.append(
                         SearchResultItem(
-                            url=item.get("url", "https://registry.example.gov"),
-                            title=item.get("title", "Source Record"),
+                            url=item.get("url", ""),
+                            title=item.get("title", ""),
                             publisher=item.get("publisher", "Parallel Web Index"),
                             snippet=item.get("snippet", item.get("excerpt", "")),
                         )

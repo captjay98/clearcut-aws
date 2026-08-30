@@ -26,23 +26,11 @@ class ParallelExtractAdapter(UrlExtractPort):
         self.api_key = api_key or os.getenv("PARALLEL_API_KEY", "")
 
     def extract(self, request: ExtractRequest) -> ExtractResult:
-        """Execute extraction with live Parallel Extract API or structured fallback."""
+        """Execute real extraction against the live Parallel Extract API."""
         if not self.api_key:
-            logger.info("PARALLEL_API_KEY not configured: using structured verified demo extract results.")
-            results = [
-                ExtractedPage(
-                    url=url,
-                    title="Parallel Extracted Document Record",
-                    content=f"Primary registry document text extracted for verification objective: '{request.objective}'."[:18000],
-                )
-                for url in request.urls
-            ]
-            return ExtractBatchResponse(
-                extract_id=f"ext_demo_{int(time.time())}",
-                session_id=request.session_id,
-                results=tuple(results),
-                errors=(),
-                warnings=(),
+            return ProviderFailure(
+                kind="authentication",
+                message="PARALLEL_API_KEY is not configured. Parallel Extract requires an authentic API key.",
             )
 
         # Live Parallel Extract API Call
@@ -75,7 +63,7 @@ class ParallelExtractAdapter(UrlExtractPort):
                 if resp.is_error:
                     return ProviderFailure(
                         kind="upstream_error",
-                        message=f"Parallel Extract API error: HTTP {resp.status_code}",
+                        message=f"Parallel Extract API error: HTTP {resp.status_code} - {resp.text}",
                     )
 
                 data = resp.json()
@@ -84,7 +72,7 @@ class ParallelExtractAdapter(UrlExtractPort):
                     results.append(
                         ExtractedPage(
                             url=item.get("url", ""),
-                            title=item.get("title", "Extracted Page"),
+                            title=item.get("title", ""),
                             content=item.get("content", item.get("text", "")),
                         )
                     )
