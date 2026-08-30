@@ -17,6 +17,7 @@ dependencies = [
     "argon2-cffi>=23.1.0",
     "uuid6>=2024.1.12",
     "pyyaml>=6.0.1",
+    "greenlet>=3.5.5",
 ]
 
 [build-system]

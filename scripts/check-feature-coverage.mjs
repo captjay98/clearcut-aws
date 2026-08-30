@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = process.cwd()
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const root = path.resolve(__dirname, '..')
 const ledgerPath = path.join(root, 'feature-ledger.md')
 const coveragePath = path.join(root, 'docs', 'plans', 'active', 'FEATURE_COVERAGE.md')
 
