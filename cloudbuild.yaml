@@ -37,7 +37,7 @@ steps:
     args:
       - '-ceu'
       - |
-        IMAGE="$(cat /workspace/release-image.txt)"
+        IMAGE="$$(cat /workspace/release-image.txt)"
         if gcloud run services describe "$_SERVICE_NAME" --region "$_REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
           TRAFFIC_ARGS="--no-traffic --tag candidate-$SHORT_SHA"
         else
@@ -45,7 +45,7 @@ steps:
         fi
 
         gcloud run deploy "$_SERVICE_NAME" \
-          --image "$IMAGE" \
+          --image "$$IMAGE" \
           --region "$_REGION" \
           --project "$PROJECT_ID" \
           --allow-unauthenticated \
