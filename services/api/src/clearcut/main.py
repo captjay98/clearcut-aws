@@ -8,6 +8,11 @@ from clearcut.identity.adapters.in_memory import InMemoryIdentityRepository
 from clearcut.identity.adapters.local_identity import Argon2idIdentityProvider
 from clearcut.identity.application.session_service import SessionService
 from clearcut.identity.delivery.http import router as identity_router
+from clearcut.organizations.adapters.in_memory import InMemoryOrganizationRepository
+from clearcut.organizations.application.bootstrap import OrganizationBootstrapService
+from clearcut.organizations.delivery.http import router as organization_router
+from clearcut.projects.adapters.in_memory import InMemoryProjectRepository
+from clearcut.projects.application.project_service import ProjectService
 
 app = FastAPI(
     title="ClearCut API",
@@ -18,13 +23,27 @@ app = FastAPI(
 # Initialize in-memory default state for development/testing
 identity_repo = InMemoryIdentityRepository()
 identity_provider = Argon2idIdentityProvider()
-session_service = SessionService(repository=identity_repo, identity_provider=identity_provider)
+session_service = SessionService(
+    repository=identity_repo,
+    identity_provider=identity_provider,
+)
+
+org_repo = InMemoryOrganizationRepository()
+org_service = OrganizationBootstrapService(repository=org_repo)
+
+project_repo = InMemoryProjectRepository()
+project_service = ProjectService(repository=project_repo)
 
 app.state.identity_repo = identity_repo
 app.state.identity_provider = identity_provider
 app.state.session_service = session_service
+app.state.org_repo = org_repo
+app.state.org_service = org_service
+app.state.project_repo = project_repo
+app.state.project_service = project_service
 
 app.include_router(identity_router)
+app.include_router(organization_router)
 
 
 @app.get("/healthz")
