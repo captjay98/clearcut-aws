@@ -41,7 +41,7 @@ def main():
     print(f"==================================================")
 
     # 1. Healthcheck
-    health = test_endpoint(f"{base_url}/healthz")
+    health = test_endpoint(f"{base_url}/api/v1/healthz")
     assert health.get("status") == "ok", "Invalid healthz response"
 
     # 2. OpenAPI JSON specification

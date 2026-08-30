@@ -146,6 +146,18 @@ CREATE_TABLES_SQL = [
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS evidence_decisions (
+        id UUID PRIMARY KEY,
+        org_id UUID NOT NULL,
+        project_id UUID NOT NULL,
+        item_id UUID NOT NULL,
+        actor_id UUID NOT NULL,
+        decision_type VARCHAR(50) NOT NULL,
+        rationale TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS audit_events (
         id UUID PRIMARY KEY,
         org_id UUID NOT NULL,

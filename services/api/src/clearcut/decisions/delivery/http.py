@@ -7,7 +7,17 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 import sqlalchemy as sa
 
-from clearcut.database import session_scope
+from clearcut.database import session_scope, is_sqlite
+
+def fmt_id(val):
+    if val is None:
+        return None
+    return str(val) if is_sqlite else val
+
+def fmt_dt(val):
+    if val is None:
+        return None
+    return val.isoformat() if is_sqlite else val
 
 router = APIRouter(
     prefix="/api/v1/organizations/{org_id}/projects/{project_id}/items/{item_id}/decisions",
@@ -24,8 +34,8 @@ async def record_decision(
     async with session_scope() as session:
         # Resolve real item_id and user_id from DB
         item_res = await session.execute(
-            sa.text("SELECT id, org_id, project_id FROM clearance_items WHERE id::text = :id_str OR text ILIKE :term LIMIT 1"),
-            {"id_str": item_id if len(item_id) == 36 else "00000000-0000-0000-0000-000000000000", "term": f"%{item_id}%"}
+            sa.text("SELECT id, org_id, project_id FROM clearance_items WHERE id = :id_val OR text LIKE :term LIMIT 1"),
+            {"id_val": fmt_id(uuid.UUID(item_id)) if len(item_id) == 36 else "00000000-0000-0000-0000-000000000000", "term": f"%{item_id}%"}
         )
         item_row = item_res.fetchone()
 
@@ -42,7 +52,7 @@ async def record_decision(
         decision_val = payload.get("decision", payload.get("action", "accepted"))
         rationale = payload.get("rationale", "Source verified from primary registry record")
 
-        # Insert decision into PostgreSQL
+        # Insert decision
         await session.execute(
             sa.text("""
                 INSERT INTO evidence_decisions (
@@ -52,18 +62,18 @@ async def record_decision(
                 )
             """),
             {
-                "id": dec_id,
-                "org_id": target_org_id,
-                "project_id": target_proj_id,
-                "item_id": target_item_id,
-                "actor_id": actor_id,
+                "id": fmt_id(dec_id),
+                "org_id": fmt_id(target_org_id),
+                "project_id": fmt_id(target_proj_id),
+                "item_id": fmt_id(target_item_id),
+                "actor_id": fmt_id(actor_id),
                 "decision_type": decision_val,
                 "rationale": rationale,
-                "created_at": now,
+                "created_at": fmt_dt(now),
             }
         )
 
-        # Record immutable audit event in PostgreSQL
+        # Record immutable audit event
         await session.execute(
             sa.text("""
                 INSERT INTO audit_events (
@@ -73,13 +83,13 @@ async def record_decision(
                 )
             """),
             {
-                "id": uuid.uuid4(),
-                "org_id": target_org_id,
-                "project_id": target_proj_id,
-                "actor_id": actor_id,
-                "target_id": target_item_id,
+                "id": fmt_id(uuid.uuid4()),
+                "org_id": fmt_id(target_org_id),
+                "project_id": fmt_id(target_proj_id),
+                "actor_id": fmt_id(actor_id),
+                "target_id": fmt_id(target_item_id),
                 "details": json.dumps({"decision": decision_val, "rationale": rationale, "actor": payload.get("actor", "Jamie Park")}),
-                "created_at": now,
+                "created_at": fmt_dt(now),
             }
         )
 
