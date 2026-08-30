@@ -6628,26 +6628,91 @@ ${section({
     requestAnimationFrame(() => document.querySelector(`#tab-${next.dataset.tab}`)?.focus());
   });
 
-  async function hydrateScreenplayFromDatabase() {
+  async function hydrateFromBackend() {
+    const orgId = state.org?.id || 'northlight';
+    const projId = state.activeProjectId || 'borrowed-light';
+
+    // 1. Session context
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/v1/organizations/northlight/projects/borrowed-light/script');
+      const res = await fetch('/api/v1/session-context');
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.authenticated) {
+          state.auth = true;
+          state.user = { email: json.data.email, name: json.data.email.split('@')[0], role: json.data.role || 'Owner' };
+          if (json.data.activeOrgId) state.org.id = json.data.activeOrgId;
+        }
+      }
+    } catch (e) {}
+
+    // 2. Script
+    try {
+      const res = await fetch(`/api/v1/organizations/${orgId}/projects/${projId}/script`);
       if (res.ok) {
         const json = await res.json();
         if (json?.data?.scenes && json.data.scenes.length > 0) {
           SCENES.length = 0;
           SCENES.push(...json.data.scenes);
-          console.log(`[ClearCut Screenplay Hydration] Dynamic script loaded (${SCENES.length} scenes from PostgreSQL).`);
-          renderRoute();
         }
       }
-    } catch (e) {
-      console.warn('[ClearCut Screenplay Hydration Offline]', e);
-    }
+    } catch (e) {}
+
+    // 3. Clearance Items
+    try {
+      const res = await fetch(`/api/v1/organizations/${orgId}/projects/${projId}/items`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data && json.data.length > 0) {
+          json.data.forEach((dbItem, index) => {
+            if (ITEMS[index]) {
+              ITEMS[index].dbId = dbItem.id;
+              if (dbItem.category) {
+                const matched = CATEGORIES.find((c) => c.slug === dbItem.category || c.label === dbItem.category);
+                if (matched) ITEMS[index].category = matched;
+              }
+              if (dbItem.text) ITEMS[index].term = dbItem.text;
+              if (dbItem.status) ITEMS[index].status = dbItem.status;
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
+    // 4. Audit Records
+    try {
+      const res = await fetch(`/api/v1/organizations/${orgId}/records`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data && json.data.length > 0) {
+          state.receipts = json.data.map((rec) => ({
+            id: rec.event_id ? rec.event_id.slice(0, 8) : `rec_${Math.random().toString(36).slice(2, 6)}`,
+            stage: rec.target_type || 'project',
+            title: rec.action.replace(/[._]/g, ' ').replace(/^\w/, (c) => c.toUpperCase()),
+            detail: rec.details?.rationale || rec.redacted_summary || `${rec.action} on ${rec.target_type}`,
+            actor: rec.details?.actor || ACTOR.name,
+            at: rec.created_at || new Date().toISOString(),
+          }));
+        }
+      }
+    } catch (e) {}
+
+    // 5. Members
+    try {
+      const res = await fetch(`/api/v1/organizations/${orgId}/members`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data && json.data.length > 0) {
+          state.members = json.data;
+        }
+      }
+    } catch (e) {}
+
+    renderRoute();
   }
 
   window.addEventListener('hashchange', () => { closeDrawer(); renderRoute(); });
 
   if (!location.hash) history.replaceState(null, '', '#marketing');
-  hydrateScreenplayFromDatabase();
+  hydrateFromBackend();
   renderRoute();
 })();

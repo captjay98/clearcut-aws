@@ -191,3 +191,78 @@ async def create_project(
         },
         "meta": {"requestId": "req_create_project"},
     }
+
+
+class InviteMemberBody(BaseModel):
+    email: str
+    role: str = "Reviewer"
+
+
+@router.get("/organizations/{org_id}/members")
+async def list_members(org_id: str, request: Request) -> dict:
+    async with session_scope() as session:
+        res = await session.execute(
+            sa.text("""
+                SELECT m.id, m.role, m.status, m.created_at, u.email
+                FROM memberships m
+                LEFT JOIN users u ON u.id = m.user_id
+            """)
+        )
+        rows = res.fetchall()
+        members = []
+        for r in rows:
+            email_val = r.email or "reviewer@clearcut.local"
+            name_val = email_val.split("@")[0].replace(".", " ").title()
+            members.append({
+                "id": str(r.id),
+                "name": name_val,
+                "email": email_val,
+                "role": r.role,
+                "status": r.status,
+                "initials": name_val[:2].upper(),
+                "access": "All projects",
+                "createdAt": r.created_at.isoformat() if hasattr(r.created_at, 'isoformat') else str(r.created_at),
+            })
+        if not members:
+            members = [
+                {"id": "mem_1", "name": "Jamie Park", "email": "jamie@northlight.example", "role": "Owner", "status": "Active", "initials": "JP", "access": "All projects"},
+                {"id": "mem_2", "name": "Mara Stone", "email": "mara@northlight.example", "role": "Reviewer", "status": "Active", "initials": "MS", "access": "All projects"},
+                {"id": "mem_3", "name": "Elena Cruz", "email": "elena@northlight.example", "role": "Editor", "status": "Active", "initials": "EC", "access": "Borrowed Light"},
+            ]
+        return {
+            "data": members,
+            "meta": {"requestId": "req_list_members", "count": len(members)},
+        }
+
+
+@router.post("/organizations/{org_id}/invitations", status_code=status.HTTP_201_CREATED)
+async def invite_member(org_id: str, body: InviteMemberBody, request: Request) -> dict:
+    verify_csrf_origin(request)
+    inv_id = uuid.uuid4()
+    name_val = body.email.split("@")[0].replace(".", " ").title()
+    return {
+        "data": {
+            "id": str(inv_id),
+            "name": name_val,
+            "email": body.email,
+            "role": body.role,
+            "status": "Invited",
+            "initials": name_val[:2].upper(),
+            "access": "All projects",
+        },
+        "meta": {"requestId": "req_create_invite"},
+    }
+
+
+@router.get("/organizations/{org_id}/settings")
+async def get_org_settings(org_id: str, request: Request) -> dict:
+    return {
+        "data": {
+            "cadence": "weekly",
+            "retentionDays": 365,
+            "requireDualSignoff": True,
+            "strictSourceTiers": True,
+        },
+        "meta": {"requestId": "req_get_settings"},
+    }
+
