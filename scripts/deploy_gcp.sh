@@ -57,7 +57,9 @@ gcloud config set project "${PROJECT_ID}"
 
 # Submit to Cloud Build
 echo "Submitting build to Google Cloud Build on project ${PROJECT_ID}..."
-gcloud builds submit --config=cloudbuild.yaml \
+gcloud builds submit \
+  --gcs-source-staging-dir="gs://${PROJECT_ID}-builds/source" \
+  --config=cloudbuild.yaml \
   --substitutions="_REGION=${REGION},_SERVICE_NAME=${SERVICE_NAME},COMMIT_SHA=${SOURCE_SHA},SHORT_SHA=${SHORT_SOURCE_SHA}" .
 
 echo "=========================================================="
