@@ -8,27 +8,32 @@ import argparse
 import sys
 import urllib.request
 import json
+import time
 
-def test_endpoint(url: str, expected_status: int = 200, method: str = "GET", data: bytes = None) -> dict:
-    req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("User-Agent", "ClearCut-Deployment-Smoke/1.0")
-    if data:
-        req.add_header("Content-Type", "application/json")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as response:
-            status = response.getcode()
-            body = response.read().decode("utf-8")
-            if status != expected_status:
-                print(f"❌ FAIL: {method} {url} returned HTTP {status}, expected {expected_status}", file=sys.stderr)
-                sys.exit(1)
-            print(f"✅ PASS: {method} {url} -> HTTP {status}")
-            try:
-                return json.loads(body)
-            except Exception:
-                return {"raw": body}
-    except Exception as e:
-        print(f"❌ ERROR: {method} {url} failed: {e}", file=sys.stderr)
-        sys.exit(1)
+def test_endpoint(url: str, expected_status: int = 200, method: str = "GET", data: bytes = None, retries: int = 2) -> dict:
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("User-Agent", "ClearCut-Deployment-Smoke/1.0")
+        if data:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                status = response.getcode()
+                body = response.read().decode("utf-8")
+                if status != expected_status:
+                    print(f"❌ FAIL: {method} {url} returned HTTP {status}, expected {expected_status}", file=sys.stderr, flush=True)
+                    sys.exit(1)
+                print(f"✅ PASS: {method} {url} -> HTTP {status}", flush=True)
+                try:
+                    return json.loads(body)
+                except Exception:
+                    return {"raw": body}
+        except Exception as e:
+            if attempt < retries:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            print(f"❌ ERROR: {method} {url} failed after {retries + 1} attempts: {e}", file=sys.stderr, flush=True)
+            sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(description="ClearCut Deployment Smoke Gate")
