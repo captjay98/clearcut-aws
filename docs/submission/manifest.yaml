@@ -1,0 +1,17 @@
+submission:
+  project_name: "ClearCut"
+  track: "Parallel Track - Agentic Cinema"
+  license: "MIT"
+  repository_url: "https://github.com/captjay98/clearcut"
+  git_sha: "HEAD"
+  hosted_services:
+    site: "https://clearcut.app"
+    web: "https://app.clearcut.app"
+    api: "https://api.clearcut.app"
+  production_adapters:
+    model_runtime: "GeminiAdkRuntime"
+    search_adapter: "ParallelSearchAdapter"
+    extract_adapter: "ParallelExtractAdapter"
+    monitor_adapter: "ParallelMonitorAdapter"
+  verified_categories_count: 10
+  judge_rubric_dimensions_count: 10
