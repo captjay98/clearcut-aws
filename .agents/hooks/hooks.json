@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "hooks": [
+    {
+      "id": "session-start-reminder",
+      "event": "session_start",
+      "tools": ["claude", "gemini", "kiro", "factory", "opencode"],
+      "matcher": ".*",
+      "command": "echo \"[agents] Session started: read AGENTS.md and relevant skills before acting.\""
+    },
+    {
+      "id": "enforce-conventional-commit",
+      "event": "before_tool",
+      "matcher": "Bash",
+      "command": "echo \"$TOOL_INPUT_COMMAND\" | grep -q \"git commit\" && echo \"$TOOL_INPUT_COMMAND\" | grep -vE \"git commit -m \\\"(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\\\\(.+\\\\))?: .+\\\"\" && echo \"STOP: Conventional Commits required\" && exit 1 || exit 0",
+      "tools": ["claude", "factory", "kiro", "gemini"]
+    },
+    {
+      "id": "protect-main-branch",
+      "event": "before_tool",
+      "matcher": "Bash",
+      "command": "echo \"$TOOL_INPUT_COMMAND\" | grep -q \"git push\" && git branch --show-current | grep -E \"^(main|master|production)$\" && echo \"STOP: Push from protected branch blocked\" && exit 1 || exit 0",
+      "tools": ["claude", "factory", "kiro", "gemini"]
+    },
+    {
+      "id": "block-sensitive-edits",
+      "event": "before_tool",
+      "matcher": "Edit|Write",
+      "command": "node .agents/scripts/sensitive-edit-adapter.mjs",
+      "tools": ["claude", "factory", "kiro", "gemini", "opencode"]
+    }
+  ]
+}

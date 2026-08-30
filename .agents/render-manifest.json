@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "strict": false,
+  "enabledToolchains": [],
+  "counts": {
+    "personas": 15,
+    "subagents": 15,
+    "commands": 18,
+    "skills": 16,
+    "rules": 10,
+    "steering": 8,
+    "hooks": 4
+  },
+  "generatedFiles": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "45ee50f9d11a93671edda302558afdec696ace2196b0d6d3b6dcfb2437590b6f"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "command.schema.json",
+  "title": "CommandSpec",
+  "type": "object",
+  "required": ["name", "description", "arguments", "promptTemplate"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "arguments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "required", "description"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "required": { "type": "boolean" },
+          "description": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "promptTemplate": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": true
+}

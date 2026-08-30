@@ -1,0 +1,32 @@
+version = 1
+
+[selection]
+toolchains_allowed = ["kiro", "opencode", "claude", "factory", "gemini", "pi"]
+toolchains_default_enabled = []
+stacks = []
+commands_include = []
+commands_exclude = []
+skills_include = [
+  "agentic-feature-design",
+  "api-contract-sync",
+  "fixing-accessibility",
+  "fixing-metadata",
+  "frontend-accessibility-best-practices",
+  "frontend-async-best-practices",
+  "frontend-js-best-practices",
+  "frontend-react-best-practices",
+  "migration-strategy",
+  "mock-to-tanstack",
+  "observability-patterns",
+  "playwright-best-practices",
+  "property-testing",
+  "quality-gates",
+  "ui-audit",
+  "webapp-testing",
+]
+skills_exclude = []
+
+[policy]
+mcp_base = []
+override_mode = "narrowing_only"
+disabled_output_behavior = "prune"

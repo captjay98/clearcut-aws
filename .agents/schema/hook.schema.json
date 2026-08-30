@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hook.schema.json",
+  "title": "HookSpec",
+  "type": "object",
+  "required": ["id", "event", "matcher", "command", "tools"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "event": {
+      "type": "string",
+      "enum": ["session_start", "before_tool", "after_tool", "prompt_submit", "session_end"]
+    },
+    "matcher": { "type": "string", "minLength": 1 },
+    "command": { "type": "string", "minLength": 1 },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["claude", "gemini", "kiro", "factory", "opencode"]
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,72 @@
+version = 1
+
+# Per-toolchain model overrides for subagents. Omit a value to inherit from
+# the persona or toolchain default.
+
+# --- cheap / high-volume utility agents ---
+[models.explorer]
+kiro = "gpt-5.6-luna"
+pi = "google-antigravity/gemini-3.6-flash"
+thinking = "minimal"
+
+[models.janitor]
+kiro = "gpt-5.6-luna"
+pi = "google-antigravity/gemini-3.6-flash"
+thinking = "minimal"
+
+[models.triager]
+kiro = "gpt-5.6-luna"
+pi = "google-antigravity/gemini-3.6-flash"
+thinking = "minimal"
+
+[models.scaffolder]
+kiro = "gpt-5.6-luna"
+pi = "google-antigravity/gemini-3.6-flash"
+thinking = "minimal"
+
+[models.codex]
+kiro = "gpt-5.6-luna"
+pi = "google-antigravity/gemini-3.6-flash"
+thinking = "minimal"
+
+[models.devops-engineer]
+kiro = "gpt-5.6-terra"
+pi = "cloudflare-ai-gateway/@cf/zai-org/glm-5.2"
+
+# --- coding / build agents ---
+[models.builder]
+kiro = "gpt-5.6-sol"
+pi = "cloudflare-ai-gateway/@cf/zai-org/glm-5.2"
+
+[models.backend-engineer]
+kiro = "gpt-5.6-sol"
+pi = "cloudflare-ai-gateway/@cf/zai-org/glm-5.2"
+
+[models.mobile-engineer]
+kiro = "gpt-5.6-luna"
+pi = "cloudflare-ai-gateway/@cf/zai-org/glm-5.2"
+
+[models.product-architect]
+kiro = "gpt-5.6-terra"
+pi = "cloudflare-ai-gateway/@cf/zai-org/glm-5.2"
+
+[models.security-engineer]
+kiro = "claude-opus-5"
+pi = "cloudflare-ai-gateway/@cf/zai-org/glm-5.2"
+
+[models.frontend-engineer]
+kiro = "claude-opus-5"
+pi = "cloudflare-ai-gateway/@cf/moonshotai/kimi-k2.7-code"
+
+[models.fullstack-engineer]
+kiro = "gpt-5.6-sol"
+pi = "google-antigravity/gemini-3.6-flash"
+thinking = "minimal"
+
+[models.qa-engineer]
+kiro = "gpt-5.6-terra"
+pi = "cloudflare-ai-gateway/@cf/moonshotai/kimi-k2.7-code"
+
+[models.data-analyst]
+kiro = "gpt-5.6-luna"
+pi = "cloudflare-ai-gateway/@cf/moonshotai/kimi-k2.7-code"

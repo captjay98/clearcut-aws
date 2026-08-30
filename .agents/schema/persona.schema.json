@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "persona.schema.json",
+  "title": "PersonaSpec",
+  "type": "object",
+  "required": ["id", "description", "mode", "model", "capabilities", "permissions", "delegation"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "enum": ["agent", "subagent"] },
+    "model": { "type": "string", "minLength": 1 },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["boolean", "string", "array", "object", "number", "null"]
+      }
+    },
+    "delegation": {
+      "type": "object",
+      "required": ["targets"],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

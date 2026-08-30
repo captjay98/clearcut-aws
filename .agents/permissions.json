@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gotgenes/pi-packages/main/packages/pi-permission-system/schemas/permissions.schema.json",
+  "agents": {
+    "explorer": {
+      "write": "deny",
+      "edit": "deny",
+      "bash": "deny"
+    },
+    "triager": {
+      "write": "deny",
+      "edit": "deny",
+      "bash": {
+        "node .agents/scripts/check-generated.mjs": "allow",
+        "node .agents/scripts/check-mcp.mjs": "allow",
+        "node .agents/scripts/check-package-managers.mjs": "allow",
+        "node .agents/scripts/lint.mjs": "allow",
+        "node .agents/scripts/signoff.mjs": "allow",
+        "node .agents/scripts/verify.mjs": "allow",
+        "node misc/clearcut-flow/mockup-audit.mjs": "allow",
+        "bun .agents/scripts/build.mjs": "allow",
+        "bun .agents/scripts/lint.mjs": "allow",
+        "bun .agents/scripts/verify.mjs": "allow",
+        "pnpm test": "allow",
+        "pnpm test:e2e": "allow",
+        "pnpm lint": "allow",
+        "pnpm format:check": "allow",
+        "pnpm typecheck": "allow",
+        "pytest": "allow",
+        "ruff check": "allow",
+        "ruff format --check": "allow",
+        "pyright": "allow",
+        "*": "ask"
+      }
+    },
+    "product-architect": {
+      "write": "deny",
+      "edit": "deny",
+      "bash": "ask"
+    },
+    "security-engineer": {
+      "write": "deny",
+      "edit": "deny",
+      "bash": "ask"
+    }
+  }
+}

@@ -1,0 +1,530 @@
+{
+  "version": 1,
+  "skills": {
+    "playwright-best-practices": {
+      "source": "currents-dev/playwright-best-practices-skill",
+      "skill": "playwright-best-practices",
+      "target": "shared",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "test-driven-development": {
+      "source": "obra/superpowers",
+      "skill": "test-driven-development",
+      "target": "shared",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "webapp-testing": {
+      "source": "anthropics/skills",
+      "skill": "webapp-testing",
+      "target": "shared",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "next-best-practices": {
+      "source": "vercel-labs/next-skills",
+      "skill": "next-best-practices",
+      "target": "stacks/nextjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "next-cache-components": {
+      "source": "vercel-labs/next-skills",
+      "skill": "next-cache-components",
+      "target": "stacks/nextjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "next-upgrade": {
+      "source": "vercel-labs/next-skills",
+      "skill": "next-upgrade",
+      "target": "stacks/nextjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "tailwind-design-system": {
+      "source": "wshobson/agents",
+      "skill": "tailwind-design-system",
+      "target": "stacks/tailwind",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "nodejs-backend-patterns": {
+      "source": "wshobson/agents",
+      "skill": "nodejs-backend-patterns",
+      "target": "stacks/nestjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "api-design-principles": {
+      "source": "wshobson/agents",
+      "skill": "api-design-principles",
+      "target": "stacks/nestjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "typescript-advanced-types": {
+      "source": "wshobson/agents",
+      "skill": "typescript-advanced-types",
+      "target": "stacks/nestjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "nestjs-best-practices": {
+      "source": "kadajett/agent-nestjs-skills",
+      "skill": "nestjs-best-practices",
+      "target": "stacks/nestjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "better-auth-best-practices": {
+      "source": "better-auth/skills",
+      "skill": "better-auth-best-practices",
+      "target": "stacks/better-auth",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "eloquent-best-practices": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "eloquent-best-practices",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-api-resource-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-api-resource-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-authorization-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-authorization-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-blade-component-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-blade-component-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-brainstorming": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-brainstorming",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-caching-strategies": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-caching-strategies",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-event-driven-architecture": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-event-driven-architecture",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-feature-flags": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-feature-flags",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-middleware-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-middleware-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-notification-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-notification-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-queue-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-queue-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-systematic-debugging": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-systematic-debugging",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-task-scheduling": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-task-scheduling",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-tdd": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-tdd",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "laravel-validation-patterns": {
+      "source": "iSerter/laravel-claude-agents",
+      "skill": "laravel-validation-patterns",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-create-alert": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-create-alert",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-fix-issues": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-fix-issues",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-nextjs-sdk": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-nextjs-sdk",
+      "target": "stacks/nextjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-react-sdk": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-react-sdk",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-nestjs-sdk": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-nestjs-sdk",
+      "target": "stacks/nestjs",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-flutter-sdk": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-flutter-sdk",
+      "target": "stacks/flutter",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-php-sdk": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-php-sdk",
+      "target": "stacks/laravel-api",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-cloudflare-sdk": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-cloudflare-sdk",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-sdk-upgrade": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-sdk-upgrade",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-feature-setup": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-feature-setup",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-sdk-setup": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-sdk-setup",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sentry-workflow": {
+      "source": "getsentry/sentry-for-ai",
+      "skill": "sentry-workflow",
+      "target": "stacks/sentry",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "tanstack-integration-best-practices": {
+      "source": "DeckardGer/tanstack-agent-skills",
+      "skill": "tanstack-integration-best-practices",
+      "target": "stacks/tanstack-fullstack",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "tanstack-query-best-practices": {
+      "source": "DeckardGer/tanstack-agent-skills",
+      "skill": "tanstack-query-best-practices",
+      "target": "stacks/tanstack-fullstack",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "tanstack-router-best-practices": {
+      "source": "DeckardGer/tanstack-agent-skills",
+      "skill": "tanstack-router-best-practices",
+      "target": "stacks/tanstack-fullstack",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "tanstack-start-best-practices": {
+      "source": "DeckardGer/tanstack-agent-skills",
+      "skill": "tanstack-start-best-practices",
+      "target": "stacks/tanstack-fullstack",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-basics": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-basics",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-auth-basics": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-auth-basics",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-firestore-standard": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-firestore-standard",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-firestore-enterprise-native-mode": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-firestore-enterprise-native-mode",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-hosting-basics": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-hosting-basics",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-app-hosting-basics": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-app-hosting-basics",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-ai-logic": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-ai-logic",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firebase-data-connect": {
+      "source": "firebase/agent-skills",
+      "skill": "firebase-data-connect",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "firestore-security-rules-auditor": {
+      "source": "firebase/agent-skills",
+      "skill": "firestore-security-rules-auditor",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "developing-genkit-js": {
+      "source": "firebase/agent-skills",
+      "skill": "developing-genkit-js",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "developing-genkit-dart": {
+      "source": "firebase/agent-skills",
+      "skill": "developing-genkit-dart",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "developing-genkit-go": {
+      "source": "firebase/agent-skills",
+      "skill": "developing-genkit-go",
+      "target": "stacks/firebase",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "deploying-laravel-cloud": {
+      "source": "laravel/agent-skills",
+      "skill": "deploying-laravel-cloud",
+      "target": "stacks/laravel-cloud",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "configure-nightwatch": {
+      "source": "laravel/agent-skills",
+      "skill": "configure-nightwatch",
+      "target": "stacks/laravel-cloud",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "cloudflare": {
+      "source": "cloudflare/skills",
+      "skill": "cloudflare",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "wrangler": {
+      "source": "cloudflare/skills",
+      "skill": "wrangler",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "workers-best-practices": {
+      "source": "cloudflare/skills",
+      "skill": "workers-best-practices",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "durable-objects": {
+      "source": "cloudflare/skills",
+      "skill": "durable-objects",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "agents-sdk": {
+      "source": "cloudflare/skills",
+      "skill": "agents-sdk",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "web-perf": {
+      "source": "cloudflare/skills",
+      "skill": "web-perf",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "building-ai-agent-on-cloudflare": {
+      "source": "cloudflare/skills",
+      "skill": "building-ai-agent-on-cloudflare",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "building-mcp-server-on-cloudflare": {
+      "source": "cloudflare/skills",
+      "skill": "building-mcp-server-on-cloudflare",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "sandbox-sdk": {
+      "source": "cloudflare/skills",
+      "skill": "sandbox-sdk",
+      "target": "stacks/cloudflare",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "fixing-accessibility": {
+      "source": "ibelick/ui-skills",
+      "skill": "fixing-accessibility",
+      "target": "skills",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "fixing-metadata": {
+      "source": "ibelick/ui-skills",
+      "skill": "fixing-metadata",
+      "target": "skills",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "frontend-accessibility-best-practices": {
+      "source": "sergiodxa/agent-skills",
+      "skill": "frontend-accessibility-best-practices",
+      "target": "skills",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "frontend-js-best-practices": {
+      "source": "sergiodxa/agent-skills",
+      "skill": "frontend-js-best-practices",
+      "target": "skills",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "frontend-async-best-practices": {
+      "source": "sergiodxa/agent-skills",
+      "skill": "frontend-async-best-practices",
+      "target": "skills",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "frontend-react-best-practices": {
+      "source": "sergiodxa/agent-skills",
+      "skill": "frontend-react-best-practices",
+      "target": "skills",
+      "method": "npx-skills",
+      "installed": "2026-04-09"
+    },
+    "gemini-api-dev": {
+      "source": "google-gemini/gemini-skills",
+      "skill": "gemini-api-dev",
+      "target": "stacks/gemini-api",
+      "method": "npx-skills",
+      "installed": "2026-04-10"
+    },
+    "gemini-live-api-dev": {
+      "source": "google-gemini/gemini-skills",
+      "skill": "gemini-live-api-dev",
+      "target": "stacks/gemini-api",
+      "method": "npx-skills",
+      "installed": "2026-04-10"
+    },
+    "gemini-interactions-api": {
+      "source": "google-gemini/gemini-skills",
+      "skill": "gemini-interactions-api",
+      "target": "stacks/gemini-api",
+      "method": "npx-skills",
+      "installed": "2026-04-10"
+    }
+  }
+}

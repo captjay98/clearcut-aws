@@ -1,0 +1,962 @@
+{
+  "version": 3,
+  "source": "agents-platform",
+  "source_revision": "611b7231a3c329dde06b73da04ecd952eaf5ad9c",
+  "source_dirty": true,
+  "scripts_dir": ".agents/scripts",
+  "tooling_only": false,
+  "stacks": [],
+  "synced_files": [
+    "models.toml",
+    "permissions.json"
+  ],
+  "managed_files": [
+    {
+      "path": "models.toml",
+      "sha256": "05dc83fa3c04f865d26b9986deef93f42c386ce9437693add76b8e2d049f7aa5",
+      "source_path": "shared/.agents/models.toml"
+    },
+    {
+      "path": "permissions.json",
+      "sha256": "6ab1625de0b19715f5f8aa9df45fcb32a7ad1e33aaa45e4ade675bf196f17fbe",
+      "source_path": "shared/.agents/permissions.json"
+    }
+  ],
+  "delivered_files": [
+    {
+      "path": ".agents/models.toml",
+      "sha256": "05dc83fa3c04f865d26b9986deef93f42c386ce9437693add76b8e2d049f7aa5",
+      "source_path": "shared/.agents/models.toml"
+    },
+    {
+      "path": ".agents/permissions.json",
+      "sha256": "6ab1625de0b19715f5f8aa9df45fcb32a7ad1e33aaa45e4ade675bf196f17fbe",
+      "source_path": "shared/.agents/permissions.json"
+    },
+    {
+      "path": ".agents/personas/builder.md",
+      "sha256": "40b630be2944f3907e611a1fd2065faf21cfbb63527f863cc938481e4a31499c",
+      "source_path": "shared/.agents/personas/builder.md"
+    },
+    {
+      "path": ".agents/personas/codex.md",
+      "sha256": "692177335b254f3c79470cb5cbe8788800848f86e12fa432f17a574fabfa0bd0",
+      "source_path": "shared/.agents/personas/codex.md"
+    },
+    {
+      "path": ".agents/personas/explorer.md",
+      "sha256": "73b3afddf85498411d7415f7f96aef8a5672d88fb4b898a490fe739f646f0124",
+      "source_path": "shared/.agents/personas/explorer.md"
+    },
+    {
+      "path": ".agents/personas/janitor.md",
+      "sha256": "f7b6e6aa683126ec95eab2b011e6f7b37d1b003348fa0ea103afad3e905d3c56",
+      "source_path": "shared/.agents/personas/janitor.md"
+    },
+    {
+      "path": ".agents/personas/scaffolder.md",
+      "sha256": "5eb5aaa6ba8b13750c59cfeeaf915e60cebaa2e1a7ec8bb60217d4353c918c9a",
+      "source_path": "shared/.agents/personas/scaffolder.md"
+    },
+    {
+      "path": ".agents/personas/triager.md",
+      "sha256": "33faf6d32b84ce44f0f3e8030f4a3c8ac6d2602f5655dfb8db1e6adb353f408b",
+      "source_path": "shared/.agents/personas/triager.md"
+    },
+    {
+      "path": ".agents/rules/git-safety.md",
+      "sha256": "e104a48b7b3d4c54d7b56c012c0c26d50101e491e225cf6008d6ac1435e5c491",
+      "source_path": "shared/.agents/rules/git-safety.md"
+    },
+    {
+      "path": ".agents/rules/guard-clauses-first.md",
+      "sha256": "cb41c0df1e73ccf4d294424639157f350521c23026a1e2f73e699860d6b0b29a",
+      "source_path": "shared/.agents/rules/guard-clauses-first.md"
+    },
+    {
+      "path": ".agents/rules/meaningful-names.md",
+      "sha256": "25e8bf0c3e34e78e38668409324ca754f1100f42b3e25ac795ec31a19bc79b19",
+      "source_path": "shared/.agents/rules/meaningful-names.md"
+    },
+    {
+      "path": ".agents/rules/no-todos-in-code.md",
+      "sha256": "2dc7edfa703329174f1795df0e1f6a0c2274e8f370580a924d5714652a518c9b",
+      "source_path": "shared/.agents/rules/no-todos-in-code.md"
+    },
+    {
+      "path": ".agents/rules/prefer-composition.md",
+      "sha256": "436c5313a2aab57347679961dbfaf2f9c5b3855716dcfef9396e2cfe80cb133e",
+      "source_path": "shared/.agents/rules/prefer-composition.md"
+    },
+    {
+      "path": ".agents/rules/prefer-readonly.md",
+      "sha256": "1a91e2ce43ae01c222d4e04610c0a7839d9a8fb7924fb3d71d88319db76d1cf9",
+      "source_path": "shared/.agents/rules/prefer-readonly.md"
+    },
+    {
+      "path": ".agents/rules/test-what-matters.md",
+      "sha256": "b6541a279b261d531eb06628422ebec919e5fad9546d9c730ff9e39f7d7dd0f8",
+      "source_path": "shared/.agents/rules/test-what-matters.md"
+    },
+    {
+      "path": ".agents/scripts/agents.mjs",
+      "sha256": "688cad75816d521d203508fe4a36bd93e9335a8d901fdf0a0520748ae5bac8ad",
+      "source_path": "tooling/agents.mjs"
+    },
+    {
+      "path": ".agents/scripts/build.mjs",
+      "sha256": "eba8af65e9787ecb654ae5258482883c62c6331dc31ce44d219a810924cbb00c",
+      "source_path": "tooling/build.mjs"
+    },
+    {
+      "path": ".agents/scripts/check-generated.mjs",
+      "sha256": "9814482f2184455e3330c00b51693c04b8e64c12cc53010cf5768b4309075141",
+      "source_path": "tooling/check-generated.mjs"
+    },
+    {
+      "path": ".agents/scripts/check-mcp.mjs",
+      "sha256": "a359fa874c03e82f268feec4f908210132d9282d2c49d206043ac13e9e5bdea0",
+      "source_path": "tooling/check-mcp.mjs"
+    },
+    {
+      "path": ".agents/scripts/check-package-managers.mjs",
+      "sha256": "a67462dca4588dc851a5e55bb658b927da66079966906dd2ad79d28c8357d47d",
+      "source_path": "tooling/check-package-managers.mjs"
+    },
+    {
+      "path": ".agents/scripts/config.mjs",
+      "sha256": "51a2383bc0a541a314b690903e5d8023296b4097cfb37f94b4cbbc11cabe75d4",
+      "source_path": "tooling/config.mjs"
+    },
+    {
+      "path": ".agents/scripts/kiro-hook-adapter.mjs",
+      "sha256": "d2627bbd75ca87b30d2093a683b9b9e9d69fc5afbe069a78ec6ca9b95f1efe93",
+      "source_path": "tooling/kiro-hook-adapter.mjs"
+    },
+    {
+      "path": ".agents/scripts/lint.mjs",
+      "sha256": "5e4d8095637de5e3c8614b2138b639f6dd96d0d40452a97dbe3061d7fa296813",
+      "source_path": "tooling/lint.mjs"
+    },
+    {
+      "path": ".agents/scripts/mcp-smoke.mjs",
+      "sha256": "3f86457b11036a93309684050a152d9539de2059b684cfee14c3ab115fe8bb9c",
+      "source_path": "tooling/mcp-smoke.mjs"
+    },
+    {
+      "path": ".agents/scripts/projects.json.test",
+      "sha256": "977d499061317863e559a1456abc461f9d3933ac1b3a8b8cc8539a877e93b71f",
+      "source_path": "tooling/projects.json.test"
+    },
+    {
+      "path": ".agents/scripts/README.md",
+      "sha256": "263e17f8c72770ea103350f2553f2d936e327b820cbe74b8a2b7253f193280a2",
+      "source_path": "tooling/README.md"
+    },
+    {
+      "path": ".agents/scripts/renderers/claude.mjs",
+      "sha256": "8174b9dee30cd6b8c21420e40ab243676624e6c326ddd96a647fc874c854e283",
+      "source_path": "tooling/renderers/claude.mjs"
+    },
+    {
+      "path": ".agents/scripts/renderers/common.mjs",
+      "sha256": "c350ba6a9ddc266429117283fcf9a34f3758878b2f17d88bb345c30ccff82034",
+      "source_path": "tooling/renderers/common.mjs"
+    },
+    {
+      "path": ".agents/scripts/renderers/CONTRIBUTING.md",
+      "sha256": "ca7312265b2c1a9d13f9db5b37520cdfd7267c58ecb9a7892ba34f3560541610",
+      "source_path": "tooling/renderers/CONTRIBUTING.md"
+    },
+    {
+      "path": ".agents/scripts/renderers/factory.mjs",
+      "sha256": "87624d8efc98008a2884b6570408d69fc53a8500e2d23fd018caac5e840977b4",
+      "source_path": "tooling/renderers/factory.mjs"
+    },
+    {
+      "path": ".agents/scripts/renderers/gemini.mjs",
+      "sha256": "cf58fad4accff30dbf7104bc52eb63ce5b93219063d15988a1aa68e28be70c83",
+      "source_path": "tooling/renderers/gemini.mjs"
+    },
+    {
+      "path": ".agents/scripts/renderers/kiro.mjs",
+      "sha256": "1a18d2a4a6c1b285d5f0acb65afc37f494cb7539b935d7ffb9ea130304d7198b",
+      "source_path": "tooling/renderers/kiro.mjs"
+    },
+    {
+      "path": ".agents/scripts/renderers/opencode.mjs",
+      "sha256": "852e30832342ebb5b2aabcc2bdd19352be576c984defdc8a7bc2ce5e6922d3b4",
+      "source_path": "tooling/renderers/opencode.mjs"
+    },
+    {
+      "path": ".agents/scripts/renderers/pi.mjs",
+      "sha256": "058ee68ed8f495cc8614531705938a855d40e8a7a63469268ad0b6396f9f2aed",
+      "source_path": "tooling/renderers/pi.mjs"
+    },
+    {
+      "path": ".agents/scripts/signoff.mjs",
+      "sha256": "fe568c91f52831c7f1d3a91333b5d5650ca21454c45c1b60820a9717de3585bd",
+      "source_path": "tooling/signoff.mjs"
+    },
+    {
+      "path": ".agents/scripts/test/hardening.test.mjs",
+      "sha256": "df739f4f5b9ae85f008f0b0abac0f97476eda9d68d55f4aaefb0c2472bf4beb9",
+      "source_path": "tooling/test/hardening.test.mjs"
+    },
+    {
+      "path": ".agents/scripts/test/README.md",
+      "sha256": "467d64b6c23c3f68e61a02b83409353ad91fd4d59f2d29a307475e9edc1ba078",
+      "source_path": "tooling/test/README.md"
+    },
+    {
+      "path": ".agents/scripts/test/sync.test.mjs",
+      "sha256": "6ecfc3178d6cee5bac1ecd3746b2255fcd3c725a4ca6ed48fa92419d702cfc38",
+      "source_path": "tooling/test/sync.test.mjs"
+    },
+    {
+      "path": ".agents/scripts/toolchains.mjs",
+      "sha256": "b8894afc5c9dae490a876a0039b7b82ef2940b33f84f7ef736926f8eeba05b73",
+      "source_path": "tooling/toolchains.mjs"
+    },
+    {
+      "path": ".agents/scripts/verify-kiro.mjs",
+      "sha256": "17ed1e5c5d6886260c56460a1d9968fdb2e748406591cbad48c6e5a963defcc1",
+      "source_path": "tooling/verify-kiro.mjs"
+    },
+    {
+      "path": ".agents/scripts/verify.mjs",
+      "sha256": "8e260489403f18a0ab683081645fe1648ffdd2fba4edecc45b5ffb3935069dfe",
+      "source_path": "tooling/verify.mjs"
+    },
+    {
+      "path": ".agents/skills-manifest.json",
+      "sha256": "1c79e4210ac2245cbc97eb1963d77b1f6f406e6803214e05833ad60161157ba7",
+      "source_path": "shared/.agents/skills-manifest.json"
+    },
+    {
+      "path": ".agents/skills/api-contract-sync/SKILL.md",
+      "sha256": "009fc69c6b32b8af099bfe5f7b53aaf4503170fcc13200730662dea2833f4e05",
+      "source_path": "shared/.agents/skills/api-contract-sync/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/fixing-accessibility/SKILL.md",
+      "sha256": "549261e8a53b53a1a20c0ddbf736821e5fc0876ad82eee76e0efab8e9ee9dadf",
+      "source_path": "shared/.agents/skills/fixing-accessibility/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/fixing-metadata/SKILL.md",
+      "sha256": "b8315ff95a92dcfa48c33e2b4838a31d9448bd46252aab45726549ce865d6547",
+      "source_path": "shared/.agents/skills/fixing-metadata/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/aria-live-regions.md",
+      "sha256": "9078832fc9b0a5de86db7f6c8bd1e2335ae44e7ec155779eb474a9e0bb0ae234",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/aria-live-regions.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/focus-management.md",
+      "sha256": "539f74d971a491e42e33d3228e54f9c0de35ad3e9bb708a9c3bce9e09db54cb8",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/focus-management.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/keyboard-navigation.md",
+      "sha256": "ef1e749b962df75507c6e4f4cad6bcd0cd500128e001f50787dbab3094bcc030",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/keyboard-navigation.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/reduced-motion.md",
+      "sha256": "6046dea0d95762bb420f9e634645197cedbb7d78f9fcb2b6b5fec9a79e4c5534",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/reduced-motion.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/screen-reader-sr-only.md",
+      "sha256": "5ee5db6490b1ce484c9cc34f64b9c8ced042d84080b5da15d5247d685954bca6",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/screen-reader-sr-only.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/semantic-html-landmarks.md",
+      "sha256": "f658e4905d56d8b68e834fbc4ac3f81ebea6d989d97e8ffbad447903c2fcdc49",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/semantic-html-landmarks.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/rules/touch-targets.md",
+      "sha256": "bdb4214ae98b0f24a5e0bb4678e4ce7b621a75eaee8d9cf866e2c69a7f9bf9f9",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/rules/touch-targets.md"
+    },
+    {
+      "path": ".agents/skills/frontend-accessibility-best-practices/SKILL.md",
+      "sha256": "82dbc5d54d7ed45a836cd7a0e956511dc258c558cf6829fbaf7c789d7a593c47",
+      "source_path": "shared/.agents/skills/frontend-accessibility-best-practices/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/frontend-async-best-practices/rules/api-routes.md",
+      "sha256": "b7f062895e2eaf80b97b9ac0bfdde2c35782ca0bc0c99257bf4183c755b1f203",
+      "source_path": "shared/.agents/skills/frontend-async-best-practices/rules/api-routes.md"
+    },
+    {
+      "path": ".agents/skills/frontend-async-best-practices/rules/defer-await.md",
+      "sha256": "ea1b2618350836aaa6260b0ea43f3fe3e7a100a51be0fea4621b8c7f36c772c5",
+      "source_path": "shared/.agents/skills/frontend-async-best-practices/rules/defer-await.md"
+    },
+    {
+      "path": ".agents/skills/frontend-async-best-practices/rules/dependencies.md",
+      "sha256": "4688bd549394c764921fc89d49c28d4809a85ef9ecc64e1984291969b7fa0ffe",
+      "source_path": "shared/.agents/skills/frontend-async-best-practices/rules/dependencies.md"
+    },
+    {
+      "path": ".agents/skills/frontend-async-best-practices/rules/parallel.md",
+      "sha256": "914fb759178dcb65d7adc5e6aca20b7b2de176cef2500a3f8cd62067152547fd",
+      "source_path": "shared/.agents/skills/frontend-async-best-practices/rules/parallel.md"
+    },
+    {
+      "path": ".agents/skills/frontend-async-best-practices/rules/suspense-boundaries.md",
+      "sha256": "bf251dffc94d08bf8bbb10fc3233c883d048e8f51ba7b2968ce1f3855c4e4b94",
+      "source_path": "shared/.agents/skills/frontend-async-best-practices/rules/suspense-boundaries.md"
+    },
+    {
+      "path": ".agents/skills/frontend-async-best-practices/SKILL.md",
+      "sha256": "719046079e34261c96bc24ea28585b8a110991e6a0e473d5c7e1567c4995bbe8",
+      "source_path": "shared/.agents/skills/frontend-async-best-practices/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/batch-dom-css.md",
+      "sha256": "ed2ace9383f3f261566490a315d7809c38338f882bb38763c0fd5493d5f84206",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/batch-dom-css.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/cache-function-results.md",
+      "sha256": "abab26bdf155dc993a8f794b3b59dd895fece1f495e184d4c23eda9de2343550",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/cache-function-results.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/cache-property-access.md",
+      "sha256": "af521d1e53a7352a573400c40113c93487d4fda500132cece22f399e2cff060e",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/cache-property-access.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/cache-storage.md",
+      "sha256": "b438b21800d93081c5d80858b3ba8f9962d6fd9e91643fff2f237d35a9cd5419",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/cache-storage.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/combine-iterations.md",
+      "sha256": "d7bc11969ce1ff72d3e3e1f9919e42ea2392dc2e0f988f1655935a405a24c990",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/combine-iterations.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/comments-meaningful-only.md",
+      "sha256": "e11b65f6c63716f15c56054dee541966c8e6e0b483cb5fbba223679640ffd250",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/comments-meaningful-only.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/const-let-usage.md",
+      "sha256": "789587c2f89ce3ddbb16092de6d872f584eec6815f0f69d7cfb081bbbffe749d",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/const-let-usage.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/early-exit.md",
+      "sha256": "8a31c105d95c20d774e69f0dc4f14ac869276745dc97f4b3f604dba2c5b04603",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/early-exit.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/function-declarations.md",
+      "sha256": "c294591bec237b46e2784a4ce642d92e59b11ecffe23bdbc55babe2fb7afd3fa",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/function-declarations.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/hoist-regexp.md",
+      "sha256": "b94e558cb57b5cab0084a9738238b4f89bdcab3430a7484770802c15c4227abb",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/hoist-regexp.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/index-maps.md",
+      "sha256": "e8b3a3e4a9bdc1c17963fe0e7c99a8b031bc1ad456fcc29ed3d15933baa07bc4",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/index-maps.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/length-check-first.md",
+      "sha256": "4cc15ba053b17dc55234ad3a7b7524fa823c35cf2b74dae750957e350ac5626b",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/length-check-first.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/min-max-loop.md",
+      "sha256": "da38085cf542421a06c9fec66d7081afb2780cb596b2dcbb42a27e80fe5da479",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/min-max-loop.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/no-as-type-casts.md",
+      "sha256": "7863a9936359a371f545650e6b75105b9254e28c5ec9728f7af9c622f9c50919",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/no-as-type-casts.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/no-default-exports.md",
+      "sha256": "7aadd3717913047a14125ff9de99f9c3cb6aa04c3c7be1ac58cf139caf069996",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/no-default-exports.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/result-type.md",
+      "sha256": "30f4e098ffa209b3bf8c2cd7735881e36c12cad4613c9e6e23876801654e28c4",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/result-type.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/set-map-lookups.md",
+      "sha256": "a7fd781a6ba9ad49065961b6f9a90ef486bf6b648390e1a08704025f98e1642b",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/set-map-lookups.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/rules/tosorted-immutable.md",
+      "sha256": "260a39adb9d11aec992cc85b1d18d6e574f9053d63d784161a1ec88dc227cb0b",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/rules/tosorted-immutable.md"
+    },
+    {
+      "path": ".agents/skills/frontend-js-best-practices/SKILL.md",
+      "sha256": "e1476e1b7857efe6a93e1d589ec18ced35977c4f3f4a318f3f21a384cfa70ccb",
+      "source_path": "shared/.agents/skills/frontend-js-best-practices/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/bundle-barrel-imports.md",
+      "sha256": "9a1cc4baa2236662c40c9db02bdd68d81c3d1eb8ae6fe57576a11107423264c1",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/bundle-barrel-imports.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/bundle-conditional.md",
+      "sha256": "f8e927725c448703fa3f1fb31bd45218e9259d544000f83eb95444fee7def7f6",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/bundle-conditional.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/bundle-preload.md",
+      "sha256": "4e14a5bf64196e06b720123eb3f668bcae10e14fde661d8db0d1ff85b0eaedd2",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/bundle-preload.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/client-localstorage-schema.md",
+      "sha256": "2c708b86ddc5c3d020d4b091d21b71c1a9db043ef298d80c88ff04685cc8335b",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/client-localstorage-schema.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/client-passive-event-listeners.md",
+      "sha256": "f94a6a1dc92700d3d85bfdc4987331d8f040c465871464fee804f1d937d7ad18",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/client-passive-event-listeners.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-avoid-boolean-props.md",
+      "sha256": "58810bc926b00bb7518e5e1dd76c96a5423e4b63c15073b00b61044d4d187745",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-avoid-boolean-props.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-avoid-overabstraction.md",
+      "sha256": "b1a21ea746246934497419d6c2bd9485e1676ef7dd8c163c9af16d5f8be66c89",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-avoid-overabstraction.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-children-over-render-props.md",
+      "sha256": "50a033f6a95a44b656b91a907a6a3272d115d79a5a1dbd5fb655fd740974a4ac",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-children-over-render-props.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-compound-components.md",
+      "sha256": "20bcaa9ea1c41662499027ae64210889b88169c80418699bbeb91d20c50fd43f",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-compound-components.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-explicit-variants.md",
+      "sha256": "ae20b5e10cf3606b109355d98e03ce22b06616b129aa64e50aab2d7d6e88d40b",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-explicit-variants.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-state-provider.md",
+      "sha256": "6c5f9b8f90aafba6b4905060c7ce1897231ad3e66b131ee49c1a1c6766cd23a7",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-state-provider.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/composition-typescript-namespaces.md",
+      "sha256": "28d08c2a317312132eb0dd90b8f57aab29365aeaf76bdde3d0a827fd19fa0fdd",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/composition-typescript-namespaces.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/fault-tolerant-error-boundaries.md",
+      "sha256": "8bd5344435f247dedaf03aea030a704f31913a8ada89fb96a9af497e043a45d7",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/fault-tolerant-error-boundaries.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/hooks-limit-useeffect.md",
+      "sha256": "1ed8609ca0cbb63a3359657bd05da088f81d39851cd6862f3c9c3d6aa64ff104",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/hooks-limit-useeffect.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/hooks-useeffect-named-functions.md",
+      "sha256": "197b2f713bc9d92c28bb3ccc27b3c4f1a47489624cb37c17dd6a460a90a1d0f5",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/hooks-useeffect-named-functions.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-animate-svg-wrapper.md",
+      "sha256": "369976cd613a7d5aee5350eb55ceb62184ace4d75a9a57c2e4cd579157a2f54a",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-animate-svg-wrapper.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-client-only.md",
+      "sha256": "5077104e2aeb5341a257d4df6762addc1cf46a6e5c52096a910279818838bcd7",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-client-only.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-conditional-render.md",
+      "sha256": "81ef33223568f03038a2189a9d97db05e447168430a2ad7c7258208b14c82684",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-conditional-render.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-content-visibility.md",
+      "sha256": "8f8f3b8a384d29e27bc385ef52f4c4023821abbd7db8998112df427da1763350",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-content-visibility.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-hoist-jsx.md",
+      "sha256": "61414d797a2f6e1054f7023ec97d4281536b02c95d3c5e4134a2a097eb456a3c",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-hoist-jsx.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-hydration-no-flicker.md",
+      "sha256": "f5f782f812ff57e9ef6fcbf1b8366192ab9888aeae8a9f211bc2ba6d9e85f62d",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-hydration-no-flicker.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-hydration-suppress-warning.md",
+      "sha256": "7e16b79066410349969633ff53d369cbcd690190743c412ca528cc47b61cbf47",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-hydration-suppress-warning.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-svg-precision.md",
+      "sha256": "ed468533f6e95f622859c884b122cf21f9f593ed6bb3d500a54de4b9f9bcb9fb",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-svg-precision.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-use-hydrated.md",
+      "sha256": "3c4bc00ed72e7ec7c1bd95372a065e37bd3528bdbd0f296808c667c13b640c4c",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-use-hydrated.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rendering-usetransition-loading.md",
+      "sha256": "402480249fb367d77ca3853e979c3fbe7d6efd2250d6b98b18179b6fdacfdc9c",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rendering-usetransition-loading.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-dependencies.md",
+      "sha256": "25aa43d6aaf40cb1edb97d36eb8684678c929560934c9731d50ac602284fe93a",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-dependencies.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-derived-state-no-effect.md",
+      "sha256": "136ccd85979277abae9d8d95b7c65d353c3c00dbf39cb4812dea0a41e22b5f5d",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-derived-state-no-effect.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-derived-state.md",
+      "sha256": "2896c2c6a657b4b1734b08535fc879bfe0dbeb70eb7cf5ff96032efb6750b67e",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-derived-state.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-functional-setstate.md",
+      "sha256": "7007b4d90e544f968402a4c331714f431e700db16c82c909f88fa04b814b4abc",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-functional-setstate.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-lazy-state-init.md",
+      "sha256": "dceec69ba57654ca092459fc23c053e85fc0b1646b2bc7488710c45e878cdc71",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-lazy-state-init.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-memo-with-default-value.md",
+      "sha256": "97044a6c30973672df6be20cbcd7e1e3582ca7550a46b661021c3ade93759354",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-memo-with-default-value.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-memo.md",
+      "sha256": "8af4274c332b69ac0deee1a556675eca503bf611be61df746084dcab902395b9",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-memo.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-move-effect-to-event.md",
+      "sha256": "1a2f353ab228c710e25287b14647f8982e9c40d9d4fe0946fe27e839feecce42",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-move-effect-to-event.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-simple-expression-in-memo.md",
+      "sha256": "e2c6b258595b26dfdec942d19e0bacf6b8cb252c802d10695f654f2905fef9e2",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-simple-expression-in-memo.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-transitions.md",
+      "sha256": "1ef1cc2291d2dc14be457a57ce884c5883d9a36957aa9852c4ee162812c2da4e",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-transitions.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/rules/rerender-use-ref-transient-values.md",
+      "sha256": "6e124b41f29f0ff84044e7c83a377bbbea57d67b6094c398ed9b30e9a2bd2546",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/rules/rerender-use-ref-transient-values.md"
+    },
+    {
+      "path": ".agents/skills/frontend-react-best-practices/SKILL.md",
+      "sha256": "082218d7ae8c0cca1571cf71a0c60e0760859fcf7fbfe6d9d194e630aabb6f59",
+      "source_path": "shared/.agents/skills/frontend-react-best-practices/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/migration-strategy/SKILL.md",
+      "sha256": "cef3b404193d54e1ad6ccc3f1910918c710a56612e726a6c7a666b9c908ed4cd",
+      "source_path": "shared/.agents/skills/migration-strategy/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/authentication-flows.md",
+      "sha256": "b6549421bf78de9304638480ee3e9eb8f65031ea2fba54aa7c69be7afb7001a0",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/authentication-flows.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/authentication.md",
+      "sha256": "058c3afa13ccc609f130ed9c7fd007b2f88dd9477d715b83ea132eb46deba755",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/authentication.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/clock-mocking.md",
+      "sha256": "de7e78df2f8576e4e1ffe0a4993b8d5832cbbd63477daf511837872cd89afd9c",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/clock-mocking.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/mobile-testing.md",
+      "sha256": "2c1cadd409279925bf048475f2d1da0de9a704da21a367a98a3c24bac95f1921",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/mobile-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/multi-context.md",
+      "sha256": "abe87f8f8d49fbf4b7a240105a51db7cbcd5622c86a8df31f481450903da4be2",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/multi-context.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/multi-user.md",
+      "sha256": "fe102fd66a7c3f866dd6fe3fba638c71f9690971676ee2244f1cb43b53d07417",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/multi-user.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/network-advanced.md",
+      "sha256": "49e5ec7411b5d388d700b36450fc54ab185a3f538088661fbd9a628df85073c0",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/network-advanced.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/advanced/third-party.md",
+      "sha256": "d9d07130ecb13e5e2548a59f9ed1fd76dfc58426fd5ab3de3d4589c8567313ee",
+      "source_path": "shared/.agents/skills/playwright-best-practices/advanced/third-party.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/architecture/pom-vs-fixtures.md",
+      "sha256": "6619745a7ddad8c3734433325b9a09825a539a695f532aeea62e112fd8d74699",
+      "source_path": "shared/.agents/skills/playwright-best-practices/architecture/pom-vs-fixtures.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/architecture/test-architecture.md",
+      "sha256": "9f3b7e45ecbc3cadf21aaaaf3e0ce8feb0bd0a8b110f46fff1285b614f770ba2",
+      "source_path": "shared/.agents/skills/playwright-best-practices/architecture/test-architecture.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/architecture/when-to-mock.md",
+      "sha256": "919f5b8c07a477b446988734809f109a404d008e9a4bfd7744bd0d521693f84f",
+      "source_path": "shared/.agents/skills/playwright-best-practices/architecture/when-to-mock.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/browser-apis/browser-apis.md",
+      "sha256": "c8eb673179ddee87566ad2bed11bc3060e00d72463a7554b9cd35c12551f65b4",
+      "source_path": "shared/.agents/skills/playwright-best-practices/browser-apis/browser-apis.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/browser-apis/iframes.md",
+      "sha256": "1cf746991a1431a5f1b42ce6dc89530d534a1d04d302c8bf2211130a4e3bb817",
+      "source_path": "shared/.agents/skills/playwright-best-practices/browser-apis/iframes.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/browser-apis/service-workers.md",
+      "sha256": "c771ba9b5d26f18f1555fca583f365b9ecc2cdd26394bdbafe7e5bf0be0a635f",
+      "source_path": "shared/.agents/skills/playwright-best-practices/browser-apis/service-workers.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/browser-apis/websockets.md",
+      "sha256": "ed8a75b08e89720ea2c77d3adb4504530f9dfab2c140de423e29ae68a80f36c2",
+      "source_path": "shared/.agents/skills/playwright-best-practices/browser-apis/websockets.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/annotations.md",
+      "sha256": "f1aac6ca31db4b485a55b80fb69073ba5bb3a994c14868f25d87056e6bebbab6",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/annotations.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/assertions-waiting.md",
+      "sha256": "8cdc5673d148aa3a187544aae13973996c690c8c125bd770a243c0ba5c6744cd",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/assertions-waiting.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/configuration.md",
+      "sha256": "d375dbb84d133a70cae42c660302323b0330346614986e5f50c190dc3da0d2d8",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/configuration.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/fixtures-hooks.md",
+      "sha256": "057018bd070b01e9ac1e469a80ff0df8de3e9a1ac2148be3e7c0fcb2256988e6",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/fixtures-hooks.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/global-setup.md",
+      "sha256": "d59548fb70ee60f9270d4a1a2d68e89ae4cadffd0ec55b4c41a651e9ac70ed72",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/global-setup.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/locators.md",
+      "sha256": "888e6c2562aa28fe1a9efb36775c8cf0e77fdcc75b197c0fb66c4f0eda402378",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/locators.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/page-object-model.md",
+      "sha256": "b1ceaba7a8ce019f4ec4bfe41b9c94b452ae93f87312a78c0ae71b4e1787357e",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/page-object-model.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/projects-dependencies.md",
+      "sha256": "d04ec97f78e1d4767c1ae20fdeab8f4407f574d182c3a313fb43a26146b05f19",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/projects-dependencies.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/test-data.md",
+      "sha256": "a3ca72e9583de070bdc6808e0a59502601cb1455d180fdfe418ac9150fd7b62f",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/test-data.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/test-suite-structure.md",
+      "sha256": "638a72c8d01826a842096ca2a90bd6108d27a31a0d28d209833d14379abac9ee",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/test-suite-structure.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/core/test-tags.md",
+      "sha256": "affc1e8550bfad113557670c97e050864ca5837df4fcebc322dd0b8ac6af5853",
+      "source_path": "shared/.agents/skills/playwright-best-practices/core/test-tags.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/debugging/console-errors.md",
+      "sha256": "7332c92af9af3217516d012360621709750c1c191ecd588eaa77ecf1fd3c1450",
+      "source_path": "shared/.agents/skills/playwright-best-practices/debugging/console-errors.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/debugging/debugging.md",
+      "sha256": "ca751fe90673d51f7fdb28b3cab827bb7a76d745d006df21f6d7220ff5e4b112",
+      "source_path": "shared/.agents/skills/playwright-best-practices/debugging/debugging.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/debugging/error-testing.md",
+      "sha256": "3ad834d850816d9b5bffb456175a41fd88bd399fa2d7b098a4cb1bc12914d940",
+      "source_path": "shared/.agents/skills/playwright-best-practices/debugging/error-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/debugging/flaky-tests.md",
+      "sha256": "027dfe989ef2abf9fb8d1ab1e8b0602ee0c5026c93bb3ee69c3b2ffbbcd559f8",
+      "source_path": "shared/.agents/skills/playwright-best-practices/debugging/flaky-tests.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/frameworks/angular.md",
+      "sha256": "4acd7095d3556dd09a486c7ef30e0a6af1bab1cbfe2645739cca32914ef93009",
+      "source_path": "shared/.agents/skills/playwright-best-practices/frameworks/angular.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/frameworks/nextjs.md",
+      "sha256": "1a6370ebb6f9b871e59027673e641fc968d24943d37ec73caad6e6b8463d7a4b",
+      "source_path": "shared/.agents/skills/playwright-best-practices/frameworks/nextjs.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/frameworks/react.md",
+      "sha256": "67f248dfafd356c37354a9bc65c6306e9e48343f983c0352b78ffbc67a7d8391",
+      "source_path": "shared/.agents/skills/playwright-best-practices/frameworks/react.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/frameworks/vue.md",
+      "sha256": "b35f8d561dd9b5ebe8b86be7408ff4dbf03e189649714d790943ce763abb6718",
+      "source_path": "shared/.agents/skills/playwright-best-practices/frameworks/vue.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/ci-cd.md",
+      "sha256": "a6951b34dbfc4eabaad53cc5ff63edea3ca7eb35c455a1b34a73992e9572757a",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/ci-cd.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/docker.md",
+      "sha256": "ba0318c1060fe7d2235899e03ab998e588581becc0da49c3562a78fdd71b6526",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/docker.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/github-actions.md",
+      "sha256": "1f243a1b43c3a25fd29484a3789f65e38a1725588149b88e9996b37e0e7c608f",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/github-actions.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/gitlab.md",
+      "sha256": "91d73a21bfa8f238a719a04700390f01866f1de9dc70a064e09705ebc60f8b72",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/gitlab.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/other-providers.md",
+      "sha256": "6aca1c5e00cb179853ee85b8f340481d59c2c938a49eea412f1d13a5e04a230a",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/other-providers.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/parallel-sharding.md",
+      "sha256": "81837bf4cc6e034053a0cbc00d9e7347f5cd573ceef61db49b0587ddbeba7a23",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/parallel-sharding.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/performance.md",
+      "sha256": "01073c6bc622a7e2d347dbbea066dd8b05cb394c7717e2b2a8b26ea6f1e6e838",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/performance.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/reporting.md",
+      "sha256": "e7bd41103689230d3fe3d5f7019f95048548e5a1b8d70da7617cc3897236efd7",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/reporting.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/infrastructure-ci-cd/test-coverage.md",
+      "sha256": "b70eb2fa03e5cf3d4d7b98d4b342083fee1ea9092023d2c0c0cb685bfd8aa303",
+      "source_path": "shared/.agents/skills/playwright-best-practices/infrastructure-ci-cd/test-coverage.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/LICENSE.md",
+      "sha256": "2b98cdd2800845a1230f2ad4b310901e3c9ae9364ddebb01e90a2ebe6d953d82",
+      "source_path": "shared/.agents/skills/playwright-best-practices/LICENSE.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/README.md",
+      "sha256": "ab96dc47d58823c6878d96d2e8887a77d0fc3666b323e225066a8b159c7b7f28",
+      "source_path": "shared/.agents/skills/playwright-best-practices/README.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/SKILL.md",
+      "sha256": "d54f14eb2da39b9c1b9135b2705f21623fa7e27ac490225686daa360e34aa6d8",
+      "source_path": "shared/.agents/skills/playwright-best-practices/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/accessibility.md",
+      "sha256": "a52a8d1590c841f8470ee6bea8ea73c052010a36ae9a6afed7939d12bdbf800a",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/accessibility.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/api-testing.md",
+      "sha256": "b7b94a9015655e4d8f1826b440d5270fc8a7d969466d80aad4e7196faf60079f",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/api-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/browser-extensions.md",
+      "sha256": "2f05f8f62f02ced311802c44e96198db3ceade61d2224501939ded091e952ee2",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/browser-extensions.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/canvas-webgl.md",
+      "sha256": "39d62688c1e74a2e5af44efa03204be268fb2f4f62661d58aeffedfd3385998f",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/canvas-webgl.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/component-testing.md",
+      "sha256": "2fb0d0d5053ccc0353022337beba2fa76b68389c6461b363cafacc32e8fa0c68",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/component-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/drag-drop.md",
+      "sha256": "14c470974e736566e1c7a1c7f10c9d5d8b66085ec5c8179a6b3c33002252541d",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/drag-drop.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/electron.md",
+      "sha256": "093d00d665b96befa45d63385f32de34065785ef87f992526a333be91f83478c",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/electron.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/file-operations.md",
+      "sha256": "50f3818af9a2c5a9d1e83c832c7324c7bc94c0c93899c9cedb40d534e4335f60",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/file-operations.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/file-upload-download.md",
+      "sha256": "2aa6a50f0f3e8703f08f4365065d6e79350f1ef7ae4646662ab67d66e8e1d3c7",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/file-upload-download.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/forms-validation.md",
+      "sha256": "124cc991bd22106d202f6c0d7e15c79edb3dc4ca683b2fedfa700b6512df647a",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/forms-validation.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/graphql-testing.md",
+      "sha256": "ca844d996d8aff9c2c3ad236c8c30688ed6b17a5de74ac78be1c19faef856e32",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/graphql-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/i18n.md",
+      "sha256": "348fd0817e83ce9ac1318ad2ff87f9ac5b52de6c21aecdbd99690538214c87f1",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/i18n.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/performance-testing.md",
+      "sha256": "0faccd5ec785b4c66466f194ce9c8d1b9e257674e5be5c1ef5dd8864538bde5b",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/performance-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/security-testing.md",
+      "sha256": "c03fe6ead5ec78bfe20af45e05ab587d054f77f8e1a6d26dd7791f06be7cabd7",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/security-testing.md"
+    },
+    {
+      "path": ".agents/skills/playwright-best-practices/testing-patterns/visual-regression.md",
+      "sha256": "1be2b4fc72b884f9cd57587ade9c99b3a88a800dfaee3870d8ef06b68bdf1e31",
+      "source_path": "shared/.agents/skills/playwright-best-practices/testing-patterns/visual-regression.md"
+    },
+    {
+      "path": ".agents/skills/property-testing/SKILL.md",
+      "sha256": "490142899268dc4d86888163fb9a2a7ca8ca4161083326efa7de4426800d3bb5",
+      "source_path": "shared/.agents/skills/property-testing/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/quality-gates/SKILL.md",
+      "sha256": "5805e98126ed861a84ba4622b1448a1388c4a6297902bb1ccfd648f906fefd5d",
+      "source_path": "shared/.agents/skills/quality-gates/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/ui-audit/SKILL.md",
+      "sha256": "43d7e6a141f8fc1917f0f891b30c6245cefd1c12559d9a755534be5d8528f89e",
+      "source_path": "shared/.agents/skills/ui-audit/SKILL.md"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/examples/console_logging.py",
+      "sha256": "ea46877289acb82da7e7ce59d0bc37c8977cd57e2a006d0c88d7a1c625bf95da",
+      "source_path": "shared/.agents/skills/webapp-testing/examples/console_logging.py"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/examples/element_discovery.py",
+      "sha256": "d63c89604a22f8845d724e95dda45db49b1bf57c25ce0a83afbb7b8da3d402f0",
+      "source_path": "shared/.agents/skills/webapp-testing/examples/element_discovery.py"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/examples/static_html_automation.py",
+      "sha256": "9d533aafb875ee3ab8b8ebf8f5b9003ac8d999da3d09b285cce252e623140064",
+      "source_path": "shared/.agents/skills/webapp-testing/examples/static_html_automation.py"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/LICENSE.txt",
+      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+      "source_path": "shared/.agents/skills/webapp-testing/LICENSE.txt"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/scripts/with_server.py",
+      "sha256": "b0dcf4918935b795f4eda9821579b9902119235ff4447f687a30286e7d0925fd",
+      "source_path": "shared/.agents/skills/webapp-testing/scripts/with_server.py"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/SKILL.md",
+      "sha256": "e0a7a625dd8e88ff1a7ab51aaeae3da902d82a5bc9dc668e4478fa594dda96be",
+      "source_path": "shared/.agents/skills/webapp-testing/SKILL.md"
+    },
+    {
+      "path": ".pi/extensions/pi-permission-system/config.json",
+      "sha256": "1169145ee360ef6b2ff2e159688d51ae64a12760f9df557d97ee00d1b65326e6",
+      "source_path": "shared/.pi/extensions/pi-permission-system/config.json"
+    }
+  ]
+}
