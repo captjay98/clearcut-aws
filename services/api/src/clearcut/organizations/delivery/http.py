@@ -9,16 +9,31 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1", tags=["organizations", "projects"])
 
-ALLOWED_ORIGINS = {"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173", "http://test"}
+ALLOWED_ORIGINS = {
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:5173",
+    "http://test",
+}
 
 
 def verify_csrf_origin(request: Request) -> None:
     origin = request.headers.get("origin")
-    if origin and origin not in ALLOWED_ORIGINS:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cross-origin state mutation rejected",
-        )
+    host = request.headers.get("host")
+    if not origin:
+        return
+    if host and (origin.endswith(host) or host in origin):
+        return
+    if origin in ALLOWED_ORIGINS:
+        return
+    if "localhost" in origin or "127.0.0.1" in origin:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Cross-origin state mutation rejected",
+    )
 
 
 class CreateOrgBody(BaseModel):

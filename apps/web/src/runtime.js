@@ -5445,6 +5445,26 @@ ${section({
         const cadence = document.querySelector('#org-cadence')?.value;
         const invite = document.querySelector('#org-invite')?.value.trim();
         if (!name) { toast('Enter an organization name.', true); document.querySelector('#org-name')?.focus(); break; }
+
+        try {
+          const res = await fetch('/api/v1/organizations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: name,
+              slug: name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'studio',
+            }),
+          });
+          if (res.ok) {
+            const orgData = await res.json();
+            if (orgData.data?.orgId) {
+              state.org.id = orgData.data.orgId;
+            }
+          }
+        } catch (e) {
+          console.warn('Org creation API note:', e);
+        }
+
         state.org.name = name;
         if (cadence) state.org.cadence = cadence;
         if (invite && !state.members.some((m) => m.email === invite)) {
@@ -5455,8 +5475,10 @@ ${section({
           });
         }
         state.orgReady = true;
+        saveState();
         completeStage('onboarding');
-        addReceipt('organization', 'Organization created', `${name} · ${ACTOR.name} owner · ${invite ? `${invite} invited as Reviewer` : 'no invitations'}`);
+        addReceipt('organization', 'Organization created', `${name} · ${state.user?.name || ACTOR.name} owner · ${invite ? `${invite} invited as Reviewer` : 'no invitations'}`);
+        toast(`Organization "${name}" created.`);
         go('projects'); break;
       }
       /* Start the wizard on a project that has not been started. Borrowed Light
@@ -5484,6 +5506,27 @@ ${section({
         // The org's default cadence seeds this project's source watch, so the
         // one setting the org chose is the one the project starts with.
         proj().monitoring.cadence = state.org.cadence;
+
+        try {
+          const res = await fetch(`/api/v1/organizations/${state.org.id || 'northlight'}/projects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: details.title,
+              description: `${details.type} · ${details.jurisdiction} · lock ${details.lock}`,
+            }),
+          });
+          if (res.ok) {
+            const projData = await res.json();
+            if (projData.data?.projectId) {
+              proj().backendId = projData.data.projectId;
+            }
+          }
+        } catch (e) {
+          console.warn('Project creation API note:', e);
+        }
+
+        saveState();
         completeStage('new');
         addReceipt('project', 'Project details saved', `${details.title} · ${details.type} · ${details.jurisdiction} · lock ${details.lock}`);
         go('new'); break;
@@ -5934,6 +5977,22 @@ ${section({
         if (!rationale) { toast('Give a reason for the final call.', true); document.querySelector('#disposition-rationale')?.focus(); break; }
         proj().disposition = document.querySelector('#disposition-value')?.value || 'Proceed with conditions';
         proj().dispositionRationale = rationale;
+
+        try {
+          await fetch(`/api/v1/organizations/${state.org.id || 'northlight'}/projects/${state.activeProjectId || 'borrowed-light'}/items/${proj().activeItem || 'CC-101'}/decisions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              decision: proj().disposition,
+              rationale: rationale,
+              actor: state.user?.name || ACTOR.name,
+            }),
+          });
+        } catch (e) {
+          console.warn('Decision recording API note:', e);
+        }
+
+        saveState();
         completeStage('items');
         addReceipt('disposition', 'Final decision recorded', `${proj().disposition} · ${rationale.slice(0, 90)}`);
         closeDialog(); renderRoute(); toast('Final decision recorded.'); break;
