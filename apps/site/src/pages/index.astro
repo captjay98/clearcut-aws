@@ -1,16 +1,22 @@
 ---
-import { THEMES } from '@clearcut/design-system';
+import PublicLayout from '../layouts/PublicLayout.astro';
 ---
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ClearCut — Screenplay Pre-Clearance Evidence Desk</title>
-  </head>
-  <body>
-    <main>
-      <h1>ClearCut</h1>
-      <p>Screenplay Pre-Clearance Evidence Workspace</p>
-    </main>
-  </body>
-</html>
+
+<PublicLayout title="Screenplay Pre-Clearance Evidence Desk">
+  <div class="max-w-5xl mx-auto px-4 py-16 text-center">
+    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+      Screenplay Pre-Clearance <span class="text-blue-600">Evidence Desk</span>
+    </h1>
+    <p class="mt-6 text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+      Parse screenplays, detect candidate items across ten protected categories, run mandatory Parallel Search with bounded Extract, and coordinate qualified human review.
+    </p>
+    <div class="mt-8 flex justify-center gap-4">
+      <a href="http://localhost:3000/auth/sign-in" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow">
+        Enter Clearance Workspace
+      </a>
+      <a href="/features" class="px-6 py-3 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium rounded-lg">
+        Explore 10 Categories
+      </a>
+    </div>
+  </div>
+</PublicLayout>
