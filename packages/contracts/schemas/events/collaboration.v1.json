@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CollaborationEvent",
+  "type": "object",
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": { "type": "string" },
+    "org_id": { "type": "string", "format": "uuid" },
+    "project_id": { "type": "string", "format": "uuid" },
+    "item_id": { "type": "string", "format": "uuid" },
+    "actor_id": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "details": { "type": "object" }
+  },
+  "required": ["event_id", "event_type", "org_id", "project_id", "actor_id", "timestamp"]
+}
