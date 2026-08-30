@@ -23,6 +23,7 @@ show_help() {
   echo -e "  ${YELLOW}stop${NC} / ${YELLOW}down${NC}     Stop all local ClearCut containers"
   echo -e "  ${BLUE}deploy${NC}           Deploy ClearCut to Google Cloud Run (interactive wizard)"
   echo -e "  ${CYAN}logs${NC}             View real-time logs from local containers"
+  echo -e "  ${CYAN}config${NC} / ${CYAN}keys${NC}      Configure Parallel API and Gemini/Vertex AI keys"
   echo -e "  ${CYAN}cost${NC}             Show detailed minimum cost breakdown for local vs GCP"
   echo -e "  ${CYAN}smoke${NC}            Run automated 7-step smoke verification tests"
   echo -e "  ${CYAN}status${NC}           Check status of local and cloud deployments"
@@ -63,6 +64,71 @@ case "$CMD" in
     echo -e "  🏢 ${BOLD}Google Cloud SQL PostgreSQL 17 (Enterprise Option):${NC}"
     echo -e "     • Dedicated DB:  ${YELLOW}~\$7.67 - \$25.00 / month${NC} (24/7 dedicated instance)"
     echo -e "${GREEN}${BOLD}================================================================${NC}\n"
+    ;;
+  config|keys|env)
+    echo -e "\n${CYAN}${BOLD}=== ClearCut API Key & Intelligence Provider Configuration ===${NC}\n"
+    echo -e "Current Local Environment (.env):"
+    touch .env
+    CURR_PARALLEL="$(grep '^PARALLEL_API_KEY=' .env | cut -d '=' -f2- || echo "")"
+    CURR_GEMINI="$(grep '^GEMINI_API_KEY=' .env | cut -d '=' -f2- || echo "")"
+    
+    if [ -n "$CURR_PARALLEL" ]; then
+      echo -e "  • Parallel API Key: ${GREEN}configured${NC} (${CURR_PARALLEL:0:6}...)"
+    else
+      echo -e "  • Parallel API Key: ${YELLOW}not configured (demo mode active)${NC}"
+    fi
+
+    if [ -n "$CURR_GEMINI" ]; then
+      echo -e "  • Gemini API Key:   ${GREEN}configured${NC} (${CURR_GEMINI:0:6}...)"
+    else
+      echo -e "  • Gemini API Key:   ${YELLOW}not configured (Vertex AI / demo active)${NC}"
+    fi
+    echo ""
+
+    read -r -p "Enter Parallel API Key [press Enter to keep current]: " NEW_PARALLEL
+    read -r -p "Enter Gemini API Key (Optional) [press Enter to keep current]: " NEW_GEMINI
+
+    if [ -n "$NEW_PARALLEL" ]; then
+      if grep -q '^PARALLEL_API_KEY=' .env; then
+        sed -i.bak "s|^PARALLEL_API_KEY=.*|PARALLEL_API_KEY=${NEW_PARALLEL}|" .env && rm -f .env.bak
+      else
+        echo "PARALLEL_API_KEY=${NEW_PARALLEL}" >> .env
+      fi
+      echo -e "${GREEN}✓ Updated PARALLEL_API_KEY in local .env${NC}"
+    fi
+
+    if [ -n "$NEW_GEMINI" ]; then
+      if grep -q '^GEMINI_API_KEY=' .env; then
+        sed -i.bak "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=${NEW_GEMINI}|" .env && rm -f .env.bak
+      else
+        echo "GEMINI_API_KEY=${NEW_GEMINI}" >> .env
+      fi
+      echo -e "${GREEN}✓ Updated GEMINI_API_KEY in local .env${NC}"
+    fi
+
+    # Check GCP sync
+    if command -v gcloud >/dev/null 2>&1; then
+      CURRENT_PROJ="$(gcloud config get-value project 2>/dev/null || echo "")"
+      if [ -n "$CURRENT_PROJ" ]; then
+        read -r -p "Would you like to sync these keys to Google Cloud Secret Manager on '$CURRENT_PROJ'? [Y/n] " sync_gcp
+        sync_gcp=${sync_gcp:-Y}
+        if [[ "$sync_gcp" =~ ^[Yy]$ ]]; then
+          if [ -n "${NEW_PARALLEL:-$CURR_PARALLEL}" ]; then
+            KEY_VAL="${NEW_PARALLEL:-$CURR_PARALLEL}"
+            echo -n "$KEY_VAL" | gcloud secrets create PARALLEL_API_KEY --data-file=- --project="$CURRENT_PROJ" 2>/dev/null || \
+            echo -n "$KEY_VAL" | gcloud secrets versions add PARALLEL_API_KEY --data-file=- --project="$CURRENT_PROJ"
+            echo -e "${GREEN}✓ Synced PARALLEL_API_KEY to Secret Manager on ${CURRENT_PROJ}${NC}"
+          fi
+          if [ -n "${NEW_GEMINI:-$CURR_GEMINI}" ]; then
+            KEY_VAL="${NEW_GEMINI:-$CURR_GEMINI}"
+            echo -n "$KEY_VAL" | gcloud secrets create GEMINI_API_KEY --data-file=- --project="$CURRENT_PROJ" 2>/dev/null || \
+            echo -n "$KEY_VAL" | gcloud secrets versions add GEMINI_API_KEY --data-file=- --project="$CURRENT_PROJ"
+            echo -e "${GREEN}✓ Synced GEMINI_API_KEY to Secret Manager on ${CURRENT_PROJ}${NC}"
+          fi
+        fi
+      fi
+    fi
+    echo -e "\n${GREEN}${BOLD}Configuration updated successfully!${NC}\n"
     ;;
   smoke|test)
     if [ -n "${2:-}" ]; then

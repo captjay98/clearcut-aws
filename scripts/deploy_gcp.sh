@@ -254,9 +254,27 @@ deploy_and_verify() {
     --config=cloudbuild.yaml \
     --substitutions="_REGION=${REGION},_SERVICE_NAME=${SERVICE_NAME},COMMIT_SHA=${source_sha},SHORT_SHA=${short_sha}" .
 
-  # Retrieve live service URL
-  local live_url
-  live_url="$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.url)' 2>/dev/null || echo "")"
+  # Check and attach optional secrets from Secret Manager if available
+  local secrets_to_set=()
+  if gcloud secrets describe DATABASE_URL --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    secrets_to_set+=("DATABASE_URL=DATABASE_URL:latest")
+  fi
+  if gcloud secrets describe PARALLEL_API_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    secrets_to_set+=("PARALLEL_API_KEY=PARALLEL_API_KEY:latest")
+  fi
+  if gcloud secrets describe GEMINI_API_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    secrets_to_set+=("GEMINI_API_KEY=GEMINI_API_KEY:latest")
+  fi
+
+  if [ ${#secrets_to_set[@]} -gt 0 ]; then
+    local joined_secrets
+    joined_secrets=$(IFS=,; echo "${secrets_to_set[*]}")
+    echo -e "Attaching configured Secret Manager secrets (${joined_secrets})..."
+    gcloud run services update "${SERVICE_NAME}" \
+      --region="${REGION}" \
+      --project="${PROJECT_ID}" \
+      --set-secrets="${joined_secrets}" --quiet >/dev/null 2>&1 || true
+  fi
 
   # Grant public invoker access
   gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
