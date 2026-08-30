@@ -1,10 +1,5 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { App } from "./App.tsx";
 import "./index.css";
+import "./runtime.js";
+import { clearcutApi } from "./lib/api.ts";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+console.log("[ClearCut Web] Live API Client initialized with baseUrl:", clearcutApi);
