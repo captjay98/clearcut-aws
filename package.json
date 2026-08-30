@@ -14,5 +14,10 @@
     "test:python": "uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v",
     "verify": "node scripts/check-package-managers.mjs && node scripts/check-feature-coverage.mjs && bun scripts/check-contract-drift.mjs && uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/js-yaml": "^4.0.9",
+    "js-yaml": "^4.1.0",
+    "prettier": "^3.3.3"
+  }
 }
