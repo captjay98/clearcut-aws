@@ -1,0 +1,31 @@
+name: Build & Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Run Python Checks
+        run: |
+          uv run ruff check .
+          uv run pyright
+          uv run pytest -v
+      - name: Run Frontend Checks
+        run: |
+          bun test apps/web/tests/unit/ apps/site/tests/ packages/design-system/tests/
+          bun scripts/check-contract-drift.mjs
+          bun scripts/check-feature-coverage.mjs

@@ -1,0 +1,17 @@
+name: Alembic Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment for migration"
+        required: true
+        default: "staging"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Alembic Upgrade
+        run: echo "Running alembic upgrade head in separate Cloud Run migration job..."
