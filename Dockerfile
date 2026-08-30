@@ -40,6 +40,7 @@ USER 1001
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH="/app/api/src" \
     WEB_DIST_PATH=/app/web-dist \
     PORT=8080
 
