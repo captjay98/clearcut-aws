@@ -1,9 +1,9 @@
 import json
+
+import sqlalchemy as sa
+from clearcut.database import session_scope
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-import sqlalchemy as sa
-
-from clearcut.database import session_scope
 
 router = APIRouter(prefix="/api/v1/organizations/{org_id}/records", tags=["records"])
 

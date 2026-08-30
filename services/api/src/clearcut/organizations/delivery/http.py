@@ -1,14 +1,11 @@
 import uuid
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field
 import sqlalchemy as sa
-
 from clearcut.database import session_scope
 from clearcut.identity.application.session_service import SessionService
-from clearcut.organizations.application.bootstrap import OrganizationBootstrapService
-from clearcut.projects.application.project_service import ProjectService
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1", tags=["organizations", "projects"])
 

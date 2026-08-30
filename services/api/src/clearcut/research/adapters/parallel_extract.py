@@ -2,10 +2,8 @@
 import logging
 import os
 import time
-from typing import Any
 
 import httpx
-
 from clearcut.research.domain.extraction import (
     ExtractBatchResponse,
     ExtractedPage,

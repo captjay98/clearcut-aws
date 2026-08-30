@@ -2,10 +2,8 @@
 import logging
 import os
 import time
-from typing import Any
 
 import httpx
-
 from clearcut.research.domain.queries import SearchRequest
 from clearcut.research.domain.snapshots import (
     ProviderFailure,

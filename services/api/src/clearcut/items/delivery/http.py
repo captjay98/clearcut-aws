@@ -1,11 +1,9 @@
 import uuid
-from typing import Any
 
+import sqlalchemy as sa
+from clearcut.database import session_scope
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-import sqlalchemy as sa
-
-from clearcut.database import session_scope
 
 prefix = "/api/v1/organizations/{org_id}/projects/{project_id}/items"
 router = APIRouter(prefix=prefix, tags=["items"])

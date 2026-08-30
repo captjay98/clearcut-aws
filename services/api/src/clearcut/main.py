@@ -1,11 +1,13 @@
 """FastAPI application shell entry point."""
+import os
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-from contextlib import asynccontextmanager
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from clearcut.decisions.delivery.http import router as decisions_router
 from clearcut.evaluation.delivery.http import router as evaluation_router
@@ -103,11 +105,6 @@ async def healthz() -> JSONResponse:
 
 
 # Optional Unified SPA Serving (for single-container self-hosted & Cloud Run deployment)
-import os
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
 web_dist_env = os.getenv("WEB_DIST_PATH")
 if web_dist_env and Path(web_dist_env).is_dir():
     assets_dir = Path(web_dist_env) / "assets"

@@ -1,11 +1,8 @@
 """Database schema initialization and seed runner."""
-import asyncio
-import json
 import logging
-import uuid
-from datetime import UTC, datetime
 
 import sqlalchemy as sa
+
 from clearcut.database import engine, is_sqlite
 
 logger = logging.getLogger(__name__)
@@ -194,8 +191,21 @@ async def init_and_seed_db() -> None:
 
         if count == 0:
             logger.info("Database is empty. Running initial canonical seed...")
-            from scripts.seed_db import seed
-            await seed()
+            try:
+                from scripts.seed_db import seed
+                await seed()
+            except ImportError:
+                import sys
+                from pathlib import Path
+                # Find services/api directory
+                curr = Path(__file__).resolve()
+                for parent in [curr.parent, curr.parent.parent, curr.parent.parent.parent]:
+                    if (parent / "scripts" / "seed_db.py").exists():
+                        if str(parent) not in sys.path:
+                            sys.path.insert(0, str(parent))
+                        break
+                from scripts.seed_db import seed
+                await seed()
             logger.info("Initial canonical seed completed.")
     except Exception as e:
         logger.warning(f"Database auto-init note: {e}")

@@ -1,15 +1,13 @@
-import uuid
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 import sqlalchemy as sa
-
 from clearcut.database import session_scope
 from clearcut.organizations.delivery.http import get_authenticated_user_id, verify_csrf_origin
 from clearcut.scripts.application.upload_service import UploadService
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/v1", tags=["scripts", "uploads"])
 

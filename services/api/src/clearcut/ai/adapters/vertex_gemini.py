@@ -1,5 +1,4 @@
 """Google Cloud Vertex AI LLM Runtime Adapter."""
-import json
 import logging
 import os
 import subprocess

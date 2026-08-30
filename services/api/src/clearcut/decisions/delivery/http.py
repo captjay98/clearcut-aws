@@ -3,11 +3,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import sqlalchemy as sa
+from clearcut.database import is_sqlite, session_scope
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-import sqlalchemy as sa
 
-from clearcut.database import session_scope, is_sqlite
 
 def fmt_id(val):
     if val is None:

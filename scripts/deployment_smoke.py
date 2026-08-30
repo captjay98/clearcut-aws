@@ -5,10 +5,11 @@ Verifies health, OpenAPI schema, live PostgreSQL queries, screenplay delivery,
 and decision recording against a deployed Cloud Run candidate or local service.
 """
 import argparse
-import sys
-import urllib.request
 import json
+import sys
 import time
+import urllib.request
+
 
 def test_endpoint(url: str, expected_status: int = 200, method: str = "GET", data: bytes = None, retries: int = 2) -> dict:
     for attempt in range(retries + 1):
@@ -41,9 +42,9 @@ def main():
     args = parser.parse_args()
     base_url = args.url.rstrip("/")
 
-    print(f"==================================================")
+    print("==================================================")
     print(f"Running ClearCut Smoke Gate on: {base_url}")
-    print(f"==================================================")
+    print("==================================================")
 
     # 1. Healthcheck
     health = test_endpoint(f"{base_url}/api/v1/healthz")
