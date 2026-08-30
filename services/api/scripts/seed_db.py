@@ -19,17 +19,91 @@ USERS = [
     {"id": uuid.UUID("018f0000-0000-7000-8000-000000000014"), "name": "Eli Chen", "email": "eli@northlight.example", "role": "Reviewer"},
 ]
 
+SCENES_DATA = [
+    {
+        "number": 3,
+        "slug": "INT. VELEZ CAMERA SHOP — DUSK",
+        "page": 2,
+        "lines": [
+            {"type": "action", "text": "Dust hangs in the last bar of window light."},
+            {"type": "action", "text": "MINA VELEZ, 31, turns the lock and studies the room as if it belongs to someone else.", "flag": "CC-102"},
+            {"type": "action", "text": "She lifts the Vega Camera from a glass case.", "flag": "CC-101"},
+            {"type": "character", "text": "MINA"},
+            {"type": "dialogue", "text": "We only borrow the light."},
+        ],
+    },
+    {
+        "number": 7,
+        "slug": "EXT. SUNSET TOWER — NIGHT",
+        "page": 5,
+        "pageBreakBefore": True,
+        "lines": [
+            {"type": "action", "text": "The crew unloads beneath the Sunset Tower marquee.", "flag": "CC-103"},
+            {"type": "action", "text": 'A radio host announces "Blue Monday" over the PA. Mina reaches for the dial.', "flag": "CC-104"},
+        ],
+    },
+    {
+        "number": 9,
+        "slug": "INT. CORNER DINER — NIGHT",
+        "page": 7,
+        "pageBreakBefore": True,
+        "lines": [
+            {"type": "action", "text": "A trucker counts coins onto the counter."},
+            {"type": "character", "text": "TRUCKER"},
+            {"type": "dialogue", "text": "Keep the change.", "flag": "CC-105"},
+        ],
+    },
+    {
+        "number": 12,
+        "slug": "EXT. HARBOR CHECKPOINT — DAY",
+        "page": 9,
+        "pageBreakBefore": True,
+        "lines": [
+            {"type": "action", "text": "A polished Northstar badge catches the light as the officer waves the truck through.", "flag": "CC-106"},
+        ],
+    },
+    {
+        "number": 14,
+        "slug": "EXT. BOARDWALK — DUSK",
+        "page": 11,
+        "pageBreakBefore": True,
+        "lines": [
+            {"type": "action", "text": "A red bicycle silhouette leans against the rail.", "flag": "CC-107"},
+        ],
+    },
+    {
+        "number": 16,
+        "slug": "INT. PROJECTION BOOTH — NIGHT",
+        "page": 13,
+        "pageBreakBefore": True,
+        "lines": [
+            {"type": "action", "text": "A faded Glass House poster watches from the wall.", "flag": "CC-108"},
+        ],
+    },
+    {
+        "number": 18,
+        "slug": "INT. CLINIC CORRIDOR — DAY",
+        "page": 15,
+        "pageBreakBefore": True,
+        "lines": [
+            {"type": "action", "text": "DR. LENORA SHAW reviews a chart.", "flag": "CC-109"},
+            {"type": "character", "text": "DR. SHAW"},
+            {"type": "dialogue", "text": "Her relapse began after she left the East Mercer clinic, room 214.", "flag": "CC-110", "rewritten": "She struggled again after she left treatment."},
+        ],
+    },
+]
+
 ITEMS = [
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001101"), "term": "Vega Camera", "category": "Brands & trademarks", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Mara Voss"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001102"), "term": "Mina Velez", "category": "People & likeness", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Theo Grant"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001103"), "term": "Sunset Tower", "category": "Locations & property", "status": "Sources disagree", "workflow": "conflict", "research": "completed", "assignee": "Mara Voss"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001104"), "term": "Blue Monday", "category": "Music & lyrics", "status": "With specialist", "workflow": "referred", "research": "completed", "assignee": "Eli Chen"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001105"), "term": "Keep the change", "category": "Dialogue & quotations", "status": "Could not verify", "workflow": "unverified", "research": "completed", "assignee": "Theo Grant"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001106"), "term": "Northstar badge", "category": "Organizations & insignia", "status": "Verified", "workflow": "verified", "research": "completed", "assignee": "Mara Voss"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001107"), "term": "Red bicycle silhouette", "category": "Products & trade dress", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Theo Grant"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001108"), "term": "Glass House poster", "category": "Artwork & media", "status": "Verified", "workflow": "verified", "research": "completed", "assignee": "Mara Voss"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001109"), "term": "Dr. Lenora Shaw", "category": "Names & characters", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Eli Chen"},
-    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001110"), "term": "patient relapse history", "category": "Privacy & sensitive facts", "status": "Must fix", "workflow": "blocked", "research": "completed", "assignee": "Mara Voss"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001101"), "flag": "CC-101", "term": "Vega Camera", "category": "Brands & trademarks", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Mara Voss"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001102"), "flag": "CC-102", "term": "Mina Velez", "category": "People & likeness", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Theo Grant"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001103"), "flag": "CC-103", "term": "Sunset Tower", "category": "Locations & property", "status": "Sources disagree", "workflow": "conflict", "research": "completed", "assignee": "Mara Voss"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001104"), "flag": "CC-104", "term": "Blue Monday", "category": "Music & lyrics", "status": "With specialist", "workflow": "referred", "research": "completed", "assignee": "Eli Chen"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001105"), "flag": "CC-105", "term": "Keep the change", "category": "Dialogue & quotations", "status": "Could not verify", "workflow": "unverified", "research": "completed", "assignee": "Theo Grant"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001106"), "flag": "CC-106", "term": "Northstar badge", "category": "Organizations & insignia", "status": "Verified", "workflow": "verified", "research": "completed", "assignee": "Mara Voss"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001107"), "flag": "CC-107", "term": "Red bicycle silhouette", "category": "Products & trade dress", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Theo Grant"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001108"), "flag": "CC-108", "term": "Glass House poster", "category": "Artwork & media", "status": "Verified", "workflow": "verified", "research": "completed", "assignee": "Mara Voss"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001109"), "flag": "CC-109", "term": "Dr. Lenora Shaw", "category": "Names & characters", "status": "Needs your call", "workflow": "needs_call", "research": "completed", "assignee": "Eli Chen"},
+    {"id": uuid.UUID("018f0000-0000-7000-8000-000000001110"), "flag": "CC-110", "term": "patient relapse history", "category": "Privacy & sensitive facts", "status": "Must fix", "workflow": "blocked", "research": "completed", "assignee": "Mara Voss"},
 ]
 
 SOURCES = [
@@ -116,15 +190,70 @@ async def seed():
             {"id": VERSION_ID, "script_id": SCRIPT_ID, "org_id": ORG_ID, "project_id": PROJECT_ID, "created_at": now},
         )
 
-        print("Seeding Script Elements & Clearance Items...")
-        for idx, item in enumerate(ITEMS):
-            elem_id = uuid.uuid4()
-            await conn.execute(
-                sa.text("INSERT INTO script_elements (id, version_id, ordinal, element_type, text, scene_number, page_number) VALUES (:id, :version_id, :ordinal, 'action', :text, :scene, :page)"),
-                {"id": elem_id, "version_id": VERSION_ID, "ordinal": idx + 1, "text": item["term"], "scene": idx + 1, "page": (idx // 2) + 1},
-            )
+        print("Seeding All Screenplay Scenes & Elements into PostgreSQL...")
+        element_ordinal = 1
+        flag_to_element_id = {}
 
+        for scene in SCENES_DATA:
+            # Seed scene heading element
+            scene_heading_id = uuid.uuid4()
+            await conn.execute(
+                sa.text("""
+                    INSERT INTO script_elements (id, version_id, ordinal, element_type, text, scene_number, page_number)
+                    VALUES (:id, :version_id, :ordinal, 'scene_heading', :text, :scene, :page)
+                """),
+                {
+                    "id": scene_heading_id,
+                    "version_id": VERSION_ID,
+                    "ordinal": element_ordinal,
+                    "text": scene["slug"],
+                    "scene": scene["number"],
+                    "page": scene["page"],
+                },
+            )
+            element_ordinal += 1
+
+            for line in scene["lines"]:
+                line_elem_id = uuid.uuid4()
+                await conn.execute(
+                    sa.text("""
+                        INSERT INTO script_elements (id, version_id, ordinal, element_type, text, scene_number, page_number)
+                        VALUES (:id, :version_id, :ordinal, :element_type, :text, :scene, :page)
+                    """),
+                    {
+                        "id": line_elem_id,
+                        "version_id": VERSION_ID,
+                        "ordinal": element_ordinal,
+                        "element_type": line["type"],
+                        "text": line["text"],
+                        "scene": scene["number"],
+                        "page": scene["page"],
+                    },
+                )
+                if "flag" in line:
+                    flag_to_element_id[line["flag"]] = line_elem_id
+                    # Seed span
+                    span_id = uuid.uuid4()
+                    await conn.execute(
+                        sa.text("""
+                            INSERT INTO element_spans (id, element_id, start_char, end_char, text, tag)
+                            VALUES (:id, :element_id, 0, :length, :text, :tag)
+                        """),
+                        {
+                            "id": span_id,
+                            "element_id": line_elem_id,
+                            "length": len(line["text"]),
+                            "text": line["text"],
+                            "tag": line["flag"],
+                        },
+                    )
+                element_ordinal += 1
+
+        print("Seeding Clearance Items with Real Element Bindings...")
+        for item in ITEMS:
+            elem_id = flag_to_element_id.get(item["flag"], uuid.uuid4())
             assignee_user = next((u for u in USERS if u["name"] == item["assignee"]), USERS[1])
+
             await conn.execute(
                 sa.text("""
                     INSERT INTO clearance_items (
@@ -152,7 +281,7 @@ async def seed():
                 },
             )
 
-            # Seed a Research Run for this item
+            # Seed Research Run for this item
             run_id = uuid.uuid4()
             await conn.execute(
                 sa.text("INSERT INTO research_runs (id, org_id, project_id, item_id, status, created_at) VALUES (:id, :org_id, :project_id, :item_id, 'completed', :created_at)"),

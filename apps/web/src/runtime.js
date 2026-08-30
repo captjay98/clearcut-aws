@@ -78,12 +78,8 @@
   /** Production scripts are printed on coloured stock as revisions accumulate. */
   const REVISION_STOCK = ['white', 'blue', 'pink', 'yellow', 'green', 'goldenrod'];
 
-  /* The workspace renders an excerpt of the script. Every flag in ITEMS has a
-     line here, and each flag sits in the scene its record names — the scene
-     number, the page, and the surrounding line are the single source the
-     worklist, the drawer, and the report all read from. Adding a flag to ITEMS
-     without a line here is caught by the audit (every flag must be placed). */
-  const SCENES = [
+  /* The workspace renders an excerpt of the script dynamically hydrated from PostgreSQL. */
+  let SCENES = [
     {
       number: 3, slug: 'INT. VELEZ CAMERA SHOP — DUSK', page: 2,
       lines: [
@@ -6379,8 +6375,26 @@ ${section({
     requestAnimationFrame(() => document.querySelector(`#tab-${next.dataset.tab}`)?.focus());
   });
 
+  async function hydrateScreenplayFromDatabase() {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/v1/organizations/northlight/projects/borrowed-light/script');
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.scenes && json.data.scenes.length > 0) {
+          SCENES.length = 0;
+          SCENES.push(...json.data.scenes);
+          console.log(`[ClearCut Screenplay Hydration] Dynamic script loaded (${SCENES.length} scenes from PostgreSQL).`);
+          renderRoute();
+        }
+      }
+    } catch (e) {
+      console.warn('[ClearCut Screenplay Hydration Offline]', e);
+    }
+  }
+
   window.addEventListener('hashchange', () => { closeDrawer(); renderRoute(); });
 
   if (!location.hash) history.replaceState(null, '', '#marketing');
+  hydrateScreenplayFromDatabase();
   renderRoute();
 })();
