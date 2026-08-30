@@ -23,6 +23,7 @@ show_help() {
   echo -e "  ${YELLOW}stop${NC} / ${YELLOW}down${NC}     Stop all local ClearCut containers"
   echo -e "  ${BLUE}deploy${NC}           Deploy ClearCut to Google Cloud Run (interactive wizard)"
   echo -e "  ${CYAN}logs${NC}             View real-time logs from local containers"
+  echo -e "  ${CYAN}cost${NC}             Show detailed minimum cost breakdown for local vs GCP"
   echo -e "  ${CYAN}smoke${NC}            Run automated 7-step smoke verification tests"
   echo -e "  ${CYAN}status${NC}           Check status of local and cloud deployments"
   echo -e "  ${CYAN}help${NC}             Show this help screen\n"
@@ -44,6 +45,24 @@ case "$CMD" in
     ;;
   logs)
     docker compose logs -f
+    ;;
+  cost|pricing)
+    echo -e "\n${GREEN}${BOLD}================================================================${NC}"
+    echo -e "${GREEN}${BOLD}  💰 ClearCut Minimum Cost Breakdown Matrix                     ${NC}"
+    echo -e "${GREEN}${BOLD}================================================================${NC}"
+    echo -e "  ClearCut is designed to run at the ${BOLD}absolute minimum cost tier${NC}:\n"
+    echo -e "  🏠 ${BOLD}Local Studio (Docker Compose):${NC}"
+    echo -e "     • Monthly Cost:  ${GREEN}${BOLD}\$0.00 / month${NC}"
+    echo -e "     • Resources:     PostgreSQL 17 + Local Web/API Container\n"
+    echo -e "  ☁️  ${BOLD}Google Cloud Run (Serverless Scale-to-Zero - Recommended):${NC}"
+    echo -e "     • App & API:     ${GREEN}${BOLD}\$0.00 / month${NC} (2M requests & 360k GB-sec in Free Tier)"
+    echo -e "     • Cloud Build:   ${GREEN}${BOLD}\$0.00 / month${NC} (120 build-minutes/day Free Tier)"
+    echo -e "     • Storage:       ${GREEN}${BOLD}<\$0.02 / month${NC} (~150MB container image)"
+    echo -e "     • Database:      ${GREEN}${BOLD}\$0.00 / month${NC} (In-container self-healing storage)"
+    echo -e "     • ${BOLD}Total Cloud:${NC}   ${GREEN}${BOLD}\$0.00 / month (Zero Idle Cost)${NC}\n"
+    echo -e "  🏢 ${BOLD}Google Cloud SQL PostgreSQL 17 (Enterprise Option):${NC}"
+    echo -e "     • Dedicated DB:  ${YELLOW}~\$7.67 - \$25.00 / month${NC} (24/7 dedicated instance)"
+    echo -e "${GREEN}${BOLD}================================================================${NC}\n"
     ;;
   smoke|test)
     if [ -n "${2:-}" ]; then

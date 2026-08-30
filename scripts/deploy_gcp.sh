@@ -185,19 +185,42 @@ setup_cloud_services() {
   echo -e "${GREEN}✓ IAM permissions configured.${NC}"
 }
 
+show_cost_advisor() {
+  echo -e "\n${GREEN}${BOLD}================================================================${NC}"
+  echo -e "${GREEN}${BOLD}  💰 ClearCut Google Cloud Cost Estimation & Minimum Tier Advisor${NC}"
+  echo -e "${GREEN}${BOLD}================================================================${NC}"
+  echo -e "  ClearCut is architected to run on the ${BOLD}absolute minimum cost tier${NC}:\n"
+  echo -e "  1. ${BOLD}Google Cloud Run (App & API Server):${NC}"
+  echo -e "     • Scaling:       ${CYAN}Scale-to-Zero (min: 0, max: 2 instances)${NC}"
+  echo -e "     • Memory/CPU:    ${CYAN}512 MiB RAM / 1 vCPU${NC}"
+  echo -e "     • GCP Free Tier: ${BOLD}2 Million requests/mo + 360,000 GB-sec FREE${NC}"
+  echo -e "     • Idle Cost:     ${GREEN}${BOLD}\$0.00 / month${NC}\n"
+  echo -e "  2. ${BOLD}Google Cloud Build & Artifact Storage:${NC}"
+  echo -e "     • GCP Free Tier: ${BOLD}120 build-minutes/day FREE${NC}"
+  echo -e "     • Image Storage: ${CYAN}~150 MB (<\$0.02 / month)${NC}\n"
+  echo -e "  3. ${BOLD}Database Strategy Options:${NC}"
+  echo -e "     • ${BOLD}[1] Minimum Zero-Cost Serverless (\$0.00/mo):${NC} Self-healing auto-migrating embedded store"
+  echo -e "     • ${BOLD}[2] Managed Cloud SQL PostgreSQL 17 (~$7-\$25/mo):${NC} Dedicated 24/7 cloud instance"
+  echo -e "${GREEN}${BOLD}================================================================${NC}\n"
+}
+
 setup_cloud_sql() {
-  echo -e "\n${BLUE}▶ [5/6] Checking Cloud SQL PostgreSQL 17 Database...${NC}"
+  show_cost_advisor
+  echo -e "${BLUE}▶ [5/6] Selecting Database Tier (Aiming for Minimum Cost)...${NC}"
   local sql_instance="clearcut-pg17"
   
   if gcloud sql instances describe "$sql_instance" --project="${PROJECT_ID}" >/dev/null 2>&1; then
     local sql_state
     sql_state="$(gcloud sql instances describe "$sql_instance" --project="${PROJECT_ID}" --format="value(state)")"
-    echo -e "${GREEN}✓ Cloud SQL instance '${sql_instance}' found (Status: ${sql_state}).${NC}"
+    echo -e "${GREEN}✓ Existing Cloud SQL PostgreSQL 17 instance found ('${sql_instance}', Status: ${sql_state}).${NC}"
   else
-    echo -e "${YELLOW}No existing PostgreSQL 17 Cloud SQL instance found.${NC}"
-    read -r -p "Would you like to automatically provision a managed PostgreSQL 17 instance on GCP? [Y/n] " create_sql
-    create_sql=${create_sql:-Y}
-    if [[ "$create_sql" =~ ^[Yy]$ ]]; then
+    echo -e "Select your database configuration:"
+    echo -e "  [${BOLD}1${NC}] ${GREEN}${BOLD}Minimum Tier: \$0.00/mo Serverless${NC} (Zero idle cost, 100% Free Tier, Recommended)"
+    echo -e "  [${BOLD}2${NC}] Dedicated Cloud SQL PostgreSQL 17 (~$7 - \$25/mo)"
+    read -r -p "Enter selection [default: 1]: " db_choice
+    db_choice=${db_choice:-1}
+    
+    if [ "$db_choice" == "2" ]; then
       echo -e "Creating Cloud SQL PostgreSQL 17 instance '${sql_instance}' (this runs in the background)..."
       gcloud sql instances create "$sql_instance" \
         --database-version=POSTGRES_17 \
@@ -210,7 +233,9 @@ setup_cloud_sql() {
         --storage-type=SSD \
         --async --quiet
         
-      echo -e "Instance provisioning initiated. ClearCut will use its self-healing database layer while Cloud SQL finishes booting."
+      echo -e "Instance provisioning initiated."
+    else
+      echo -e "${GREEN}✓ Minimum \$0.00/mo Serverless tier selected.${NC}"
     fi
   fi
 }

@@ -50,7 +50,7 @@ steps:
           --project "$PROJECT_ID" \
           --allow-unauthenticated \
           $$TRAFFIC_ARGS \
-          --min-instances 0 --max-instances 5 --cpu 1 --memory 1Gi --concurrency 80 \
+          --min-instances 0 --max-instances 2 --cpu 1 --memory 512Mi --concurrency 80 \
           --timeout 300 \
           --labels "source-sha=$COMMIT_SHA,environment=prod" \
           --set-env-vars "WEB_DIST_PATH=/app/web-dist"
