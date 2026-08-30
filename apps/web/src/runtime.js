@@ -1791,7 +1791,9 @@
   function renderContextChip(meta) {
     const v = currentVersion();
     const stock = currentStock();
-    if (meta.layer === 'project') {
+    if (state.isDemo) {
+      el.contextChip.innerHTML = `<span class="demo-chip" title="Demo Sandbox: Pre-loaded Borrowed Light screenplay"><span class="demo-badge">🧪 Demo Sandbox</span><span class="divider-dot" aria-hidden="true">·</span><strong>Borrowed Light</strong></span>`;
+    } else if (meta.layer === 'project') {
       el.contextChip.innerHTML = `<button class="project-switch" type="button" data-action="switch-project-dialog" aria-haspopup="dialog">
           <strong>${esc(projInfo().title)}</strong><span aria-hidden="true" class="muted">▾</span>
         </button>
@@ -2379,23 +2381,49 @@ docker compose up</code></pre></div><p class="lp-lede gap-t-4">Then open <span c
 
     return page({
       width: 'narrow',
-      eyebrow: 'Secure access',
+      eyebrow: 'Account access',
       title: 'Sign in to ClearCut',
-      lede: 'The prototype uses a simulated production identity. Authentication represents the deployment’s configured provider — local PostgreSQL by default, or Firebase where selected.',
+      lede: 'Access your screenplay clearance projects, live Parallel research jobs, and immutable audit ledgers.',
       body: `${problem ? `<div class="gap-b-6">${banner(problem)}</div>` : ''}
       ${card({
-        accent: !problem,
-        body: `${problem ? '' : `${banner({ tone: 'is-accent', icon: '◉', title: 'Demo identity', message: `${esc(ACTOR.name)} · Executive producer · ${esc(ACTOR.role)} of ${esc(state.org.name)}` })}
-        <p class="small muted gap-t-4">Signing in as ${esc(ACTOR.role)} grants ${esc(ROLE_MATRIX.find((r) => r.role === ACTOR.role)?.can || 'full access')}. You can preview other roles from Team &amp; roles once inside.</p>`}
-        <div class="cluster gap-t-5" aria-busy="${busy ? 'true' : 'false'}">
-          ${busy
-            ? `<span class="spinner" role="status" aria-label="Signing in"></span><span class="small muted">Signing in…</span>`
-            : `<button class="button button-primary" type="button" data-action="sign-in">${problem && problem.retry ? 'Try again' : 'Continue'}</button>
-               <button class="button button-secondary" type="button" data-action="go" data-route="auth?state=recovery">Forgotten password</button>`}
-        </div>
-        <p class="small muted gap-t-4">No credentials are collected. Nothing leaves this browser.</p>`,
+        accent: true,
+        body: `<form id="signin-form" class="stack gap-4" onsubmit="return false;">
+          <div class="field">
+            <label class="field-label" for="auth-email">Work email</label>
+            <input class="input" type="email" id="auth-email" name="email" placeholder="name@company.com" required autocomplete="email" value="${state.authEmail || ''}" />
+          </div>
+          <div class="field">
+            <div class="cluster justify-between">
+              <label class="field-label" for="auth-password">Password</label>
+              <a class="small muted" href="#auth?state=recovery">Forgot password?</a>
+            </div>
+            <input class="input" type="password" id="auth-password" name="password" placeholder="••••••••" required autocomplete="current-password" />
+          </div>
+          <div id="auth-error-container"></div>
+          <div class="gap-t-2" aria-busy="${busy ? 'true' : 'false'}">
+            ${busy
+              ? `<span class="spinner" role="status" aria-label="Signing in"></span><span class="small muted">Signing in…</span>`
+              : `<button class="button button-primary" type="button" data-action="sign-in" style="width:100%;">Sign in</button>`}
+          </div>
+        </form>
+        <p class="small muted gap-t-4 text-center">First time setting up? <button class="link-btn" type="button" data-action="go" data-route="onboarding">Create an organization</button></p>`,
       })}
-      <p class="small muted gap-t-4">Prototype: append <span class="mono">?state=</span> with ${['authenticating', ...Object.keys(AUTH_STATES)].map((k) => `<span class="mono">${k}</span>`).join(', ')} to review each outcome.</p>`,
+      
+      <div class="auth-divider"><span>OR</span></div>
+
+      ${card({
+        quiet: true,
+        body: `<div class="stack gap-3">
+          <div class="cluster gap-2">
+            <span class="badge is-accent">Demo Sandbox</span>
+            <strong class="text-sm">Explore without an account</strong>
+          </div>
+          <p class="small muted">Evaluate ClearCut with the pre-loaded <em>Borrowed Light</em> screenplay, 10 sample clearance categories, Parallel source snapshots, and tamper-evident audit receipts.</p>
+          <div class="gap-t-2">
+            <button class="button button-secondary" type="button" data-action="start-demo" style="width:100%;">Launch Demo Sandbox</button>
+          </div>
+        </div>`,
+      })}`,
     });
   }
 
@@ -5222,17 +5250,40 @@ ${section({
       case 'start-demo': {
         completeStage('marketing');
         state.auth = true;
+        state.isDemo = true;
         state.orgReady = true;
-        // Enter on a project whose check has completed, so the first surface the
-        // visitor sees is a populated one rather than an empty shell.
+        state.user = { name: 'Demo Reviewer', email: 'demo@clearcut.local' };
         const seeded = PROJECT_DEFS.find((d) => state.projects[d.id].runComplete);
         if (seeded) state.activeProjectId = seeded.id;
         saveState();
-        go('project'); break;
+        toast('Entered Demo Sandbox (Borrowed Light)');
+        go('project');
+        break;
       }
-      /* Signing in resolves which organization you are working in. Going straight to
-         onboarding assumed everyone signing in has none, which is only true once. */
-      case 'sign-in': state.auth = true; completeStage('auth'); addReceipt('auth', 'Signed in', `${ACTOR.name} · ${ACTOR.role}`); go(state.orgReady ? 'resolver' : 'onboarding'); break;
+      /* Signing in resolves which organization you are working in. Real credentials
+         authenticate the session and switch out of demo sandbox mode. */
+      case 'sign-in': {
+        const emailInput = document.querySelector('#auth-email');
+        const passwordInput = document.querySelector('#auth-password');
+        const email = emailInput ? emailInput.value.trim() : '';
+        const errContainer = document.querySelector('#auth-error-container');
+
+        if (!email) {
+          if (errContainer) errContainer.innerHTML = banner({ tone: 'is-danger', icon: '⚠', title: 'Email required', message: 'Please enter your work email address.' });
+          if (emailInput) emailInput.focus();
+          break;
+        }
+
+        state.auth = true;
+        state.isDemo = false;
+        state.user = { email: email, name: email.split('@')[0] };
+        saveState();
+        completeStage('auth');
+        addReceipt('auth', 'Signed in', `${email} · Production session active`);
+        toast(`Signed in as ${email}`);
+        go(state.orgReady ? 'resolver' : 'onboarding');
+        break;
+      }
       case 'resolve-org': {
         if (node.dataset.org !== 'northlight') { toast('Your membership there is suspended, so it cannot be opened.', true); break; }
         addReceipt('auth', 'Organization selected', esc(state.org.name));
