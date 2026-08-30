@@ -2049,7 +2049,7 @@
 
       <footer class="lp-footer">
         <div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div>
-        <nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#features">Features</a><a href="#docs">Docs</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a><a href="#sitemap">Product tour</a></nav>
+        <nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#features">Features</a><a href="#docs">Docs</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a></nav>
         <p class="lp-footer-legal">© 2026 ClearCut · MIT License · Nothing here is legal advice; clearance decisions belong to qualified humans.</p>
       </footer>
     </div>`;
@@ -2068,7 +2068,7 @@
     <figure class="lp-artifact" aria-label="A flagged screenplay page">${renderLpArtifact('a')}</figure>
     </section>
     <section class="lp-end" aria-labelledby="closing-heading-a"><div class="lp-end-inner"><p class="lp-fadeout">FADE OUT.</p><h2 id="closing-heading-a">Clear the script before it becomes a production problem.</h2><div class="lp-ctas lp-end-ctas"><button class="button button-primary" type="button" data-action="start-demo">Explore the live demo</button><a class="button button-secondary" href="https://github.com/clearcut" target="_blank" rel="noopener">View on GitHub</a></div><span class="lp-end-note">MIT License \u00b7 No account required for the demo</span></div></section>
-    <footer class="lp-footer"><div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div><nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#sitemap">Product tour</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a></nav><p class="lp-footer-legal">\u00a9 2026 ClearCut \u00b7 MIT License \u00b7 Nothing here is legal advice; clearance decisions belong to qualified humans.</p></footer></div>`;
+    <footer class="lp-footer"><div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div><nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#features">Features</a><a href="#docs">Docs</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a></nav><p class="lp-footer-legal">\u00a9 2026 ClearCut \u00b7 MIT License \u00b7 Nothing here is legal advice; clearance decisions belong to qualified humans.</p></footer></div>`;
   }
 
   function renderLpArtifact(prefix) {
@@ -2087,7 +2087,7 @@ cd clearcut
 docker compose up</code></pre></div><p class="lp-lede gap-t-4">Then open <span class="mono">http://localhost:3000</span>. The first user creates the organization and becomes Owner.</p></section>
     <section class="lp-section lp-section-compact" aria-labelledby="boundary-heading-b"><header class="lp-section-head"><h2 id="boundary-heading-b" class="lp-h2">Not legal advice.</h2><p class="lp-lede">ClearCut organizes evidence and records decisions. It does not clear a work, replace counsel, or certify legal safety. Clearance decisions belong to qualified humans.</p></header></section>
     <section class="lp-end" aria-labelledby="closing-heading-b"><div class="lp-end-inner"><h2 id="closing-heading-b">Get started.</h2><div class="lp-ctas lp-end-ctas"><a class="button button-primary" href="https://github.com/clearcut" target="_blank" rel="noopener">View on GitHub</a><button class="button button-secondary" type="button" data-action="start-demo">Live demo</button></div><span class="lp-end-note">MIT License \u00b7 Contributions welcome</span></div></section>
-    <footer class="lp-footer"><div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div><nav class="lp-footer-nav" aria-label="Footer navigation"><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a><a href="#sitemap">Product tour</a></nav><p class="lp-footer-legal">\u00a9 2026 ClearCut \u00b7 MIT License \u00b7 Not legal advice.</p></footer></div>`;
+    <footer class="lp-footer"><div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div><nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#features">Features</a><a href="#docs">Docs</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a></nav><p class="lp-footer-legal">\u00a9 2026 ClearCut \u00b7 MIT License \u00b7 Not legal advice.</p></footer></div>`;
   }
 
   function renderMarketingC() {
@@ -2102,7 +2102,7 @@ docker compose up</code></pre></div><p class="lp-lede gap-t-4">Then open <span c
     <figure class="lp-artifact" aria-label="A flagged screenplay page">${renderLpArtifact('c')}</figure>
     </section>
     <section class="lp-end" aria-labelledby="closing-heading-c"><div class="lp-end-inner"><p class="lp-fadeout">FADE OUT.</p><h2 id="closing-heading-c">Tape the pages before the shoot, not after.</h2><p>Walk through a complete fictional production \u2014 or deploy your own instance.</p><div class="lp-ctas lp-end-ctas"><button class="button button-primary" type="button" data-action="start-demo">Explore the live demo</button><a class="button button-secondary" href="https://github.com/clearcut" target="_blank" rel="noopener">View on GitHub</a></div><span class="lp-end-note">MIT License \u00b7 No account required for the demo \u00b7 Sample data only</span></div></section>
-    <footer class="lp-footer"><div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div><nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#sitemap">Product tour</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a></nav><p class="lp-footer-legal">\u00a9 2026 ClearCut \u00b7 MIT License \u00b7 Nothing here is legal advice; clearance decisions belong to qualified humans.</p></footer></div>`;
+    <footer class="lp-footer"><div class="lp-footer-brand"><strong>ClearCut</strong><span>Open-source screenplay clearance evidence workspace.</span></div><nav class="lp-footer-nav" aria-label="Footer navigation"><a href="#features">Features</a><a href="#docs">Docs</a><a href="https://github.com/clearcut" target="_blank" rel="noopener">GitHub</a></nav><p class="lp-footer-legal">\u00a9 2026 ClearCut \u00b7 MIT License \u00b7 Nothing here is legal advice; clearance decisions belong to qualified humans.</p></footer></div>`;
   }
 
   /* === FEATURES PAGE === */
