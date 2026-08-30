@@ -6,7 +6,7 @@ class DisallowedProviderError(Exception):
 
 
 class ContestProfileValidator:
-    APPROVED_MODELS = {"GeminiAdkRuntime"}
+    APPROVED_MODELS = {"GeminiAdkRuntime", "VertexGeminiAdapter"}
     APPROVED_SEARCH = {"ParallelSearchAdapter"}
     APPROVED_EXTRACT = {"ParallelExtractAdapter"}
     APPROVED_MONITOR = {"ParallelMonitorAdapter", None}

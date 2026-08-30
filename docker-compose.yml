@@ -30,9 +30,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
       PORT: 8080
-      WEB_DIST_PATH: /app/web-dist
       PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GCP_PROJECT: ${GCP_PROJECT:-clearcut-workspace}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-us-central1}
     depends_on:
       db:
         condition: service_healthy

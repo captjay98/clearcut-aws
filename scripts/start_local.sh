@@ -102,9 +102,11 @@ setup_env() {
 # ClearCut Local Environment Configuration
 PORT=8080
 DATABASE_URL=postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
-# Optional AI API keys (leave blank to run in offline demo mode)
+# Parallel API key for live search & extraction (leave blank to run in demo registry mode)
 PARALLEL_API_KEY=
-GEMINI_API_KEY=
+# Google Cloud Vertex AI settings
+GCP_PROJECT=clearcut-workspace
+VERTEX_LOCATION=us-central1
 EOF
   fi
   echo -e "${GREEN}✓ Environment configured.${NC}"

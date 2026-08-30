@@ -262,9 +262,6 @@ deploy_and_verify() {
   if gcloud secrets describe PARALLEL_API_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
     secrets_to_set+=("PARALLEL_API_KEY=PARALLEL_API_KEY:latest")
   fi
-  if gcloud secrets describe GEMINI_API_KEY --project="${PROJECT_ID}" >/dev/null 2>&1; then
-    secrets_to_set+=("GEMINI_API_KEY=GEMINI_API_KEY:latest")
-  fi
 
   if [ ${#secrets_to_set[@]} -gt 0 ]; then
     local joined_secrets
