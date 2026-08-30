@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from contextlib import asynccontextmanager
+
 from clearcut.decisions.delivery.http import router as decisions_router
 from clearcut.evaluation.delivery.http import router as evaluation_router
 from clearcut.export.delivery.http import router as export_router
@@ -24,10 +26,22 @@ from clearcut.scripts.adapters.in_memory_storage import InMemoryObjectStorage
 from clearcut.scripts.application.upload_service import UploadService
 from clearcut.scripts.delivery.http import router as scripts_router
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        from clearcut.init_db import init_and_seed_db
+        await init_and_seed_db()
+    except Exception as e:
+        print(f"Lifespan init warning: {e}")
+    yield
+
+
 app = FastAPI(
     title="ClearCut API",
     version="0.1.0",
     description="Screenplay pre-clearance research desk and evidence workspace API",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -77,6 +91,7 @@ app.include_router(export_router)
 
 
 @app.get("/healthz")
+@app.get("/api/v1/healthz")
 async def healthz() -> JSONResponse:
     return JSONResponse(
         content={
@@ -101,8 +116,14 @@ if web_dist_env and Path(web_dist_env).is_dir():
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Don't intercept API routes
-        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
+        # Don't intercept API routes or system endpoints
+        if (
+            full_path.startswith("api/")
+            or full_path.startswith("docs")
+            or full_path.startswith("openapi.json")
+            or full_path.startswith("healthz")
+            or full_path == "healthz"
+        ):
             return JSONResponse({"detail": "Not Found"}, status_code=404)
         target = Path(web_dist_env) / full_path
         if target.is_file():

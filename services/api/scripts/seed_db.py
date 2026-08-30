@@ -5,12 +5,22 @@ import uuid
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
-from clearcut.database import engine
+from clearcut.database import engine, is_sqlite
 
 ORG_ID = uuid.UUID("018f0000-0000-7000-8000-000000000001")
 PROJECT_ID = uuid.UUID("018f0000-0000-7000-8000-000000000101")
 SCRIPT_ID = uuid.UUID("018f0000-0000-7000-8000-000000000201")
 VERSION_ID = uuid.UUID("018f0000-0000-7000-8000-000000000301")
+
+def fmt_id(val):
+    if val is None:
+        return None
+    return str(val) if is_sqlite else val
+
+def fmt_dt(val):
+    if val is None:
+        return None
+    return val.isoformat() if is_sqlite else val
 
 USERS = [
     {"id": uuid.UUID("018f0000-0000-7000-8000-000000000011"), "name": "Jamie Park", "email": "jamie@northlight.example", "role": "Owner"},
@@ -151,46 +161,50 @@ async def seed():
     now = datetime.now(UTC)
     async with engine.begin() as conn:
         print("Cleaning previous seed data...")
-        await conn.execute(sa.text("TRUNCATE organizations CASCADE;"))
-        await conn.execute(sa.text("TRUNCATE users CASCADE;"))
+        if is_sqlite:
+            await conn.execute(sa.text("DELETE FROM organizations;"))
+            await conn.execute(sa.text("DELETE FROM users;"))
+        else:
+            await conn.execute(sa.text("TRUNCATE organizations CASCADE;"))
+            await conn.execute(sa.text("TRUNCATE users CASCADE;"))
 
         print("Seeding Users...")
         for u in USERS:
             await conn.execute(
                 sa.text("INSERT INTO users (id, email, created_at) VALUES (:id, :email, :created_at)"),
-                {"id": u["id"], "email": u["email"], "created_at": now},
+                {"id": fmt_id(u["id"]), "email": u["email"], "created_at": fmt_dt(now)},
             )
 
         print("Seeding Organization...")
         await conn.execute(
             sa.text("INSERT INTO organizations (id, name, slug, created_at) VALUES (:id, :name, :slug, :created_at)"),
-            {"id": ORG_ID, "name": "Northlight Pictures", "slug": "northlight", "created_at": now},
+            {"id": fmt_id(ORG_ID), "name": "Northlight Pictures", "slug": "northlight", "created_at": fmt_dt(now)},
         )
 
         print("Seeding Memberships...")
         for u in USERS:
             await conn.execute(
                 sa.text("INSERT INTO memberships (id, org_id, user_id, role, status, created_at) VALUES (:id, :org_id, :user_id, :role, 'active', :created_at)"),
-                {"id": uuid.uuid4(), "org_id": ORG_ID, "user_id": u["id"], "role": u["role"], "created_at": now},
+                {"id": fmt_id(uuid.uuid4()), "org_id": fmt_id(ORG_ID), "user_id": fmt_id(u["id"]), "role": u["role"], "created_at": fmt_dt(now)},
             )
 
         print("Seeding Project...")
         await conn.execute(
             sa.text("INSERT INTO projects (id, org_id, title, description, created_at) VALUES (:id, :org_id, :title, :description, :created_at)"),
-            {"id": PROJECT_ID, "org_id": ORG_ID, "title": "Borrowed Light", "description": "Independent feature screenplay pre-clearance workspace", "created_at": now},
+            {"id": fmt_id(PROJECT_ID), "org_id": fmt_id(ORG_ID), "title": "Borrowed Light", "description": "Independent feature screenplay pre-clearance workspace", "created_at": fmt_dt(now)},
         )
 
         print("Seeding Script & Script Version...")
         await conn.execute(
             sa.text("INSERT INTO scripts (id, org_id, project_id, title, created_at) VALUES (:id, :org_id, :project_id, :title, :created_at)"),
-            {"id": SCRIPT_ID, "org_id": ORG_ID, "project_id": PROJECT_ID, "title": "Borrowed Light", "created_at": now},
+            {"id": fmt_id(SCRIPT_ID), "org_id": fmt_id(ORG_ID), "project_id": fmt_id(PROJECT_ID), "title": "Borrowed Light", "created_at": fmt_dt(now)},
         )
         await conn.execute(
             sa.text("INSERT INTO script_versions (id, script_id, org_id, project_id, ordinal, source_hash, parser_version, created_at) VALUES (:id, :script_id, :org_id, :project_id, 1, '9c7a23d08e41', '1.0.0', :created_at)"),
-            {"id": VERSION_ID, "script_id": SCRIPT_ID, "org_id": ORG_ID, "project_id": PROJECT_ID, "created_at": now},
+            {"id": fmt_id(VERSION_ID), "script_id": fmt_id(SCRIPT_ID), "org_id": fmt_id(ORG_ID), "project_id": fmt_id(PROJECT_ID), "created_at": fmt_dt(now)},
         )
 
-        print("Seeding All Screenplay Scenes & Elements into PostgreSQL...")
+        print("Seeding All Screenplay Scenes & Elements...")
         element_ordinal = 1
         flag_to_element_id = {}
 
@@ -203,8 +217,8 @@ async def seed():
                     VALUES (:id, :version_id, :ordinal, 'scene_heading', :text, :scene, :page)
                 """),
                 {
-                    "id": scene_heading_id,
-                    "version_id": VERSION_ID,
+                    "id": fmt_id(scene_heading_id),
+                    "version_id": fmt_id(VERSION_ID),
                     "ordinal": element_ordinal,
                     "text": scene["slug"],
                     "scene": scene["number"],
@@ -221,8 +235,8 @@ async def seed():
                         VALUES (:id, :version_id, :ordinal, :element_type, :text, :scene, :page)
                     """),
                     {
-                        "id": line_elem_id,
-                        "version_id": VERSION_ID,
+                        "id": fmt_id(line_elem_id),
+                        "version_id": fmt_id(VERSION_ID),
                         "ordinal": element_ordinal,
                         "element_type": line["type"],
                         "text": line["text"],
@@ -232,7 +246,6 @@ async def seed():
                 )
                 if "flag" in line:
                     flag_to_element_id[line["flag"]] = line_elem_id
-                    # Seed span
                     span_id = uuid.uuid4()
                     await conn.execute(
                         sa.text("""
@@ -240,8 +253,8 @@ async def seed():
                             VALUES (:id, :element_id, 0, :length, :text, :tag)
                         """),
                         {
-                            "id": span_id,
-                            "element_id": line_elem_id,
+                            "id": fmt_id(span_id),
+                            "element_id": fmt_id(line_elem_id),
                             "length": len(line["text"]),
                             "text": line["text"],
                             "tag": line["flag"],
@@ -265,19 +278,19 @@ async def seed():
                     )
                 """),
                 {
-                    "id": item["id"],
-                    "org_id": ORG_ID,
-                    "project_id": PROJECT_ID,
-                    "script_id": SCRIPT_ID,
-                    "version_id": VERSION_ID,
-                    "element_id": elem_id,
+                    "id": fmt_id(item["id"]),
+                    "org_id": fmt_id(ORG_ID),
+                    "project_id": fmt_id(PROJECT_ID),
+                    "script_id": fmt_id(SCRIPT_ID),
+                    "version_id": fmt_id(VERSION_ID),
+                    "element_id": fmt_id(elem_id),
                     "category": item["category"],
                     "text": item["term"],
                     "status": item["status"],
-                    "created_at": now,
+                    "created_at": fmt_dt(now),
                     "research_status": item["research"],
                     "workflow_status": item["workflow"],
-                    "assigned_to": assignee_user["id"],
+                    "assigned_to": fmt_id(assignee_user["id"]),
                 },
             )
 
@@ -285,7 +298,7 @@ async def seed():
             run_id = uuid.uuid4()
             await conn.execute(
                 sa.text("INSERT INTO research_runs (id, org_id, project_id, item_id, status, created_at) VALUES (:id, :org_id, :project_id, :item_id, 'completed', :created_at)"),
-                {"id": run_id, "org_id": ORG_ID, "project_id": PROJECT_ID, "item_id": item["id"], "created_at": now},
+                {"id": fmt_id(run_id), "org_id": fmt_id(ORG_ID), "project_id": fmt_id(PROJECT_ID), "item_id": fmt_id(item["id"]), "created_at": fmt_dt(now)},
             )
             item["run_id"] = run_id
 
@@ -306,17 +319,17 @@ async def seed():
                     )
                 """),
                 {
-                    "id": snap_id,
-                    "org_id": ORG_ID,
-                    "project_id": PROJECT_ID,
-                    "item_id": target_item["id"],
-                    "run_id": target_item["run_id"],
+                    "id": fmt_id(snap_id),
+                    "org_id": fmt_id(ORG_ID),
+                    "project_id": fmt_id(PROJECT_ID),
+                    "item_id": fmt_id(target_item["id"]),
+                    "run_id": fmt_id(target_item["run_id"]),
                     "url": f"https://registry.example.gov/records/{s['num']}",
                     "title": s["title"],
                     "publisher": s["auth"],
                     "excerpt": s["claim"],
                     "hash": f"hash_{s['num']}_{uuid.uuid4().hex[:16]}",
-                    "retrieved_at": now,
+                    "retrieved_at": fmt_dt(now),
                 },
             )
 
@@ -331,16 +344,16 @@ async def seed():
                     )
                 """),
                 {
-                    "id": claim_id,
-                    "org_id": ORG_ID,
-                    "project_id": PROJECT_ID,
-                    "item_id": target_item["id"],
-                    "snapshot_id": snap_id,
+                    "id": fmt_id(claim_id),
+                    "org_id": fmt_id(ORG_ID),
+                    "project_id": fmt_id(PROJECT_ID),
+                    "item_id": fmt_id(target_item["id"]),
+                    "snapshot_id": fmt_id(snap_id),
                     "stance": s["stance"],
                     "authority_tier": s["auth"],
                     "claim_text": s["claim"],
                     "provenance": s["title"],
-                    "created_at": now,
+                    "created_at": fmt_dt(now),
                 },
             )
 
@@ -354,17 +367,17 @@ async def seed():
                 )
             """),
             {
-                "id": uuid.uuid4(),
-                "org_id": ORG_ID,
-                "project_id": PROJECT_ID,
-                "actor_id": USERS[0]["id"],
-                "target_id": VERSION_ID,
+                "id": fmt_id(uuid.uuid4()),
+                "org_id": fmt_id(ORG_ID),
+                "project_id": fmt_id(PROJECT_ID),
+                "actor_id": fmt_id(USERS[0]["id"]),
+                "target_id": fmt_id(VERSION_ID),
                 "details": json.dumps({"version": "v1", "source": "FDX import"}),
-                "created_at": now,
+                "created_at": fmt_dt(now),
             },
         )
 
-    print("✨ PostgreSQL database seeding completed successfully!")
+    print("✨ Database seeding completed successfully!")
 
 if __name__ == "__main__":
     asyncio.run(seed())

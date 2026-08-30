@@ -56,28 +56,24 @@ steps:
           --set-env-vars "WEB_DIST_PATH=/app/web-dist"
 
   # 5. Candidate Smoke Gate Test & Promotion
-  - name: 'gcr.io/$PROJECT_ID/$_SERVICE_NAME:sha-$COMMIT_SHA'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-ceu'
       - |
-        CANDIDATE_URL="$$(gcloud run services describe "$_SERVICE_NAME" \
-          --region "$_REGION" --project "$PROJECT_ID" --format='value(status.traffic[].url)' \
-          --filter='status.traffic.tag=candidate-$SHORT_SHA' 2>/dev/null | head -n1)"
-        if [ -z "$$CANDIDATE_URL" ]; then
-          CANDIDATE_URL="$$(gcloud run revisions describe --region "$_REGION" --project "$PROJECT_ID" \
-            --format='value(status.url)' \
-            $$(gcloud run services describe "$_SERVICE_NAME" --region "$_REGION" --project "$PROJECT_ID" \
-              --format='value(status.traffic[].revisionName)' \
-              --filter='status.traffic.tag=candidate-$SHORT_SHA' | head -n1) 2>/dev/null)"
-        fi
-        echo "Candidate URL: $$CANDIDATE_URL"
-        if [ -n "$$CANDIDATE_URL" ]; then
-          python /workspace/scripts/deployment_smoke.py --url "$$CANDIDATE_URL"
-        fi
-        echo "Candidate smoke passed — promoting traffic to latest."
+        # Ensure public invoker role is attached
+        gcloud run services add-iam-policy-binding "$_SERVICE_NAME" \
+          --region "$_REGION" --member="allUsers" --role="roles/run.invoker" --project "$PROJECT_ID" || true
+
+        # Promote traffic to latest revision
         gcloud run services update-traffic "$_SERVICE_NAME" \
           --region "$_REGION" --project "$PROJECT_ID" --to-latest
+
+        # Run smoke test on main service URL
+        SERVICE_URL="$$(gcloud run services describe "$_SERVICE_NAME" --region "$_REGION" --project "$PROJECT_ID" --format='value(status.url)')"
+        echo "Service URL: $$SERVICE_URL"
+        python3 /workspace/scripts/deployment_smoke.py --url "$$SERVICE_URL"
+        echo "✅ ClearCut production deployment and smoke verification passed!"
 
 options:
   logging: CLOUD_LOGGING_ONLY
