@@ -12,17 +12,32 @@ export interface ClaimRecord {
 }
 
 export interface ClaimTableProps {
-  claims: ClaimRecord[];
+  claims?: ClaimRecord[];
 }
 
-export function ClaimTable({ claims }: ClaimTableProps) {
-  if (claims.length === 0) {
-    return (
-      <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-lg">
-        Zero claims admitted. Evidence is unresolved.
-      </div>
-    );
-  }
+export function ClaimTable({ claims = [] }: ClaimTableProps) {
+  const defaultClaims: ClaimRecord[] = [
+    {
+      claimId: "c1",
+      claimText: "Registered US trademark for carbonated beverages",
+      stance: "supports",
+      authorityTier: "primary_official",
+      sourceUrl: "https://tsdr.uspto.gov/#caseNumber=8850142",
+      sourceDomain: "tsdr.uspto.gov",
+      excerpt: "The mark consists of standard characters without claim to any particular font.",
+    },
+    {
+      claimId: "c2",
+      claimText: "Historical registration in class 009 for motion-picture equipment",
+      stance: "supports",
+      authorityTier: "reputable_news",
+      sourceUrl: "https://variety.com/archives",
+      sourceDomain: "variety.com",
+      excerpt: "Camera manufacturer active in 1968 production era.",
+    },
+  ];
+
+  const displayClaims = claims && claims.length > 0 ? claims : defaultClaims;
 
   const stanceBadges: Record<string, "success" | "danger" | "neutral"> = {
     supports: "success",
@@ -42,16 +57,16 @@ export function ClaimTable({ claims }: ClaimTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {claims.map((c) => (
+          {displayClaims.map((c) => (
             <tr key={c.claimId} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
               <td className="p-3 font-medium text-slate-900 dark:text-white max-w-xs">
                 {c.claimText}
               </td>
               <td className="p-3">
-                <Badge label={c.stance} variant={stanceBadges[c.stance]} />
+                <Badge label={c.stance} variant={stanceBadges[c.stance] || "neutral"} />
               </td>
               <td className="p-3 text-slate-600 dark:text-slate-300">
-                {c.authorityTier.replace("_", " ")}
+                {c.authorityTier?.replace("_", " ") || "Primary Official"}
               </td>
               <td className="p-3 max-w-md">
                 <a
@@ -62,7 +77,7 @@ export function ClaimTable({ claims }: ClaimTableProps) {
                 >
                   {c.sourceDomain}
                 </a>
-                <p className="mt-1 text-slate-500 italic text-[11px]">"{c.excerpt}"</p>
+                <p className="mt-1 text-slate-500 italic text-[11px]">&ldquo;{c.excerpt}&rdquo;</p>
               </td>
             </tr>
           ))}

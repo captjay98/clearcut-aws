@@ -1,0 +1,9 @@
+@import "../../../packages/design-system/src/tokens.css";
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+}

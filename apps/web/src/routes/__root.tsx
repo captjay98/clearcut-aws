@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Header } from "../components/navigation/Header.tsx";
 
 interface RootProps {
   children?: React.ReactNode;
@@ -7,10 +6,6 @@ interface RootProps {
 
 export function RootLayout({ children }: RootProps) {
   const [theme, setTheme] = useState<"day-shoot" | "night-shoot">("day-shoot");
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "day-shoot" ? "night-shoot" : "day-shoot"));
-  };
 
   return (
     <div
@@ -23,8 +18,7 @@ export function RootLayout({ children }: RootProps) {
       >
         Skip to main content
       </a>
-      <Header theme={theme} onToggleTheme={toggleTheme} />
-      <div className="flex-1 flex">{children}</div>
+      <div className="flex-1 flex flex-col">{children}</div>
     </div>
   );
 }

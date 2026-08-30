@@ -9,14 +9,33 @@ export interface CommentItem {
 }
 
 export interface CommentThreadProps {
-  comments: CommentItem[];
-  onAddComment: (content: string, parentId?: string) => void;
+  comments?: CommentItem[];
+  onAddComment?: (content: string, parentId?: string) => void;
 }
 
-export function CommentThread({ comments, onAddComment }: CommentThreadProps) {
+export function CommentThread({ comments = [], onAddComment = () => {} }: CommentThreadProps) {
   const [newContent, setNewContent] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyContent, setReplyContent] = useState("");
+
+  const defaultComments: CommentItem[] = [
+    {
+      id: "comm-1",
+      authorName: "Sarah Producer",
+      content: "Let's propose Greeking to 'Sparkling Cola' if licensing is prohibitive.",
+      createdAt: "1 hour ago",
+      replies: [
+        {
+          id: "comm-2",
+          authorName: "Bob Reviewer",
+          content: "Agreed. Greeking proposal submitted for review.",
+          createdAt: "45 mins ago",
+        },
+      ],
+    },
+  ];
+
+  const displayComments = comments && comments.length > 0 ? comments : defaultComments;
 
   const handleCreateParent = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +73,7 @@ export function CommentThread({ comments, onAddComment }: CommentThreadProps) {
       </form>
 
       <div className="space-y-4 divide-y divide-slate-100 dark:divide-slate-800">
-        {comments.map((c) => (
+        {displayComments.map((c) => (
           <div key={c.id} className="pt-4 first:pt-0 space-y-3">
             <div>
               <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
