@@ -12,6 +12,24 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AuthSignInRouteImport } from './routes/auth/sign-in'
+import { Route as OOrgSlugRouteRouteImport } from './routes/o/$orgSlug/route'
+import { Route as AuthInviteTokenRouteImport } from './routes/auth/invite/$token'
+import { Route as OOrgSlugIndexRouteImport } from './routes/o/$orgSlug/index'
+import { Route as OOrgSlugNotificationsRouteImport } from './routes/o/$orgSlug/notifications'
+import { Route as OOrgSlugRecordsRouteImport } from './routes/o/$orgSlug/records'
+import { Route as OOrgSlugSettingsRouteImport } from './routes/o/$orgSlug/settings'
+import { Route as OOrgSlugTeamRouteImport } from './routes/o/$orgSlug/team'
+import { Route as OOrgSlugTrustRouteImport } from './routes/o/$orgSlug/trust'
+import { Route as OOrgSlugProjectsIndexRouteImport } from './routes/o/$orgSlug/projects/index'
+import { Route as OOrgSlugProjectsProjectIdRouteRouteImport } from './routes/o/$orgSlug/projects/$projectId/route'
+import { Route as OOrgSlugProjectsNewRouteImport } from './routes/o/$orgSlug/projects/new'
+import { Route as OOrgSlugProjectsProjectIdIndexRouteImport } from './routes/o/$orgSlug/projects/$projectId/index'
+import { Route as OOrgSlugProjectsProjectIdReportRouteImport } from './routes/o/$orgSlug/projects/$projectId/report'
+import { Route as OOrgSlugProjectsProjectIdVersionsRouteImport } from './routes/o/$orgSlug/projects/$projectId/versions'
+import { Route as OOrgSlugProjectsProjectIdWatchRouteImport } from './routes/o/$orgSlug/projects/$projectId/watch'
+import { Route as OOrgSlugProjectsProjectIdWorkspaceRouteImport } from './routes/o/$orgSlug/projects/$projectId/workspace'
+import { Route as OOrgSlugProjectsProjectIdItemsIndexRouteImport } from './routes/o/$orgSlug/projects/$projectId/items/index'
+import { Route as OOrgSlugProjectsProjectIdItemsItemIdRouteImport } from './routes/o/$orgSlug/projects/$projectId/items/$itemId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +46,249 @@ const AuthSignInRoute = AuthSignInRouteImport.update({
   path: '/auth/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OOrgSlugRouteRoute = OOrgSlugRouteRouteImport.update({
+  id: '/o/$orgSlug',
+  path: '/o/$orgSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthInviteTokenRoute = AuthInviteTokenRouteImport.update({
+  id: '/auth/invite/$token',
+  path: '/auth/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OOrgSlugIndexRoute = OOrgSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugNotificationsRoute = OOrgSlugNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugRecordsRoute = OOrgSlugRecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugSettingsRoute = OOrgSlugSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugTeamRoute = OOrgSlugTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugTrustRoute = OOrgSlugTrustRouteImport.update({
+  id: '/trust',
+  path: '/trust',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugProjectsIndexRoute = OOrgSlugProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugProjectsProjectIdRouteRoute =
+  OOrgSlugProjectsProjectIdRouteRouteImport.update({
+    id: '/projects/$projectId',
+    path: '/projects/$projectId',
+    getParentRoute: () => OOrgSlugRouteRoute,
+  } as any)
+const OOrgSlugProjectsNewRoute = OOrgSlugProjectsNewRouteImport.update({
+  id: '/projects/new',
+  path: '/projects/new',
+  getParentRoute: () => OOrgSlugRouteRoute,
+} as any)
+const OOrgSlugProjectsProjectIdIndexRoute =
+  OOrgSlugProjectsProjectIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
+const OOrgSlugProjectsProjectIdReportRoute =
+  OOrgSlugProjectsProjectIdReportRouteImport.update({
+    id: '/report',
+    path: '/report',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
+const OOrgSlugProjectsProjectIdVersionsRoute =
+  OOrgSlugProjectsProjectIdVersionsRouteImport.update({
+    id: '/versions',
+    path: '/versions',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
+const OOrgSlugProjectsProjectIdWatchRoute =
+  OOrgSlugProjectsProjectIdWatchRouteImport.update({
+    id: '/watch',
+    path: '/watch',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
+const OOrgSlugProjectsProjectIdWorkspaceRoute =
+  OOrgSlugProjectsProjectIdWorkspaceRouteImport.update({
+    id: '/workspace',
+    path: '/workspace',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
+const OOrgSlugProjectsProjectIdItemsIndexRoute =
+  OOrgSlugProjectsProjectIdItemsIndexRouteImport.update({
+    id: '/items/',
+    path: '/items/',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
+const OOrgSlugProjectsProjectIdItemsItemIdRoute =
+  OOrgSlugProjectsProjectIdItemsItemIdRouteImport.update({
+    id: '/items/$itemId',
+    path: '/items/$itemId',
+    getParentRoute: () => OOrgSlugProjectsProjectIdRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/onboarding': typeof OnboardingRoute
+  '/o/$orgSlug': typeof OOrgSlugRouteRouteWithChildren
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/invite/$token': typeof AuthInviteTokenRoute
+  '/o/$orgSlug/notifications': typeof OOrgSlugNotificationsRoute
+  '/o/$orgSlug/records': typeof OOrgSlugRecordsRoute
+  '/o/$orgSlug/settings': typeof OOrgSlugSettingsRoute
+  '/o/$orgSlug/team': typeof OOrgSlugTeamRoute
+  '/o/$orgSlug/trust': typeof OOrgSlugTrustRoute
+  '/o/$orgSlug/': typeof OOrgSlugIndexRoute
+  '/o/$orgSlug/projects/$projectId': typeof OOrgSlugProjectsProjectIdRouteRouteWithChildren
+  '/o/$orgSlug/projects/new': typeof OOrgSlugProjectsNewRoute
+  '/o/$orgSlug/projects/': typeof OOrgSlugProjectsIndexRoute
+  '/o/$orgSlug/projects/$projectId/report': typeof OOrgSlugProjectsProjectIdReportRoute
+  '/o/$orgSlug/projects/$projectId/versions': typeof OOrgSlugProjectsProjectIdVersionsRoute
+  '/o/$orgSlug/projects/$projectId/watch': typeof OOrgSlugProjectsProjectIdWatchRoute
+  '/o/$orgSlug/projects/$projectId/workspace': typeof OOrgSlugProjectsProjectIdWorkspaceRoute
+  '/o/$orgSlug/projects/$projectId/': typeof OOrgSlugProjectsProjectIdIndexRoute
+  '/o/$orgSlug/projects/$projectId/items/$itemId': typeof OOrgSlugProjectsProjectIdItemsItemIdRoute
+  '/o/$orgSlug/projects/$projectId/items/': typeof OOrgSlugProjectsProjectIdItemsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/onboarding': typeof OnboardingRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/invite/$token': typeof AuthInviteTokenRoute
+  '/o/$orgSlug/notifications': typeof OOrgSlugNotificationsRoute
+  '/o/$orgSlug/records': typeof OOrgSlugRecordsRoute
+  '/o/$orgSlug/settings': typeof OOrgSlugSettingsRoute
+  '/o/$orgSlug/team': typeof OOrgSlugTeamRoute
+  '/o/$orgSlug/trust': typeof OOrgSlugTrustRoute
+  '/o/$orgSlug': typeof OOrgSlugIndexRoute
+  '/o/$orgSlug/projects/new': typeof OOrgSlugProjectsNewRoute
+  '/o/$orgSlug/projects': typeof OOrgSlugProjectsIndexRoute
+  '/o/$orgSlug/projects/$projectId/report': typeof OOrgSlugProjectsProjectIdReportRoute
+  '/o/$orgSlug/projects/$projectId/versions': typeof OOrgSlugProjectsProjectIdVersionsRoute
+  '/o/$orgSlug/projects/$projectId/watch': typeof OOrgSlugProjectsProjectIdWatchRoute
+  '/o/$orgSlug/projects/$projectId/workspace': typeof OOrgSlugProjectsProjectIdWorkspaceRoute
+  '/o/$orgSlug/projects/$projectId': typeof OOrgSlugProjectsProjectIdIndexRoute
+  '/o/$orgSlug/projects/$projectId/items/$itemId': typeof OOrgSlugProjectsProjectIdItemsItemIdRoute
+  '/o/$orgSlug/projects/$projectId/items': typeof OOrgSlugProjectsProjectIdItemsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/onboarding': typeof OnboardingRoute
+  '/o/$orgSlug': typeof OOrgSlugRouteRouteWithChildren
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/invite/$token': typeof AuthInviteTokenRoute
+  '/o/$orgSlug/notifications': typeof OOrgSlugNotificationsRoute
+  '/o/$orgSlug/records': typeof OOrgSlugRecordsRoute
+  '/o/$orgSlug/settings': typeof OOrgSlugSettingsRoute
+  '/o/$orgSlug/team': typeof OOrgSlugTeamRoute
+  '/o/$orgSlug/trust': typeof OOrgSlugTrustRoute
+  '/o/$orgSlug/': typeof OOrgSlugIndexRoute
+  '/o/$orgSlug/projects/$projectId': typeof OOrgSlugProjectsProjectIdRouteRouteWithChildren
+  '/o/$orgSlug/projects/new': typeof OOrgSlugProjectsNewRoute
+  '/o/$orgSlug/projects/': typeof OOrgSlugProjectsIndexRoute
+  '/o/$orgSlug/projects/$projectId/report': typeof OOrgSlugProjectsProjectIdReportRoute
+  '/o/$orgSlug/projects/$projectId/versions': typeof OOrgSlugProjectsProjectIdVersionsRoute
+  '/o/$orgSlug/projects/$projectId/watch': typeof OOrgSlugProjectsProjectIdWatchRoute
+  '/o/$orgSlug/projects/$projectId/workspace': typeof OOrgSlugProjectsProjectIdWorkspaceRoute
+  '/o/$orgSlug/projects/$projectId/': typeof OOrgSlugProjectsProjectIdIndexRoute
+  '/o/$orgSlug/projects/$projectId/items/$itemId': typeof OOrgSlugProjectsProjectIdItemsItemIdRoute
+  '/o/$orgSlug/projects/$projectId/items/': typeof OOrgSlugProjectsProjectIdItemsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/onboarding' | '/auth/sign-in'
+  fullPaths:
+    | '/'
+    | '/onboarding'
+    | '/o/$orgSlug'
+    | '/auth/sign-in'
+    | '/auth/invite/$token'
+    | '/o/$orgSlug/notifications'
+    | '/o/$orgSlug/records'
+    | '/o/$orgSlug/settings'
+    | '/o/$orgSlug/team'
+    | '/o/$orgSlug/trust'
+    | '/o/$orgSlug/'
+    | '/o/$orgSlug/projects/$projectId'
+    | '/o/$orgSlug/projects/new'
+    | '/o/$orgSlug/projects/'
+    | '/o/$orgSlug/projects/$projectId/report'
+    | '/o/$orgSlug/projects/$projectId/versions'
+    | '/o/$orgSlug/projects/$projectId/watch'
+    | '/o/$orgSlug/projects/$projectId/workspace'
+    | '/o/$orgSlug/projects/$projectId/'
+    | '/o/$orgSlug/projects/$projectId/items/$itemId'
+    | '/o/$orgSlug/projects/$projectId/items/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/onboarding' | '/auth/sign-in'
-  id: '__root__' | '/' | '/onboarding' | '/auth/sign-in'
+  to:
+    | '/'
+    | '/onboarding'
+    | '/auth/sign-in'
+    | '/auth/invite/$token'
+    | '/o/$orgSlug/notifications'
+    | '/o/$orgSlug/records'
+    | '/o/$orgSlug/settings'
+    | '/o/$orgSlug/team'
+    | '/o/$orgSlug/trust'
+    | '/o/$orgSlug'
+    | '/o/$orgSlug/projects/new'
+    | '/o/$orgSlug/projects'
+    | '/o/$orgSlug/projects/$projectId/report'
+    | '/o/$orgSlug/projects/$projectId/versions'
+    | '/o/$orgSlug/projects/$projectId/watch'
+    | '/o/$orgSlug/projects/$projectId/workspace'
+    | '/o/$orgSlug/projects/$projectId'
+    | '/o/$orgSlug/projects/$projectId/items/$itemId'
+    | '/o/$orgSlug/projects/$projectId/items'
+  id:
+    | '__root__'
+    | '/'
+    | '/onboarding'
+    | '/o/$orgSlug'
+    | '/auth/sign-in'
+    | '/auth/invite/$token'
+    | '/o/$orgSlug/notifications'
+    | '/o/$orgSlug/records'
+    | '/o/$orgSlug/settings'
+    | '/o/$orgSlug/team'
+    | '/o/$orgSlug/trust'
+    | '/o/$orgSlug/'
+    | '/o/$orgSlug/projects/$projectId'
+    | '/o/$orgSlug/projects/new'
+    | '/o/$orgSlug/projects/'
+    | '/o/$orgSlug/projects/$projectId/report'
+    | '/o/$orgSlug/projects/$projectId/versions'
+    | '/o/$orgSlug/projects/$projectId/watch'
+    | '/o/$orgSlug/projects/$projectId/workspace'
+    | '/o/$orgSlug/projects/$projectId/'
+    | '/o/$orgSlug/projects/$projectId/items/$itemId'
+    | '/o/$orgSlug/projects/$projectId/items/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OnboardingRoute: typeof OnboardingRoute
+  OOrgSlugRouteRoute: typeof OOrgSlugRouteRouteWithChildren
   AuthSignInRoute: typeof AuthSignInRoute
+  AuthInviteTokenRoute: typeof AuthInviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,13 +314,200 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/o/$orgSlug': {
+      id: '/o/$orgSlug'
+      path: '/o/$orgSlug'
+      fullPath: '/o/$orgSlug'
+      preLoaderRoute: typeof OOrgSlugRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/invite/$token': {
+      id: '/auth/invite/$token'
+      path: '/auth/invite/$token'
+      fullPath: '/auth/invite/$token'
+      preLoaderRoute: typeof AuthInviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/o/$orgSlug/': {
+      id: '/o/$orgSlug/'
+      path: '/'
+      fullPath: '/o/$orgSlug/'
+      preLoaderRoute: typeof OOrgSlugIndexRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/notifications': {
+      id: '/o/$orgSlug/notifications'
+      path: '/notifications'
+      fullPath: '/o/$orgSlug/notifications'
+      preLoaderRoute: typeof OOrgSlugNotificationsRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/records': {
+      id: '/o/$orgSlug/records'
+      path: '/records'
+      fullPath: '/o/$orgSlug/records'
+      preLoaderRoute: typeof OOrgSlugRecordsRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/settings': {
+      id: '/o/$orgSlug/settings'
+      path: '/settings'
+      fullPath: '/o/$orgSlug/settings'
+      preLoaderRoute: typeof OOrgSlugSettingsRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/team': {
+      id: '/o/$orgSlug/team'
+      path: '/team'
+      fullPath: '/o/$orgSlug/team'
+      preLoaderRoute: typeof OOrgSlugTeamRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/trust': {
+      id: '/o/$orgSlug/trust'
+      path: '/trust'
+      fullPath: '/o/$orgSlug/trust'
+      preLoaderRoute: typeof OOrgSlugTrustRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/projects/': {
+      id: '/o/$orgSlug/projects/'
+      path: '/projects'
+      fullPath: '/o/$orgSlug/projects/'
+      preLoaderRoute: typeof OOrgSlugProjectsIndexRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId': {
+      id: '/o/$orgSlug/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/o/$orgSlug/projects/$projectId'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdRouteRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/projects/new': {
+      id: '/o/$orgSlug/projects/new'
+      path: '/projects/new'
+      fullPath: '/o/$orgSlug/projects/new'
+      preLoaderRoute: typeof OOrgSlugProjectsNewRouteImport
+      parentRoute: typeof OOrgSlugRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/': {
+      id: '/o/$orgSlug/projects/$projectId/'
+      path: '/'
+      fullPath: '/o/$orgSlug/projects/$projectId/'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdIndexRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/report': {
+      id: '/o/$orgSlug/projects/$projectId/report'
+      path: '/report'
+      fullPath: '/o/$orgSlug/projects/$projectId/report'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdReportRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/versions': {
+      id: '/o/$orgSlug/projects/$projectId/versions'
+      path: '/versions'
+      fullPath: '/o/$orgSlug/projects/$projectId/versions'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdVersionsRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/watch': {
+      id: '/o/$orgSlug/projects/$projectId/watch'
+      path: '/watch'
+      fullPath: '/o/$orgSlug/projects/$projectId/watch'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdWatchRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/workspace': {
+      id: '/o/$orgSlug/projects/$projectId/workspace'
+      path: '/workspace'
+      fullPath: '/o/$orgSlug/projects/$projectId/workspace'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdWorkspaceRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/items/': {
+      id: '/o/$orgSlug/projects/$projectId/items/'
+      path: '/items'
+      fullPath: '/o/$orgSlug/projects/$projectId/items/'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdItemsIndexRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
+    '/o/$orgSlug/projects/$projectId/items/$itemId': {
+      id: '/o/$orgSlug/projects/$projectId/items/$itemId'
+      path: '/items/$itemId'
+      fullPath: '/o/$orgSlug/projects/$projectId/items/$itemId'
+      preLoaderRoute: typeof OOrgSlugProjectsProjectIdItemsItemIdRouteImport
+      parentRoute: typeof OOrgSlugProjectsProjectIdRouteRoute
+    }
   }
 }
+
+interface OOrgSlugProjectsProjectIdRouteRouteChildren {
+  OOrgSlugProjectsProjectIdReportRoute: typeof OOrgSlugProjectsProjectIdReportRoute
+  OOrgSlugProjectsProjectIdVersionsRoute: typeof OOrgSlugProjectsProjectIdVersionsRoute
+  OOrgSlugProjectsProjectIdWatchRoute: typeof OOrgSlugProjectsProjectIdWatchRoute
+  OOrgSlugProjectsProjectIdWorkspaceRoute: typeof OOrgSlugProjectsProjectIdWorkspaceRoute
+  OOrgSlugProjectsProjectIdIndexRoute: typeof OOrgSlugProjectsProjectIdIndexRoute
+  OOrgSlugProjectsProjectIdItemsItemIdRoute: typeof OOrgSlugProjectsProjectIdItemsItemIdRoute
+  OOrgSlugProjectsProjectIdItemsIndexRoute: typeof OOrgSlugProjectsProjectIdItemsIndexRoute
+}
+
+const OOrgSlugProjectsProjectIdRouteRouteChildren: OOrgSlugProjectsProjectIdRouteRouteChildren =
+  {
+    OOrgSlugProjectsProjectIdReportRoute: OOrgSlugProjectsProjectIdReportRoute,
+    OOrgSlugProjectsProjectIdVersionsRoute:
+      OOrgSlugProjectsProjectIdVersionsRoute,
+    OOrgSlugProjectsProjectIdWatchRoute: OOrgSlugProjectsProjectIdWatchRoute,
+    OOrgSlugProjectsProjectIdWorkspaceRoute:
+      OOrgSlugProjectsProjectIdWorkspaceRoute,
+    OOrgSlugProjectsProjectIdIndexRoute: OOrgSlugProjectsProjectIdIndexRoute,
+    OOrgSlugProjectsProjectIdItemsItemIdRoute:
+      OOrgSlugProjectsProjectIdItemsItemIdRoute,
+    OOrgSlugProjectsProjectIdItemsIndexRoute:
+      OOrgSlugProjectsProjectIdItemsIndexRoute,
+  }
+
+const OOrgSlugProjectsProjectIdRouteRouteWithChildren =
+  OOrgSlugProjectsProjectIdRouteRoute._addFileChildren(
+    OOrgSlugProjectsProjectIdRouteRouteChildren,
+  )
+
+interface OOrgSlugRouteRouteChildren {
+  OOrgSlugNotificationsRoute: typeof OOrgSlugNotificationsRoute
+  OOrgSlugRecordsRoute: typeof OOrgSlugRecordsRoute
+  OOrgSlugSettingsRoute: typeof OOrgSlugSettingsRoute
+  OOrgSlugTeamRoute: typeof OOrgSlugTeamRoute
+  OOrgSlugTrustRoute: typeof OOrgSlugTrustRoute
+  OOrgSlugIndexRoute: typeof OOrgSlugIndexRoute
+  OOrgSlugProjectsProjectIdRouteRoute: typeof OOrgSlugProjectsProjectIdRouteRouteWithChildren
+  OOrgSlugProjectsNewRoute: typeof OOrgSlugProjectsNewRoute
+  OOrgSlugProjectsIndexRoute: typeof OOrgSlugProjectsIndexRoute
+}
+
+const OOrgSlugRouteRouteChildren: OOrgSlugRouteRouteChildren = {
+  OOrgSlugNotificationsRoute: OOrgSlugNotificationsRoute,
+  OOrgSlugRecordsRoute: OOrgSlugRecordsRoute,
+  OOrgSlugSettingsRoute: OOrgSlugSettingsRoute,
+  OOrgSlugTeamRoute: OOrgSlugTeamRoute,
+  OOrgSlugTrustRoute: OOrgSlugTrustRoute,
+  OOrgSlugIndexRoute: OOrgSlugIndexRoute,
+  OOrgSlugProjectsProjectIdRouteRoute:
+    OOrgSlugProjectsProjectIdRouteRouteWithChildren,
+  OOrgSlugProjectsNewRoute: OOrgSlugProjectsNewRoute,
+  OOrgSlugProjectsIndexRoute: OOrgSlugProjectsIndexRoute,
+}
+
+const OOrgSlugRouteRouteWithChildren = OOrgSlugRouteRoute._addFileChildren(
+  OOrgSlugRouteRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OnboardingRoute: OnboardingRoute,
+  OOrgSlugRouteRoute: OOrgSlugRouteRouteWithChildren,
   AuthSignInRoute: AuthSignInRoute,
+  AuthInviteTokenRoute: AuthInviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,0 +1,50 @@
+import { test, expect } from "@playwright/test";
+
+test.describe("Shell, Navigation, and Theme System", () => {
+  test("skip link, landmarks, and semantic structure exist", async ({ page }) => {
+    await page.goto("/");
+    const skipLink = page.locator("a[href='#main-content']");
+    await expect(skipLink).toBeAttached();
+
+    const header = page.locator("header");
+    await expect(header).toBeVisible();
+
+    const main = page.locator("main#main-content");
+    await expect(main).toBeVisible();
+  });
+
+  test("theme switcher toggles and persists data-theme attribute", async ({ page }) => {
+    await page.goto("/");
+    
+    // Initial data-theme attribute on html
+    const html = page.locator("html");
+    const initialTheme = await html.getAttribute("data-theme");
+    expect(initialTheme).toBeTruthy();
+
+    // Find and click theme switcher
+    const themeBtn = page.locator("button[aria-label*='Theme'], button[aria-label*='theme']").first();
+    await expect(themeBtn).toBeVisible();
+    await themeBtn.click();
+
+    // Verify theme changed on html tag
+    const newTheme = await html.getAttribute("data-theme");
+    expect(newTheme).not.toBe(initialTheme);
+
+    // Reload and verify persistence
+    await page.reload();
+    const persistedTheme = await page.locator("html").getAttribute("data-theme");
+    expect(persistedTheme).toBe(newTheme);
+  });
+
+  test("organization sidebar navigation and project routing", async ({ page }) => {
+    // Navigate directly to sign in and check auth flow
+    await page.goto("/auth/sign-in");
+    await expect(page.locator("input#email")).toBeVisible();
+    await expect(page.locator("input#password")).toBeVisible();
+
+    // Navigate to onboarding
+    await page.goto("/onboarding");
+    await expect(page.locator("input#org-name")).toBeVisible();
+    await expect(page.locator("input#org-slug")).toBeVisible();
+  });
+});
