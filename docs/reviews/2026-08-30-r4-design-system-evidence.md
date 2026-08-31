@@ -4,7 +4,9 @@
 **Plan:** Plan 06 (Design System and Application Shell Implementation Plan)  
 **Packets Completed:** `06a`, `06b`, `06c`  
 **Checkpoint:** R4 (Design System, Shell & Public Surfaces)  
-**Status:** PASSED (All Exit Criteria Satisfied)
+**Status:** SUPERSEDED (See `docs/reviews/2026-08-31-atomic-rebuild-baseline.md` and `docs/plans/2026-08-31-atomic-react-tanstack-rebuild.md`)
+
+> **SUPERSEDED NOTE (2026-08-31):** The claims regarding reachable TanStack Start workspace shell in this packet were based on component presence rather than executable route reachability (the production app was using `runtime.js`). This packet is superseded by the Atomic React/TanStack Rebuild.
 
 ---
 
