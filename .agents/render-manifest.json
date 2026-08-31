@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "strict": false,
+  "strict": true,
   "enabledToolchains": [],
   "counts": {
     "personas": 15,

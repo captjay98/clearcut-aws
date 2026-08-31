@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 
 const ROOT = process.cwd()
-const NODE = process.execPath
+const NODE = 'node'
 const STRICT_ENV = { ...process.env, AGENTS_STRICT: '1' }
 
 function collectTestFiles(directory) {

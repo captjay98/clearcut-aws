@@ -48,7 +48,7 @@ export function CommentThread({ comments = [], onAddComment }: CommentThreadProp
   };
 
   return (
-    <div className="space-y-4 font-sans">
+    <div data-testid="comment-thread" className="space-y-4 font-sans">
       <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs font-bold text-slate-300 uppercase tracking-wider">
         <span>Collaboration & Comments ({localComments.length})</span>
         <span className="text-[10px] text-slate-500 font-normal lowercase">audit traceable</span>

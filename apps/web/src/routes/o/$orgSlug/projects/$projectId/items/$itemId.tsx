@@ -140,7 +140,7 @@ export function ItemDetailRoute() {
       </div>
 
       {/* Decision Recording Form */}
-      <div className="p-5 bg-slate-900 border border-slate-800 rounded-lg space-y-4 shadow-sm">
+      <div data-testid="decision-action-bar" className="p-5 bg-slate-900 border border-slate-800 rounded-lg space-y-4 shadow-sm">
         <h3 className="text-sm font-bold text-white">Record Clearance Decision</h3>
         {feedback && (
           <div

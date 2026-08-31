@@ -4,6 +4,9 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "build": "pnpm --filter \"@clearcut/*\" build && pnpm --filter \"clearcut-*\" build",
+    "test": "uv run pytest services/api/tests -q && pnpm --filter clearcut-web test:e2e",
+    "lint": "node scripts/check-no-legacy-runtime.mjs && bun scripts/check-contract-drift.mjs",
     "check:toolchains": "node scripts/check-package-managers.mjs",
     "check:coverage": "node scripts/check-feature-coverage.mjs",
     "check:no-legacy": "node scripts/check-no-legacy-runtime.mjs",
