@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(as_uuid=True), primary_key=True),
         sa.Column("org_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("scope", sa.String(50), nullable=False),
-        sa.Column("proposed_changes", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("proposed_changes", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False),
         sa.Column("canary_pass_rate", sa.Float(), nullable=False),
         sa.Column("is_promoted", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

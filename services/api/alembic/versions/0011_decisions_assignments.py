@@ -87,7 +87,7 @@ def upgrade() -> None:
         ),
         sa.Column("target_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("target_type", sa.String(50), nullable=False),
-        sa.Column("details", JSONB(), nullable=False),
+        sa.Column("details", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
             ["org_id", "project_id"],

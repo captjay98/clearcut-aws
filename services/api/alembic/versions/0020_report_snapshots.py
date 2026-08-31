@@ -30,7 +30,7 @@ def upgrade() -> None:
         ),
         sa.Column("status", sa.String(50), nullable=False),
         sa.Column("content_hash", sa.String(100), nullable=False),
-        sa.Column("binding_manifest", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("binding_manifest", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
             ["org_id", "project_id"],

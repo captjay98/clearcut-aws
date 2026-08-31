@@ -17,52 +17,49 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Add state tracking columns to clearance_items
-    op.add_column(
-        "clearance_items",
-        sa.Column(
-            "research_status",
-            sa.String(50),
-            nullable=False,
-            server_default="not_started",
-        ),
-    )
-    op.add_column(
-        "clearance_items",
-        sa.Column(
-            "workflow_status",
-            sa.String(50),
-            nullable=False,
-            server_default="open",
-        ),
-    )
-    op.add_column(
-        "clearance_items",
-        sa.Column(
-            "disposition_status",
-            sa.String(50),
-            nullable=False,
-            server_default="undisposed",
-        ),
-    )
-    op.add_column(
-        "clearance_items",
-        sa.Column(
-            "assigned_to_user_id",
-            sa.UUID(as_uuid=True),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.create_index(
-        "idx_clearance_items_projection",
-        "clearance_items",
-        ["org_id", "project_id", "category", "workflow_status"],
-    )
+    with op.batch_alter_table("clearance_items") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "research_status",
+                sa.String(50),
+                nullable=False,
+                server_default="not_started",
+            ),
+        )
+        batch_op.add_column(
+            sa.Column(
+                "workflow_status",
+                sa.String(50),
+                nullable=False,
+                server_default="open",
+            ),
+        )
+        batch_op.add_column(
+            sa.Column(
+                "disposition_status",
+                sa.String(50),
+                nullable=False,
+                server_default="undisposed",
+            ),
+        )
+        batch_op.add_column(
+            sa.Column(
+                "assigned_to_user_id",
+                sa.UUID(as_uuid=True),
+                sa.ForeignKey("users.id", ondelete="SET NULL", name="fk_clearance_items_assigned_to_user_id"),
+                nullable=True,
+            ),
+        )
+        batch_op.create_index(
+            "idx_clearance_items_projection",
+            ["org_id", "project_id", "category", "workflow_status"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("idx_clearance_items_projection", table_name="clearance_items")
-    op.drop_column("clearance_items", "assigned_to_user_id")
-    op.drop_column("clearance_items", "disposition_status")
-    op.drop_column("clearance_items", "workflow_status")
-    op.drop_column("clearance_items", "research_status")
+    with op.batch_alter_table("clearance_items") as batch_op:
+        batch_op.drop_index("idx_clearance_items_projection")
+        batch_op.drop_column("assigned_to_user_id")
+        batch_op.drop_column("disposition_status")
+        batch_op.drop_column("workflow_status")
+        batch_op.drop_column("research_status")

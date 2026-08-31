@@ -44,9 +44,9 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column(
             "mentions",
-            ARRAY(sa.String(100)),
+            sa.JSON().with_variant(ARRAY(sa.String(100)), "postgresql"),
             nullable=False,
-            server_default="{}",
+            server_default="[]",
         ),
         sa.Column("is_edited", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -64,7 +64,7 @@ def upgrade() -> None:
         "collaboration_outbox",
         sa.Column("id", sa.UUID(as_uuid=True), primary_key=True),
         sa.Column("event_type", sa.String(100), nullable=False),
-        sa.Column("payload", JSONB(), nullable=False),
+        sa.Column("payload", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
     )

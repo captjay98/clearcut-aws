@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("action", sa.String(100), nullable=False),
         sa.Column("target_type", sa.String(100), nullable=False),
         sa.Column("target_id", sa.UUID(as_uuid=True), nullable=False),
-        sa.Column("payload_redacted", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("payload_redacted", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index(

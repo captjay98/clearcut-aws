@@ -35,7 +35,7 @@ def upgrade() -> None:
             sa.ForeignKey("script_versions.id", ondelete="RESTRICT"),
             nullable=False,
         ),
-        sa.Column("diff_payload", JSONB(), nullable=False),
+        sa.Column("diff_payload", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
             ["org_id", "project_id"],

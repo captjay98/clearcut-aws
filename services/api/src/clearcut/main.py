@@ -63,18 +63,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize in-memory default state for development/testing
-identity_repo = InMemoryIdentityRepository()
+from clearcut.identity.adapters.sql_repository import DatabaseIdentityRepository
+from clearcut.organizations.adapters.sql_repository import DatabaseOrganizationRepository
+from clearcut.projects.adapters.sql_repository import DatabaseProjectRepository
+
+# Compose production SQL-backed repositories
+identity_repo = DatabaseIdentityRepository()
 identity_provider = Argon2idIdentityProvider()
 session_service = SessionService(
     repository=identity_repo,
     identity_provider=identity_provider,
 )
 
-org_repo = InMemoryOrganizationRepository()
+org_repo = DatabaseOrganizationRepository()
 org_service = OrganizationBootstrapService(repository=org_repo)
 
-project_repo = InMemoryProjectRepository()
+project_repo = DatabaseProjectRepository()
 project_service = ProjectService(repository=project_repo)
 
 storage = InMemoryObjectStorage()
