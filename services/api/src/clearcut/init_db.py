@@ -166,6 +166,54 @@ CREATE_TABLES_SQL = [
         details JSON,
         created_at TIMESTAMPTZ NOT NULL
     );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS report_snapshots (
+        id UUID PRIMARY KEY,
+        org_id UUID NOT NULL,
+        project_id UUID NOT NULL,
+        script_version_id UUID NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        content_hash VARCHAR(100) NOT NULL,
+        binding_manifest JSON NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS report_releases (
+        id UUID PRIMARY KEY,
+        snapshot_id UUID NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        attestation TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS protected_configurations (
+        id UUID PRIMARY KEY,
+        org_id UUID NOT NULL,
+        lifecycle VARCHAR(50) NOT NULL,
+        policy_version VARCHAR(50) NOT NULL,
+        prompt_version VARCHAR(50) NOT NULL,
+        activated_by UUID,
+        rationale TEXT,
+        created_at TIMESTAMPTZ NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS comments (
+        id UUID PRIMARY KEY,
+        org_id UUID NOT NULL,
+        project_id UUID NOT NULL,
+        item_id UUID NOT NULL,
+        author_id UUID NOT NULL,
+        parent_comment_id UUID,
+        content TEXT NOT NULL,
+        mentions JSON NOT NULL DEFAULT '[]',
+        is_edited BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL
+    );
     """
 ]
 

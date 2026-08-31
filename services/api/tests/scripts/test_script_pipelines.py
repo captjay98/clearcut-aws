@@ -1,0 +1,58 @@
+import pytest
+from httpx import ASGITransport, AsyncClient
+from clearcut.init_db import init_and_seed_db
+from clearcut.main import app
+
+
+@pytest.mark.asyncio
+async def test_script_upload_and_pipeline_flow():
+    await init_and_seed_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Register user
+        reg_res = await client.post(
+            "/api/v1/users",
+            json={"name": "Script Writer", "email": "writer@studio.com", "password": "Password123!"},
+        )
+        assert reg_res.status_code == 201
+        cookie = reg_res.cookies.get("__Host-clearcut_session")
+        client.cookies.set("__Host-clearcut_session", cookie)
+
+        # Create org & project
+        org_res = await client.post(
+            "/api/v1/organizations",
+            json={"name": "Writer Studio", "slug": "writer-studio"},
+        )
+        org_id = org_res.json()["data"]["orgId"]
+
+        proj_res = await client.post(
+            f"/api/v1/organizations/{org_id}/projects",
+            json={"title": "Script Project", "description": "Testing scripts"},
+        )
+        proj_id = proj_res.json()["data"]["projectId"]
+
+        # Create upload capability
+        cap_res = await client.post(
+            f"/api/v1/organizations/{org_id}/projects/{proj_id}/upload-capabilities",
+            json={"filename": "screenplay.pdf", "contentType": "application/pdf"},
+        )
+        assert cap_res.status_code == 201
+        cap_data = cap_res.json()["data"]
+        cap_id = cap_data["capabilityId"]
+
+        # Finalize upload
+        files = {"file": ("screenplay.pdf", b"%PDF-1.4 test script content", "application/pdf")}
+        fin_res = await client.post(
+            f"/api/v1/organizations/{org_id}/projects/{proj_id}/import-artifacts/finalize?capability_id={cap_id}",
+            files=files,
+        )
+        assert fin_res.status_code == 201
+        assert fin_res.json()["data"]["status"] in ["finalized", "uploaded"]
+
+        # Create paste import
+        paste_res = await client.post(
+            f"/api/v1/organizations/{org_id}/projects/{proj_id}/imports:paste",
+            json={"text": "EXT. STREET - DAY\nJohn walks down the street.", "title": "Pasted Scene"},
+        )
+        assert paste_res.status_code == 201
+        assert paste_res.json()["data"]["status"] == "ready_to_parse"

@@ -1,56 +1,61 @@
 import json
-import uuid
 from datetime import UTC, datetime
 from typing import Any
-
+from uuid import UUID
+import uuid6
 import sqlalchemy as sa
-from clearcut.database import is_sqlite, session_scope
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel, Field
 
-
-def fmt_id(val):
-    if val is None:
-        return None
-    return str(val) if is_sqlite else val
-
-def fmt_dt(val):
-    if val is None:
-        return None
-    return val.isoformat() if is_sqlite else val
+from clearcut.database import session_scope
+from clearcut.identity.delivery.scope import get_request_scope
+from clearcut.organizations.delivery.http import verify_csrf_origin
 
 router = APIRouter(
     prefix="/api/v1/organizations/{org_id}/projects/{project_id}/items/{item_id}/decisions",
-    tags=["decisions"]
+    tags=["decisions"],
 )
 
-@router.post("")
+
+class RecordDecisionBody(BaseModel):
+    decision: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def record_decision(
     org_id: str,
     project_id: str,
     item_id: str,
-    payload: dict[str, Any]
-) -> JSONResponse:
+    body: RecordDecisionBody,
+    request: Request,
+) -> dict:
+    verify_csrf_origin(request)
+    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    try:
+        parsed_item_id = UUID(item_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+
+    dec_id = uuid6.uuid7()
+    audit_id = uuid6.uuid7()
+    now = datetime.now(UTC)
+
     async with session_scope() as session:
-        # Resolve real item_id and user_id from DB
+        # Check item existence in org and project
         item_res = await session.execute(
-            sa.text("SELECT id, org_id, project_id FROM clearance_items WHERE id = :id_val OR text LIKE :term LIMIT 1"),
-            {"id_val": fmt_id(uuid.UUID(item_id)) if len(item_id) == 36 else "00000000-0000-0000-0000-000000000000", "term": f"%{item_id}%"}
+            sa.text("""
+                SELECT id FROM clearance_items
+                WHERE id = :id AND org_id = :org_id AND project_id = :project_id
+            """),
+            {
+                "id": str(parsed_item_id),
+                "org_id": str(scope.org_id),
+                "project_id": str(scope.project_id),
+            },
         )
-        item_row = item_res.fetchone()
-
-        user_res = await session.execute(sa.text("SELECT id FROM users LIMIT 1"))
-        user_row = user_res.fetchone()
-
-        actor_id = user_row.id if user_row else uuid.UUID("018f0000-0000-7000-8000-000000000011")
-        target_org_id = item_row.org_id if item_row else uuid.UUID("018f0000-0000-7000-8000-000000000001")
-        target_proj_id = item_row.project_id if item_row else uuid.UUID("018f0000-0000-7000-8000-000000000101")
-        target_item_id = item_row.id if item_row else uuid.UUID("018f0000-0000-7000-8000-000000001101")
-
-        dec_id = uuid.uuid4()
-        now = datetime.now(UTC)
-        decision_val = payload.get("decision", payload.get("action", "accepted"))
-        rationale = payload.get("rationale", "Source verified from primary registry record")
+        if not item_res.mappings().first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clearance item not found")
 
         # Insert decision
         await session.execute(
@@ -62,18 +67,32 @@ async def record_decision(
                 )
             """),
             {
-                "id": fmt_id(dec_id),
-                "org_id": fmt_id(target_org_id),
-                "project_id": fmt_id(target_proj_id),
-                "item_id": fmt_id(target_item_id),
-                "actor_id": fmt_id(actor_id),
-                "decision_type": decision_val,
-                "rationale": rationale,
-                "created_at": fmt_dt(now),
-            }
+                "id": str(dec_id),
+                "org_id": str(scope.org_id),
+                "project_id": str(scope.project_id),
+                "item_id": str(parsed_item_id),
+                "actor_id": str(scope.user_id),
+                "decision_type": body.decision,
+                "rationale": body.rationale,
+                "created_at": now,
+            },
         )
 
-        # Record immutable audit event
+        # Update item workflow status
+        await session.execute(
+            sa.text("""
+                UPDATE clearance_items
+                SET status = 'decided', workflow_status = 'closed'
+                WHERE id = :id AND org_id = :org_id AND project_id = :project_id
+            """),
+            {
+                "id": str(parsed_item_id),
+                "org_id": str(scope.org_id),
+                "project_id": str(scope.project_id),
+            },
+        )
+
+        # Record immutable audit event in the same transaction
         await session.execute(
             sa.text("""
                 INSERT INTO audit_events (
@@ -83,23 +102,27 @@ async def record_decision(
                 )
             """),
             {
-                "id": fmt_id(uuid.uuid4()),
-                "org_id": fmt_id(target_org_id),
-                "project_id": fmt_id(target_proj_id),
-                "actor_id": fmt_id(actor_id),
-                "target_id": fmt_id(target_item_id),
-                "details": json.dumps({"decision": decision_val, "rationale": rationale, "actor": payload.get("actor", "Jamie Park")}),
-                "created_at": fmt_dt(now),
-            }
+                "id": str(audit_id),
+                "org_id": str(scope.org_id),
+                "project_id": str(scope.project_id),
+                "actor_id": str(scope.user_id),
+                "target_id": str(parsed_item_id),
+                "details": json.dumps({"decision": body.decision, "rationale": body.rationale}),
+                "created_at": now,
+            },
         )
 
-        decision_data = {
+    return {
+        "data": {
             "id": str(dec_id),
-            "item_id": str(target_item_id),
-            "decision": decision_val,
-            "rationale": rationale,
+            "itemId": str(parsed_item_id),
+            "orgId": str(scope.org_id),
+            "projectId": str(scope.project_id),
+            "actorId": str(scope.user_id),
+            "decision": body.decision,
+            "rationale": body.rationale,
             "status": "committed",
-            "db_persisted": True
-        }
-
-    return JSONResponse(content={"data": decision_data}, status_code=201)
+            "createdAt": now.isoformat(),
+        },
+        "meta": {"requestId": "req_record_decision"},
+    }
