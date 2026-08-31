@@ -29,4 +29,13 @@ if (!allPassed) {
   process.exit(1);
 }
 
+const { execSync } = await import("node:child_process");
+try {
+  console.log("🔍 Running no-legacy runtime gate...");
+  execSync("node scripts/check-no-legacy-runtime.mjs", { stdio: "inherit" });
+} catch (err) {
+  console.error("❌ No-legacy runtime verification failed.");
+  process.exit(1);
+}
+
 console.log("🎉 All submission artifacts verified successfully!");

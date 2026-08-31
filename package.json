@@ -6,13 +6,14 @@
   "scripts": {
     "check:toolchains": "node scripts/check-package-managers.mjs",
     "check:coverage": "node scripts/check-feature-coverage.mjs",
+    "check:no-legacy": "node scripts/check-no-legacy-runtime.mjs",
     "contract:lint": "bun scripts/check-contract-drift.mjs",
     "contract:generate": "bun scripts/generate-clients.mjs",
     "agents:build": "bun .agents/scripts/build.mjs",
     "agents:lint": "bun .agents/scripts/lint.mjs",
     "agents:verify": "bun .agents/scripts/verify.mjs",
     "test:python": "uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v",
-    "verify": "node scripts/check-package-managers.mjs && node scripts/check-feature-coverage.mjs && bun scripts/check-contract-drift.mjs && uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v"
+    "verify": "node scripts/check-package-managers.mjs && node scripts/check-feature-coverage.mjs && node scripts/check-no-legacy-runtime.mjs && bun scripts/check-contract-drift.mjs && uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
