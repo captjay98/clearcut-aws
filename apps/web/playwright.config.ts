@@ -13,20 +13,26 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "chromium-desktop-1440",
+      name: "desktop-1440",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {
-      name: "firefox-desktop-1024",
-      use: { ...devices["Desktop Firefox"], viewport: { width: 1024, height: 768 } },
+      name: "desktop-1024",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1024, height: 768 } },
     },
     {
-      name: "webkit-tablet-768",
-      use: { ...devices["Desktop Safari"], viewport: { width: 768, height: 1024 } },
+      name: "tablet-768",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 } },
     },
     {
       name: "mobile-375",
-      use: { ...devices["iPhone 13"] },
+      use: { ...devices["Pixel 7"], viewport: { width: 375, height: 667 } },
     },
   ],
+  webServer: {
+    command: "pnpm dev --port 3000",
+    url: "http://localhost:3000",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
 });

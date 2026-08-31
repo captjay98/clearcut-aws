@@ -1,72 +1,14 @@
 <!doctype html>
-<html lang="en" data-theme="script">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="ClearCut helps production teams find screenplay clearance risks, connect them to source evidence, and record accountable human decisions.">
-  <meta name="theme-color" content="#f6f3ea">
-  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0f172a">
   <title>ClearCut — Screenplay clearance with a paper trail</title>
-  <link rel="stylesheet" href="/src/index.css">
 </head>
-<body>
-  <a class="skip-link" href="#app-main" data-action="skip-main">Skip to main content</a>
-
-  <!-- Public shell -->
-  <header id="public-header" class="site-header" hidden>
-    <div class="site-header-inner">
-      <a class="brand" href="#marketing" aria-label="ClearCut home">
-        <span class="slate-mark" aria-hidden="true"><span>CC</span></span>
-        <span>ClearCut</span>
-      </a>
-      <nav class="public-nav" aria-label="Explore ClearCut">
-        <a href="#features">Features</a>
-        <a href="#docs">Docs</a>
-      </nav>
-      <div class="header-spacer"></div>
-      <div class="header-actions public-header-actions">
-        <button class="icon-button is-bare" type="button" data-action="open-appearance" aria-label="Choose workspace appearance"><span aria-hidden="true">◐</span></button>
-        <a class="button button-quiet" href="#auth">Sign in</a>
-        <button class="button button-primary" type="button" data-action="start-demo">Open demo</button>
-      </div>
-    </div>
-    <span class="revision-bar" aria-hidden="true"></span>
-  </header>
-
-  <!-- Application shell -->
-  <header id="app-header" class="app-header" hidden>
-    <button class="icon-button is-bare nav-toggle" type="button" data-action="open-drawer" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobile-drawer"><span aria-hidden="true">☰</span></button>
-    <button class="icon-button is-bare rail-toggle" type="button" data-action="toggle-sidebar" aria-expanded="true" aria-controls="app-sidebar"><span aria-hidden="true">⇤</span></button>
-    <a class="brand" href="#projects" aria-label="ClearCut projects">
-      <span class="slate-mark" aria-hidden="true"><span>CC</span></span>
-      <span>ClearCut</span>
-    </a>
-    <div id="context-chip" class="org-chip" aria-label="Current context"></div>
-    <div id="script-position" class="position-readout" aria-live="polite"></div>
-    <div class="header-spacer"></div>
-    <div class="header-actions">
-      <button class="button button-quiet" type="button" data-action="go" data-route="notifications">Inbox</button>
-      <button class="button button-quiet" type="button" data-action="open-receipts">Receipts</button>
-      <button class="icon-button is-bare" type="button" data-action="open-appearance" aria-label="Choose workspace appearance"><span aria-hidden="true">◐</span></button>
-      <span class="avatar" aria-label="Signed in as Jamie Park" title="Jamie Park">JP</span>
-    </div>
-    <span id="revision-bar" class="revision-bar" aria-hidden="true"></span>
-  </header>
-
-  <aside id="app-sidebar" class="app-sidebar" aria-label="Primary navigation" hidden></aside>
-
-  <main id="app-main" tabindex="-1">
-    <div id="route-root"></div>
-  </main>
-
-  <nav id="mobile-nav" class="mobile-nav" aria-label="Primary navigation" hidden></nav>
-  <div id="mobile-drawer" class="mobile-drawer" data-open="false"></div>
-
-  <div id="dialog-host"></div>
-  <div id="toast-region" class="toast-region" aria-hidden="true"></div>
-  <div id="live-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-  <div id="live-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
-
+<body className="bg-slate-900 text-slate-100 antialiased">
+  <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
