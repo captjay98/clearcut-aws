@@ -111,6 +111,121 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /api/v1/password-recovery-requests:
+    post:
+      summary: Request password recovery token
+      operationId: requestPasswordRecovery
+      tags:
+        - session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Password recovery request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - message
+                    properties:
+                      message:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/password-recovery-completions:
+    post:
+      summary: Complete password recovery using token
+      operationId: completePasswordRecovery
+      tags:
+        - session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - newPassword
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        '200':
+          description: Password recovered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - message
+                    properties:
+                      message:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organization-entry:
+    get:
+      summary: Resolve organization entry for current user
+      operationId: resolveOrganizationEntry
+      tags:
+        - organizations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Resolved organization entry destination
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - hasOrganizations
+                    properties:
+                      hasOrganizations:
+                        type: boolean
+                      defaultOrgSlug:
+                        type: string
+                        nullable: true
+                      defaultOrgId:
+                        $ref: '#/components/schemas/UUIDv7'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
   /api/v1/organizations:
     get:
       summary: List organizations for current user
@@ -266,6 +381,2357 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /api/v1/organizations/{orgId}/projects/{projectId}:
+    get:
+      summary: Get details of a project
+      operationId: getProject
+      tags:
+        - projects
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Project'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/organizations/{orgId}/invitations:
+    post:
+      summary: Create an invitation to join organization
+      operationId: createInvitation
+      tags:
+        - invitations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+      responses:
+        '201':
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invitation'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/invitations/{invitationId}:resend:
+    post:
+      summary: Resend an invitation
+      operationId: resendInvitation
+      tags:
+        - invitations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Invitation resent
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invitation'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/invitations/{invitationId}:revoke:
+    post:
+      summary: Revoke an invitation
+      operationId: revokeInvitation
+      tags:
+        - invitations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Invitation revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invitation'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/invitations/{token}:accept:
+    post:
+      summary: Accept an invitation using secret token
+      operationId: acceptInvitation
+      tags:
+        - invitations
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invitation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Membership'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/invitations/{token}:decline:
+    post:
+      summary: Decline an invitation using secret token
+      operationId: declineInvitation
+      tags:
+        - invitations
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invitation declined
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - declined
+                    properties:
+                      declined:
+                        type: boolean
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/memberships:
+    get:
+      summary: List members in an organization
+      operationId: listOrganizationMembers
+      tags:
+        - memberships
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Organization memberships list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Membership'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/memberships/{membershipId}:changeRole:
+    post:
+      summary: Change member role within organization
+      operationId: changeMembershipRole
+      tags:
+        - memberships
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - role
+              properties:
+                role:
+                  $ref: '#/components/schemas/UserRole'
+      responses:
+        '200':
+          description: Role changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Membership'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/memberships/{membershipId}:changeProjectGrant:
+    post:
+      summary: Change project grants for a member
+      operationId: changeProjectGrant
+      tags:
+        - memberships
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - projectIds
+              properties:
+                projectIds:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Project grant changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Membership'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/memberships/{membershipId}:deactivate:
+    post:
+      summary: Deactivate a membership
+      operationId: deactivateMembership
+      tags:
+        - memberships
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Member deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Membership'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/memberships/{membershipId}:reactivate:
+    post:
+      summary: Reactivate a deactivated membership
+      operationId: reactivateMembership
+      tags:
+        - memberships
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: membershipId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Member reactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Membership'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/upload-capabilities:
+    post:
+      summary: Create upload capability / signed upload slot
+      operationId: createUploadCapability
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - filename
+                - mimeType
+                - sizeBytes
+              properties:
+                filename:
+                  type: string
+                mimeType:
+                  type: string
+                sizeBytes:
+                  type: integer
+      responses:
+        '201':
+          description: Upload capability created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - artifactId
+                      - uploadUrl
+                    properties:
+                      artifactId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      uploadUrl:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:finalize:
+    post:
+      summary: Finalize uploaded import artifact
+      operationId: finalizeImportArtifact
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: artifactId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Import artifact finalized
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportArtifact'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/paste-imports:
+    post:
+      summary: Import script content via raw text paste
+      operationId: createPasteImport
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rawText
+                - format
+              properties:
+                rawText:
+                  type: string
+                format:
+                  type: string
+                  enum: [fountain, fdx, raw]
+      responses:
+        '201':
+          description: Paste import created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportArtifact'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse:
+    post:
+      summary: Start parsing an import artifact
+      operationId: parseImportArtifact
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: artifactId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '202':
+          description: Parse job initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ParseRun'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings:
+    post:
+      summary: Acknowledge and accept parse warnings
+      operationId: acceptParseWarnings
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Warnings accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ParseRun'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion:
+    post:
+      summary: Commit parsed script as immutable version
+      operationId: commitScriptVersion
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '201':
+          description: Version committed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ScriptVersion'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/script-versions:
+    get:
+      summary: List committed script versions for a project
+      operationId: listProjectVersions
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Script versions list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScriptVersion'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:
+    get:
+      summary: Get details of a script version
+      operationId: getProjectVersion
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Script version details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ScriptVersion'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect:
+    post:
+      summary: Start entity clearance detection on script version
+      operationId: startDetection
+      tags:
+        - detection
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '202':
+          description: Detection job started
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research:
+    post:
+      summary: Start automated Parallel search & extract research for a clearance item
+      operationId: startResearch
+      tags:
+        - research
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '202':
+          description: Research job started
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:
+    get:
+      summary: Get job status and progress
+      operationId: getJob
+      tags:
+        - operations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:retry:
+    post:
+      summary: Retry a failed job
+      operationId: retryJob
+      tags:
+        - operations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Job retried
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:cancel:
+    post:
+      summary: Cancel a running or queued job
+      operationId: cancelJob
+      tags:
+        - operations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items:
+    get:
+      summary: List clearance items in project
+      operationId: listClearanceItems
+      tags:
+        - items
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Clearance items list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClearanceItem'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:
+    get:
+      summary: Get clearance item detail
+      operationId: getClearanceItem
+      tags:
+        - items
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Clearance item detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ClearanceItem'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence:
+    get:
+      summary: Get evidence claims and cited source snapshots for an item
+      operationId: getClearanceItemEvidence
+      tags:
+        - evidence
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Item evidence collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ItemEvidence'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign:
+    post:
+      summary: Assign clearance item to a member
+      operationId: assignClearanceItem
+      tags:
+        - review
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assigneeId
+              properties:
+                assigneeId:
+                  $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Item assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ClearanceItem'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate:
+    post:
+      summary: Change due date of clearance item
+      operationId: changeClearanceItemDueDate
+      tags:
+        - review
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dueDate
+              properties:
+                dueDate:
+                  $ref: '#/components/schemas/ISODateTime'
+      responses:
+        '200':
+          description: Due date changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ClearanceItem'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision:
+    post:
+      summary: Record human reviewer evidence decision
+      operationId: recordEvidenceDecision
+      tags:
+        - decisions
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordDecisionRequest'
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ClearanceItem'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition:
+    post:
+      summary: Set item disposition
+      operationId: setDisposition
+      tags:
+        - decisions
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - disposition
+              properties:
+                disposition:
+                  type: string
+                rationale:
+                  type: string
+      responses:
+        '200':
+          description: Disposition updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ClearanceItem'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer:
+    post:
+      summary: Refer item to counsel or external expert
+      operationId: referClearanceItem
+      tags:
+        - collaboration
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetRole
+                - question
+              properties:
+                targetRole:
+                  type: string
+                question:
+                  type: string
+      responses:
+        '201':
+          description: Referral created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Referral'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/referrals/{referralId}:acknowledge:
+    post:
+      summary: Acknowledge or answer a referral
+      operationId: acknowledgeReferral
+      tags:
+        - collaboration
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: referralId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - response
+              properties:
+                response:
+                  type: string
+      responses:
+        '200':
+          description: Referral acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Referral'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments:
+    post:
+      summary: Add comment to item discussion
+      operationId: addComment
+      tags:
+        - collaboration
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                mentions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Comment'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:reply:
+    post:
+      summary: Reply to a comment
+      operationId: replyToComment
+      tags:
+        - collaboration
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+      responses:
+        '201':
+          description: Reply added
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Comment'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:revise:
+    post:
+      summary: Revise/edit a comment
+      operationId: reviseComment
+      tags:
+        - collaboration
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+      responses:
+        '200':
+          description: Comment revised
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Comment'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite:
+    post:
+      summary: Propose script dialogue/action rewrite
+      operationId: proposeRewrite
+      tags:
+        - rewrites
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - proposedText
+              properties:
+                proposedText:
+                  type: string
+                rationale:
+                  type: string
+      responses:
+        '201':
+          description: Rewrite proposed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RewriteProposal'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve:
+    post:
+      summary: Approve a rewrite proposal
+      operationId: approveRewrite
+      tags:
+        - rewrites
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Rewrite approved
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RewriteProposal'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject:
+    post:
+      summary: Reject a rewrite proposal
+      operationId: rejectRewrite
+      tags:
+        - rewrites
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Rewrite rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RewriteProposal'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw:
+    post:
+      summary: Withdraw a rewrite proposal
+      operationId: withdrawRewrite
+      tags:
+        - rewrites
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Rewrite withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/RewriteProposal'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan:
+    post:
+      summary: Start selective rescan of affected items for revision
+      operationId: startSelectiveRescan
+      tags:
+        - rescan
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                itemIds:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '202':
+          description: Rescan job initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:
+    get:
+      summary: Get monitoring policy configuration
+      operationId: getMonitoringPolicy
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Monitoring policy details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MonitoringPolicy'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence:
+    post:
+      summary: Change monitoring frequency cadence
+      operationId: changeMonitoringCadence
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cadence
+              properties:
+                cadence:
+                  type: string
+                  enum: [daily, weekly, biweekly, monthly]
+      responses:
+        '200':
+          description: Monitoring cadence changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MonitoringPolicy'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs:
+    get:
+      summary: List monitoring run history
+      operationId: listMonitoringRuns
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Monitoring runs list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MonitoringRun'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+    post:
+      summary: Trigger manual monitoring run
+      operationId: startMonitoringRun
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '202':
+          description: Monitoring run started
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision:
+    post:
+      summary: Record decision on monitoring delta change
+      operationId: reviewMonitoringChange
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum: [accepted, rejected, escalated]
+                rationale:
+                  type: string
+      responses:
+        '200':
+          description: Monitoring review decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - reviewId
+                      - decision
+                    properties:
+                      reviewId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      decision:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/notifications:
+    get:
+      summary: List notifications for user in organization
+      operationId: listNotifications
+      tags:
+        - notifications
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+    post:
+      summary: Mark all notifications read
+      operationId: markAllNotificationsRead
+      tags:
+        - notifications
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: All notifications marked read
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - updatedCount
+                    properties:
+                      updatedCount:
+                        type: integer
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/notifications/{notificationId}:markRead:
+    post:
+      summary: Mark single notification read
+      operationId: markNotificationRead
+      tags:
+        - notifications
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Notification'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/push-subscriptions:
+    post:
+      summary: Register Web Push subscription
+      operationId: registerPushSubscription
+      tags:
+        - notifications
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - endpoint
+                - keys
+              properties:
+                endpoint:
+                  type: string
+                keys:
+                  type: object
+                  required:
+                    - p256dh
+                    - auth
+                  properties:
+                    p256dh:
+                      type: string
+                    auth:
+                      type: string
+      responses:
+        '201':
+          description: Push subscription registered
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - subscriptionId
+                    properties:
+                      subscriptionId:
+                        $ref: '#/components/schemas/UUIDv7'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/push-subscriptions/{subscriptionId}:
+    delete:
+      summary: Revoke push subscription
+      operationId: revokePushSubscription
+      tags:
+        - notifications
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '204':
+          description: Subscription revoked
+
+  /api/v1/organizations/{orgId}/records:
+    get:
+      summary: List immutable audit records and receipts
+      operationId: listRecords
+      tags:
+        - records
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Audit records list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditRecord'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/records/{recordId}:
+    get:
+      summary: Get detailed audit record with verification receipt
+      operationId: getRecord
+      tags:
+        - records
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Audit record details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuditRecord'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate:
+    post:
+      summary: Validate a candidate protected configuration
+      operationId: validateProtectedConfiguration
+      tags:
+        - governance
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: configurationId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - valid
+                    properties:
+                      valid:
+                        type: boolean
+                      issues:
+                        type: array
+                        items:
+                          type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate:
+    post:
+      summary: Activate a validated protected configuration (Owner-only)
+      operationId: activateProtectedConfiguration
+      tags:
+        - governance
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: configurationId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Protected configuration activated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - configurationId
+                      - status
+                    properties:
+                      configurationId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      status:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote:
+    post:
+      summary: Promote a learning candidate (Owner-only)
+      operationId: promoteLearningCandidate
+      tags:
+        - learning
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Learning candidate promoted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - candidateId
+                      - stage
+                    properties:
+                      candidateId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      stage:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/learning-candidates/{candidateId}:rollback:
+    post:
+      summary: Rollback a promoted candidate
+      operationId: rollbackLearningCandidate
+      tags:
+        - learning
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Learning candidate rolled back
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - candidateId
+                      - stage
+                    properties:
+                      candidateId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      stage:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/deletion-requests:
+    post:
+      summary: Schedule project or organization data deletion
+      operationId: scheduleDeletion
+      tags:
+        - governance
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetType
+                - targetId
+              properties:
+                targetType:
+                  type: string
+                  enum: [project, organization]
+                targetId:
+                  $ref: '#/components/schemas/UUIDv7'
+                retentionDays:
+                  type: integer
+                  default: 30
+      responses:
+        '201':
+          description: Deletion request scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - requestId
+                      - scheduledPurgeAt
+                    properties:
+                      requestId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      scheduledPurgeAt:
+                        $ref: '#/components/schemas/ISODateTime'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/deletion-requests/{requestId}:restore:
+    post:
+      summary: Restore a scheduled deletion before purge
+      operationId: restoreDeletion
+      tags:
+        - governance
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Deletion restored
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - requestId
+                      - restored
+                    properties:
+                      requestId:
+                        $ref: '#/components/schemas/UUIDv7'
+                      restored:
+                        type: boolean
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/webhooks/parallel/monitor:
+    post:
+      summary: Ingress webhook for verified Parallel Monitor events
+      operationId: receiveParallelMonitorWebhook
+      tags:
+        - webhooks
+      responses:
+        '200':
+          description: Webhook received and verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - received
+                properties:
+                  received:
+                    type: boolean
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-preview:
+    get:
+      summary: Preview draft clearance report
+      operationId: previewReport
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Report preview projection
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReportPreview'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots:
+    post:
+      summary: Generate immutable version-bound report snapshot
+      operationId: generateReportSnapshot
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '201':
+          description: Report snapshot generated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReportSnapshot'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:
+    get:
+      summary: Get report snapshot by ID
+      operationId: getReportSnapshot
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Report snapshot details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReportSnapshot'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:release:
+    post:
+      summary: Officially release report snapshot (governed action)
+      operationId: releaseReport
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Report released
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReportRelease'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact:
+    get:
+      summary: Download released report artifact PDF/HTML
+      operationId: downloadReleasedReport
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: releaseId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Report artifact content
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - downloadUrl
+                properties:
+                  downloadUrl:
+                    type: string
+
 components:
   parameters:
     OrgId:
@@ -391,6 +2857,9 @@ components:
           type: string
         slug:
           type: string
+        isDemo:
+          type: boolean
+          default: false
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
 
@@ -424,6 +2893,9 @@ components:
           type: string
         description:
           type: string
+        isDemo:
+          type: boolean
+          default: false
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
 
@@ -437,6 +2909,497 @@ components:
           minLength: 1
           maxLength: 200
         description:
+          type: string
+
+    Invitation:
+      type: object
+      required:
+        - invitationId
+        - orgId
+        - email
+        - role
+        - status
+        - createdAt
+      properties:
+        invitationId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          type: string
+          enum: [pending, accepted, declined, revoked]
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    CreateInvitationRequest:
+      type: object
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        projectGrants:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+
+    Membership:
+      type: object
+      required:
+        - membershipId
+        - orgId
+        - userId
+        - role
+        - active
+        - createdAt
+      properties:
+        membershipId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        userId:
+          $ref: '#/components/schemas/UUIDv7'
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        active:
+          type: boolean
+        projectGrants:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ImportArtifact:
+      type: object
+      required:
+        - artifactId
+        - projectId
+        - filename
+        - status
+        - createdAt
+      properties:
+        artifactId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        filename:
+          type: string
+        status:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ParseRun:
+      type: object
+      required:
+        - runId
+        - artifactId
+        - status
+        - warnings
+        - sceneCount
+      properties:
+        runId:
+          $ref: '#/components/schemas/UUIDv7'
+        artifactId:
+          $ref: '#/components/schemas/UUIDv7'
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              line:
+                type: integer
+              message:
+                type: string
+        sceneCount:
+          type: integer
+
+    ScriptVersion:
+      type: object
+      required:
+        - versionId
+        - projectId
+        - versionNumber
+        - revisionLabel
+        - createdAt
+      properties:
+        versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        versionNumber:
+          type: integer
+        revisionLabel:
+          type: string
+        sceneCount:
+          type: integer
+        itemCount:
+          type: integer
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    Job:
+      type: object
+      required:
+        - jobId
+        - status
+        - jobType
+        - createdAt
+      properties:
+        jobId:
+          $ref: '#/components/schemas/UUIDv7'
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        jobType:
+          type: string
+        progress:
+          type: number
+        error:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ClearanceItem:
+      type: object
+      required:
+        - itemId
+        - projectId
+        - category
+        - entityName
+        - status
+      properties:
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        category:
+          type: string
+        entityName:
+          type: string
+        contextText:
+          type: string
+        status:
+          type: string
+        disposition:
+          type: string
+        assignedTo:
+          $ref: '#/components/schemas/UUIDv7'
+        dueDate:
+          $ref: '#/components/schemas/ISODateTime'
+        claimCount:
+          type: integer
+
+    SourceSnapshot:
+      type: object
+      required:
+        - snapshotId
+        - url
+        - retrievedAt
+        - publisher
+        - tier
+      properties:
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        url:
+          type: string
+        retrievedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        publisher:
+          type: string
+        tier:
+          type: string
+        excerpt:
+          type: string
+
+    EvidenceClaim:
+      type: object
+      required:
+        - claimId
+        - snapshotId
+        - claimText
+        - stance
+      properties:
+        claimId:
+          $ref: '#/components/schemas/UUIDv7'
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        claimText:
+          type: string
+        stance:
+          type: string
+        confidence:
+          type: number
+
+    ItemEvidence:
+      type: object
+      required:
+        - itemId
+        - claims
+        - snapshots
+      properties:
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceClaim'
+        snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceSnapshot'
+
+    RecordDecisionRequest:
+      type: object
+      required:
+        - decision
+        - rationale
+      properties:
+        decision:
+          type: string
+          enum: [cleared, flagged, rejected, further_review]
+        rationale:
+          type: string
+        expectedVersion:
+          type: integer
+
+    Referral:
+      type: object
+      required:
+        - referralId
+        - itemId
+        - targetRole
+        - question
+        - status
+      properties:
+        referralId:
+          $ref: '#/components/schemas/UUIDv7'
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        targetRole:
+          type: string
+        question:
+          type: string
+        response:
+          type: string
+        status:
+          type: string
+
+    Comment:
+      type: object
+      required:
+        - commentId
+        - authorId
+        - body
+        - createdAt
+      properties:
+        commentId:
+          $ref: '#/components/schemas/UUIDv7'
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        authorId:
+          $ref: '#/components/schemas/UUIDv7'
+        authorEmail:
+          type: string
+        body:
+          type: string
+        parentId:
+          $ref: '#/components/schemas/UUIDv7'
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    RewriteProposal:
+      type: object
+      required:
+        - proposalId
+        - itemId
+        - proposedText
+        - status
+      properties:
+        proposalId:
+          $ref: '#/components/schemas/UUIDv7'
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        proposedText:
+          type: string
+        rationale:
+          type: string
+        status:
+          type: string
+          enum: [proposed, approved, rejected, withdrawn]
+
+    MonitoringPolicy:
+      type: object
+      required:
+        - projectId
+        - cadence
+        - active
+      properties:
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        cadence:
+          type: string
+        active:
+          type: boolean
+        lastRunAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    MonitoringRun:
+      type: object
+      required:
+        - runId
+        - projectId
+        - status
+        - itemsChecked
+        - changesDetected
+      properties:
+        runId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        itemsChecked:
+          type: integer
+        changesDetected:
+          type: integer
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    Notification:
+      type: object
+      required:
+        - notificationId
+        - orgId
+        - title
+        - body
+        - read
+        - createdAt
+      properties:
+        notificationId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        title:
+          type: string
+        body:
+          type: string
+        read:
+          type: boolean
+        link:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    AuditRecord:
+      type: object
+      required:
+        - recordId
+        - orgId
+        - eventType
+        - actorId
+        - timestamp
+      properties:
+        recordId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        eventType:
+          type: string
+        actorId:
+          $ref: '#/components/schemas/UUIDv7'
+        actorEmail:
+          type: string
+        payload:
+          type: object
+        receiptHash:
+          type: string
+        timestamp:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ReportPreview:
+      type: object
+      required:
+        - projectId
+        - totalItems
+        - clearedItems
+        - flaggedItems
+        - unresolvedRisk
+      properties:
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        totalItems:
+          type: integer
+        clearedItems:
+          type: integer
+        flaggedItems:
+          type: integer
+        unresolvedRisk:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              count:
+                type: integer
+
+    ReportSnapshot:
+      type: object
+      required:
+        - snapshotId
+        - projectId
+        - versionId
+        - generatedAt
+        - status
+      properties:
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        generatedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        status:
+          type: string
+
+    ReportRelease:
+      type: object
+      required:
+        - releaseId
+        - snapshotId
+        - releasedBy
+        - releasedAt
+      properties:
+        releaseId:
+          $ref: '#/components/schemas/UUIDv7'
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        releasedBy:
+          $ref: '#/components/schemas/UUIDv7'
+        releasedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        downloadUrl:
           type: string
 
     ResponseMeta:

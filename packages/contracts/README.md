@@ -6,17 +6,30 @@ This package contains the single canonical API specification and deterministic c
 
 * `openapi.yaml`: Canonical OpenAPI 3.1.0 specification.
 * `schemas/`: Standalone JSON Schemas (error models, domain event envelopes).
-* `generated/typescript/`: Auto-generated TypeScript types and client interface definitions.
+* `generated/typescript/`: Auto-generated TypeScript types, `ApiResult` envelope, and executable same-origin client transport.
 * `generated/python/`: Auto-generated Python Pydantic client models.
+
+## Client Usage (TypeScript)
+
+```ts
+import { api, type ApiResult } from '@clearcut/contracts';
+
+const result = await api.getSessionContext();
+if (result.ok) {
+  console.log('Session context:', result.value);
+} else {
+  console.error('API Error:', result.error.code, result.error.message);
+}
+```
 
 ## Commands
 
 ```bash
 # Verify schema syntax and zero drift
-bun scripts/check-contract-drift.mjs
+pnpm contract:check
 
 # Re-generate TypeScript and Python clients from openapi.yaml
-bun scripts/generate-clients.mjs
+pnpm contract:generate
 ```
 
 > **Warning:** Do not edit files under `generated/` directly. Always update `openapi.yaml` and re-run the generator.

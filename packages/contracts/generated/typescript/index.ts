@@ -42,6 +42,7 @@ export interface Organization {
   orgId: UUIDv7;
   name: string;
   slug: string;
+  isDemo?: boolean;
   createdAt: ISODateTime;
 }
 
@@ -55,6 +56,7 @@ export interface Project {
   orgId: UUIDv7;
   title: string;
   description?: string;
+  isDemo?: boolean;
   createdAt: ISODateTime;
 }
 
@@ -63,31 +65,315 @@ export interface CreateProjectRequest {
   description?: string;
 }
 
+export interface Invitation {
+  invitationId: UUIDv7;
+  orgId: UUIDv7;
+  email: string;
+  role: UserRole;
+  status: 'pending' | 'accepted' | 'declined' | 'revoked' | string;
+  createdAt: ISODateTime;
+}
+
+export interface CreateInvitationRequest {
+  email: string;
+  role: UserRole;
+  projectGrants?: UUIDv7[];
+}
+
+export interface Membership {
+  membershipId: UUIDv7;
+  orgId: UUIDv7;
+  userId: UUIDv7;
+  email?: string;
+  role: UserRole;
+  active: boolean;
+  projectGrants?: UUIDv7[];
+  createdAt: ISODateTime;
+}
+
+export interface ImportArtifact {
+  artifactId: UUIDv7;
+  projectId: UUIDv7;
+  filename: string;
+  status: string;
+  createdAt: ISODateTime;
+}
+
+export interface ParseRun {
+  runId: UUIDv7;
+  artifactId: UUIDv7;
+  status: RunStatus;
+  warnings?: Array<{ line?: number; message?: string }>;
+  sceneCount?: number;
+}
+
+export interface ScriptVersion {
+  versionId: UUIDv7;
+  projectId: UUIDv7;
+  versionNumber: number;
+  revisionLabel: string;
+  sceneCount?: number;
+  itemCount?: number;
+  createdAt: ISODateTime;
+}
+
+export interface Job {
+  jobId: UUIDv7;
+  status: RunStatus;
+  jobType: string;
+  progress?: number;
+  error?: string;
+  createdAt: ISODateTime;
+}
+
+export interface ClearanceItem {
+  itemId: UUIDv7;
+  projectId: UUIDv7;
+  versionId?: UUIDv7;
+  category: string;
+  entityName: string;
+  contextText?: string;
+  status: string;
+  disposition?: string;
+  assignedTo?: UUIDv7;
+  dueDate?: ISODateTime;
+  claimCount?: number;
+}
+
+export interface SourceSnapshot {
+  snapshotId: UUIDv7;
+  url: string;
+  retrievedAt: ISODateTime;
+  publisher: string;
+  tier: string;
+  excerpt?: string;
+}
+
+export interface EvidenceClaim {
+  claimId: UUIDv7;
+  snapshotId: UUIDv7;
+  claimText: string;
+  stance: string;
+  confidence?: number;
+}
+
+export interface ItemEvidence {
+  itemId: UUIDv7;
+  claims: EvidenceClaim[];
+  snapshots: SourceSnapshot[];
+}
+
+export interface RecordDecisionRequest {
+  decision: 'cleared' | 'flagged' | 'rejected' | 'further_review' | string;
+  rationale: string;
+  expectedVersion?: number;
+}
+
+export interface Referral {
+  referralId: UUIDv7;
+  itemId: UUIDv7;
+  targetRole: string;
+  question: string;
+  response?: string;
+  status: string;
+}
+
+export interface Comment {
+  commentId: UUIDv7;
+  itemId?: UUIDv7;
+  authorId: UUIDv7;
+  authorEmail?: string;
+  body: string;
+  parentId?: UUIDv7;
+  createdAt: ISODateTime;
+}
+
+export interface RewriteProposal {
+  proposalId: UUIDv7;
+  itemId: UUIDv7;
+  proposedText: string;
+  rationale?: string;
+  status: 'proposed' | 'approved' | 'rejected' | 'withdrawn' | string;
+}
+
+export interface MonitoringPolicy {
+  projectId: UUIDv7;
+  cadence: string;
+  active: boolean;
+  lastRunAt?: ISODateTime;
+}
+
+export interface MonitoringRun {
+  runId: UUIDv7;
+  projectId: UUIDv7;
+  status: RunStatus;
+  itemsChecked: number;
+  changesDetected: number;
+  createdAt: ISODateTime;
+}
+
+export interface Notification {
+  notificationId: UUIDv7;
+  orgId: UUIDv7;
+  title: string;
+  body: string;
+  read: boolean;
+  link?: string;
+  createdAt: ISODateTime;
+}
+
+export interface AuditRecord {
+  recordId: UUIDv7;
+  orgId: UUIDv7;
+  projectId?: UUIDv7;
+  eventType: string;
+  actorId: UUIDv7;
+  actorEmail?: string;
+  payload?: Record<string, any>;
+  receiptHash?: string;
+  timestamp: ISODateTime;
+}
+
+export interface ReportPreview {
+  projectId: UUIDv7;
+  totalItems: number;
+  clearedItems: number;
+  flaggedItems: number;
+  unresolvedRisk: number;
+  categories?: Array<{ category?: string; count?: number }>;
+}
+
+export interface ReportSnapshot {
+  snapshotId: UUIDv7;
+  projectId: UUIDv7;
+  versionId: UUIDv7;
+  generatedAt: ISODateTime;
+  status: string;
+}
+
+export interface ReportRelease {
+  releaseId: UUIDv7;
+  snapshotId: UUIDv7;
+  releasedBy: UUIDv7;
+  releasedAt: ISODateTime;
+  downloadUrl?: string;
+}
+
 export interface ResponseMeta {
   requestId: string;
   nextCursor?: string | null;
   totalCount?: number | null;
 }
 
+export interface ApiError {
+  code:
+    | 'validation_failed'
+    | 'authentication_required'
+    | 'permission_denied'
+    | 'not_found'
+    | 'conflict_stale_version'
+    | 'rate_limited'
+    | 'research_provider_unavailable'
+    | 'research_provider_rate_limited'
+    | 'model_provider_error'
+    | 'rejected_output'
+    | 'internal_error'
+    | string;
+  message: string;
+  requestId?: string;
+  retryable?: boolean;
+  details?: Array<{ field?: string; issue?: string }>;
+}
+
 export interface ErrorEnvelope {
-  error: {
-    code:
-      | 'validation_failed'
-      | 'authentication_required'
-      | 'permission_denied'
-      | 'not_found'
-      | 'conflict_stale_version'
-      | 'rate_limited'
-      | 'research_provider_unavailable'
-      | 'research_provider_rate_limited'
-      | 'model_provider_error'
-      | 'rejected_output'
-      | 'internal_error';
-    message: string;
-    requestId: string;
-    retryable: boolean;
-    details?: Array<{ field?: string; issue?: string }>;
+  error: ApiError;
+}
+
+export type ApiResult<T, E extends ApiError = ApiError> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
+export interface ApiClientConfig {
+  baseUrl?: string;
+  fetch?: typeof fetch;
+}
+
+async function request<T>(
+  baseUrl: string,
+  fetchFn: typeof fetch,
+  method: string,
+  path: string,
+  options: {
+    params?: Record<string, string | number | boolean | undefined>;
+    query?: Record<string, string | number | boolean | undefined>;
+    body?: any;
+    headers?: Record<string, string>;
+  } = {}
+): Promise<ApiResult<T>> {
+  let resolvedPath = path;
+  if (options.params) {
+    for (const [k, v] of Object.entries(options.params)) {
+      resolvedPath = resolvedPath.replace(`{${k}}`, encodeURIComponent(String(v)));
+    }
+  }
+
+  const url = new URL(resolvedPath.startsWith('http') ? resolvedPath : `${baseUrl}${resolvedPath}`, typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
+  
+  if (options.query) {
+    for (const [k, v] of Object.entries(options.query)) {
+      if (v !== undefined) {
+        url.searchParams.append(k, String(v));
+      }
+    }
+  }
+
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    ...(options.headers || {})
   };
+
+  let bodyStr: string | undefined = undefined;
+  if (options.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    bodyStr = JSON.stringify(options.body);
+  }
+
+  try {
+    const res = await fetchFn(url.toString(), {
+      method,
+      headers,
+      body: bodyStr,
+      credentials: 'include'
+    });
+
+    if (res.status === 204) {
+      return { ok: true, value: undefined as unknown as T };
+    }
+
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      const apiErr: ApiError = (json && json.error) ? json.error : {
+        code: res.status === 401 ? 'authentication_required' : res.status === 403 ? 'permission_denied' : res.status === 404 ? 'not_found' : 'internal_error',
+        message: (json && (json.message || json.detail)) || res.statusText || 'Request failed',
+        requestId: (json && json.error && json.error.requestId) || res.headers.get('x-request-id') || '',
+        retryable: res.status >= 500
+      };
+      return { ok: false, error: apiErr };
+    }
+
+    const data = (json && json.data !== undefined) ? json.data : json;
+    return { ok: true, value: data as T };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: {
+        code: 'internal_error',
+        message: err?.message || 'Network request failed',
+        retryable: true
+      }
+    };
+  }
 }
 
 export interface Operations {
@@ -95,8 +381,1632 @@ export interface Operations {
   getSessionContext: { method: 'GET'; path: '/api/v1/session-context' };
   createSession: { method: 'POST'; path: '/api/v1/sessions' };
   deleteCurrentSession: { method: 'DELETE'; path: '/api/v1/sessions/current' };
+  requestPasswordRecovery: { method: 'POST'; path: '/api/v1/password-recovery-requests' };
+  completePasswordRecovery: { method: 'POST'; path: '/api/v1/password-recovery-completions' };
+  resolveOrganizationEntry: { method: 'GET'; path: '/api/v1/organization-entry' };
   listOrganizations: { method: 'GET'; path: '/api/v1/organizations' };
   createOrganization: { method: 'POST'; path: '/api/v1/organizations' };
   listProjects: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects' };
   createProject: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects' };
+  getProject: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}' };
+  createInvitation: { method: 'POST'; path: '/api/v1/organizations/{orgId}/invitations' };
+  resendInvitation: { method: 'POST'; path: '/api/v1/organizations/{orgId}/invitations/{invitationId}:resend' };
+  revokeInvitation: { method: 'POST'; path: '/api/v1/organizations/{orgId}/invitations/{invitationId}:revoke' };
+  acceptInvitation: { method: 'POST'; path: '/api/v1/invitations/{token}:accept' };
+  declineInvitation: { method: 'POST'; path: '/api/v1/invitations/{token}:decline' };
+  listOrganizationMembers: { method: 'GET'; path: '/api/v1/organizations/{orgId}/memberships' };
+  changeMembershipRole: { method: 'POST'; path: '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeRole' };
+  changeProjectGrant: { method: 'POST'; path: '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeProjectGrant' };
+  deactivateMembership: { method: 'POST'; path: '/api/v1/organizations/{orgId}/memberships/{membershipId}:deactivate' };
+  reactivateMembership: { method: 'POST'; path: '/api/v1/organizations/{orgId}/memberships/{membershipId}:reactivate' };
+  createUploadCapability: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/upload-capabilities' };
+  finalizeImportArtifact: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:finalize' };
+  createPasteImport: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/paste-imports' };
+  parseImportArtifact: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse' };
+  acceptParseWarnings: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings' };
+  commitScriptVersion: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion' };
+  listProjectVersions: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions' };
+  getProjectVersion: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}' };
+  startDetection: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect' };
+  startResearch: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research' };
+  getJob: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}' };
+  retryJob: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:retry' };
+  cancelJob: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:cancel' };
+  listClearanceItems: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items' };
+  getClearanceItem: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}' };
+  getClearanceItemEvidence: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence' };
+  assignClearanceItem: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign' };
+  changeClearanceItemDueDate: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate' };
+  recordEvidenceDecision: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision' };
+  setDisposition: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition' };
+  referClearanceItem: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer' };
+  acknowledgeReferral: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/referrals/{referralId}:acknowledge' };
+  addComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments' };
+  replyToComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:reply' };
+  reviseComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:revise' };
+  proposeRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite' };
+  approveRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve' };
+  rejectRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject' };
+  withdrawRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw' };
+  startSelectiveRescan: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan' };
+  getMonitoringPolicy: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy' };
+  changeMonitoringCadence: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence' };
+  listMonitoringRuns: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs' };
+  startMonitoringRun: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs' };
+  reviewMonitoringChange: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision' };
+  listNotifications: { method: 'GET'; path: '/api/v1/organizations/{orgId}/notifications' };
+  markAllNotificationsRead: { method: 'POST'; path: '/api/v1/organizations/{orgId}/notifications' };
+  markNotificationRead: { method: 'POST'; path: '/api/v1/organizations/{orgId}/notifications/{notificationId}:markRead' };
+  registerPushSubscription: { method: 'POST'; path: '/api/v1/push-subscriptions' };
+  revokePushSubscription: { method: 'DELETE'; path: '/api/v1/push-subscriptions/{subscriptionId}' };
+  listRecords: { method: 'GET'; path: '/api/v1/organizations/{orgId}/records' };
+  getRecord: { method: 'GET'; path: '/api/v1/organizations/{orgId}/records/{recordId}' };
+  validateProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate' };
+  activateProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate' };
+  promoteLearningCandidate: { method: 'POST'; path: '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote' };
+  rollbackLearningCandidate: { method: 'POST'; path: '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:rollback' };
+  scheduleDeletion: { method: 'POST'; path: '/api/v1/organizations/{orgId}/deletion-requests' };
+  restoreDeletion: { method: 'POST'; path: '/api/v1/organizations/{orgId}/deletion-requests/{requestId}:restore' };
+  receiveParallelMonitorWebhook: { method: 'POST'; path: '/api/v1/webhooks/parallel/monitor' };
+  previewReport: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-preview' };
+  generateReportSnapshot: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots' };
+  getReportSnapshot: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}' };
+  releaseReport: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:release' };
+  downloadReleasedReport: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact' };
 }
+
+export function createApiClient(config: ApiClientConfig = {}) {
+  const baseUrl = config.baseUrl || '';
+  const fetchFn = config.fetch || (typeof window !== 'undefined' ? window.fetch.bind(window) : fetch);
+
+  return {
+    /** Health check endpoint */
+    getHealth: async (
+      args?: {
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/healthz', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Retrieve current authenticated session and tenancy context */
+    getSessionContext: async (
+      args?: {
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/session-context', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Create a new authenticated session */
+    createSession: async (
+      args: {
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/sessions', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Revoke current session */
+    deleteCurrentSession: async (
+      args?: {
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'DELETE', '/api/v1/sessions/current', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Request password recovery token */
+    requestPasswordRecovery: async (
+      args: {
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/password-recovery-requests', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Complete password recovery using token */
+    completePasswordRecovery: async (
+      args: {
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/password-recovery-completions', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Resolve organization entry for current user */
+    resolveOrganizationEntry: async (
+      args?: {
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organization-entry', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List organizations for current user */
+    listOrganizations: async (
+      args?: {
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Create a new organization */
+    createOrganization: async (
+      args: {
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List film projects within an organization */
+    listProjects: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Create a new film project */
+    createProject: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get details of a project */
+    getProject: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Create an invitation to join organization */
+    createInvitation: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Resend an invitation */
+    resendInvitation: async (
+      args: {
+        params: { orgId: string; invitationId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations/{invitationId}:resend', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Revoke an invitation */
+    revokeInvitation: async (
+      args: {
+        params: { orgId: string; invitationId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations/{invitationId}:revoke', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Accept an invitation using secret token */
+    acceptInvitation: async (
+      args: {
+        params: { token: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/invitations/{token}:accept', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Decline an invitation using secret token */
+    declineInvitation: async (
+      args: {
+        params: { token: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/invitations/{token}:decline', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List members in an organization */
+    listOrganizationMembers: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/memberships', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Change member role within organization */
+    changeMembershipRole: async (
+      args: {
+        params: { orgId: string; membershipId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeRole', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Change project grants for a member */
+    changeProjectGrant: async (
+      args: {
+        params: { orgId: string; membershipId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeProjectGrant', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Deactivate a membership */
+    deactivateMembership: async (
+      args: {
+        params: { orgId: string; membershipId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:deactivate', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Reactivate a deactivated membership */
+    reactivateMembership: async (
+      args: {
+        params: { orgId: string; membershipId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:reactivate', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Create upload capability / signed upload slot */
+    createUploadCapability: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/upload-capabilities', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Finalize uploaded import artifact */
+    finalizeImportArtifact: async (
+      args: {
+        params: { orgId: string; projectId: string; artifactId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:finalize', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Import script content via raw text paste */
+    createPasteImport: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/paste-imports', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Start parsing an import artifact */
+    parseImportArtifact: async (
+      args: {
+        params: { orgId: string; projectId: string; artifactId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Acknowledge and accept parse warnings */
+    acceptParseWarnings: async (
+      args: {
+        params: { orgId: string; projectId: string; runId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Commit parsed script as immutable version */
+    commitScriptVersion: async (
+      args: {
+        params: { orgId: string; projectId: string; runId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List committed script versions for a project */
+    listProjectVersions: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get details of a script version */
+    getProjectVersion: async (
+      args: {
+        params: { orgId: string; projectId: string; versionId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Start entity clearance detection on script version */
+    startDetection: async (
+      args: {
+        params: { orgId: string; projectId: string; versionId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Start automated Parallel search & extract research for a clearance item */
+    startResearch: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get job status and progress */
+    getJob: async (
+      args: {
+        params: { orgId: string; projectId: string; jobId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Retry a failed job */
+    retryJob: async (
+      args: {
+        params: { orgId: string; projectId: string; jobId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:retry', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Cancel a running or queued job */
+    cancelJob: async (
+      args: {
+        params: { orgId: string; projectId: string; jobId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:cancel', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List clearance items in project */
+    listClearanceItems: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: { category?: string; status?: string };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get clearance item detail */
+    getClearanceItem: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get evidence claims and cited source snapshots for an item */
+    getClearanceItemEvidence: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Assign clearance item to a member */
+    assignClearanceItem: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Change due date of clearance item */
+    changeClearanceItemDueDate: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Record human reviewer evidence decision */
+    recordEvidenceDecision: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Set item disposition */
+    setDisposition: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Refer item to counsel or external expert */
+    referClearanceItem: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Acknowledge or answer a referral */
+    acknowledgeReferral: async (
+      args: {
+        params: { orgId: string; projectId: string; referralId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/referrals/{referralId}:acknowledge', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Add comment to item discussion */
+    addComment: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Reply to a comment */
+    replyToComment: async (
+      args: {
+        params: { orgId: string; projectId: string; commentId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:reply', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Revise/edit a comment */
+    reviseComment: async (
+      args: {
+        params: { orgId: string; projectId: string; commentId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:revise', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Propose script dialogue/action rewrite */
+    proposeRewrite: async (
+      args: {
+        params: { orgId: string; projectId: string; itemId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Approve a rewrite proposal */
+    approveRewrite: async (
+      args: {
+        params: { orgId: string; projectId: string; proposalId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Reject a rewrite proposal */
+    rejectRewrite: async (
+      args: {
+        params: { orgId: string; projectId: string; proposalId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Withdraw a rewrite proposal */
+    withdrawRewrite: async (
+      args: {
+        params: { orgId: string; projectId: string; proposalId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Start selective rescan of affected items for revision */
+    startSelectiveRescan: async (
+      args: {
+        params: { orgId: string; projectId: string; versionId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get monitoring policy configuration */
+    getMonitoringPolicy: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Change monitoring frequency cadence */
+    changeMonitoringCadence: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List monitoring run history */
+    listMonitoringRuns: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Trigger manual monitoring run */
+    startMonitoringRun: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Record decision on monitoring delta change */
+    reviewMonitoringChange: async (
+      args: {
+        params: { orgId: string; projectId: string; reviewId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List notifications for user in organization */
+    listNotifications: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/notifications', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Mark all notifications read */
+    markAllNotificationsRead: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/notifications', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Mark single notification read */
+    markNotificationRead: async (
+      args: {
+        params: { orgId: string; notificationId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/notifications/{notificationId}:markRead', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Register Web Push subscription */
+    registerPushSubscription: async (
+      args: {
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/push-subscriptions', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Revoke push subscription */
+    revokePushSubscription: async (
+      args: {
+        params: { subscriptionId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'DELETE', '/api/v1/push-subscriptions/{subscriptionId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** List immutable audit records and receipts */
+    listRecords: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/records', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get detailed audit record with verification receipt */
+    getRecord: async (
+      args: {
+        params: { orgId: string; recordId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/records/{recordId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Validate a candidate protected configuration */
+    validateProtectedConfiguration: async (
+      args: {
+        params: { orgId: string; configurationId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Activate a validated protected configuration (Owner-only) */
+    activateProtectedConfiguration: async (
+      args: {
+        params: { orgId: string; configurationId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Promote a learning candidate (Owner-only) */
+    promoteLearningCandidate: async (
+      args: {
+        params: { orgId: string; candidateId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Rollback a promoted candidate */
+    rollbackLearningCandidate: async (
+      args: {
+        params: { orgId: string; candidateId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:rollback', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Schedule project or organization data deletion */
+    scheduleDeletion: async (
+      args: {
+        params: { orgId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/deletion-requests', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Restore a scheduled deletion before purge */
+    restoreDeletion: async (
+      args: {
+        params: { orgId: string; requestId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/deletion-requests/{requestId}:restore', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Ingress webhook for verified Parallel Monitor events */
+    receiveParallelMonitorWebhook: async (
+      args: {
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/webhooks/parallel/monitor', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Preview draft clearance report */
+    previewReport: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-preview', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Generate immutable version-bound report snapshot */
+    generateReportSnapshot: async (
+      args: {
+        params: { orgId: string; projectId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Get report snapshot by ID */
+    getReportSnapshot: async (
+      args: {
+        params: { orgId: string; projectId: string; snapshotId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Officially release report snapshot (governed action) */
+    releaseReport: async (
+      args: {
+        params: { orgId: string; projectId: string; snapshotId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        body?: any;
+        idempotencyKey?: string;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
+        headers['Idempotency-Key'] = args.idempotencyKey;
+      }
+      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:release', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Download released report artifact PDF/HTML */
+    downloadReleasedReport: async (
+      args: {
+        params: { orgId: string; projectId: string; releaseId: string };
+        query?: Record<string, string | number | boolean | undefined>;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<any>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact', {
+        params: args && 'params' in args ? (args as any).params : undefined,
+        query: args?.query,
+        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+  };
+}
+
+export const api = createApiClient();

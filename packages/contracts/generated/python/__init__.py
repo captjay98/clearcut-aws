@@ -44,6 +44,7 @@ class Organization(BaseModel):
     orgId: UUIDv7
     name: str
     slug: str
+    isDemo: Optional[bool] = False
     createdAt: ISODateTime
 
 class CreateOrganizationRequest(BaseModel):
@@ -55,11 +56,184 @@ class Project(BaseModel):
     orgId: UUIDv7
     title: str
     description: Optional[str] = None
+    isDemo: Optional[bool] = False
     createdAt: ISODateTime
 
 class CreateProjectRequest(BaseModel):
     title: str
     description: Optional[str] = None
+
+class Invitation(BaseModel):
+    invitationId: UUIDv7
+    orgId: UUIDv7
+    email: str
+    role: UserRole
+    status: str
+    createdAt: ISODateTime
+
+class CreateInvitationRequest(BaseModel):
+    email: str
+    role: UserRole
+    projectGrants: Optional[List[UUIDv7]] = None
+
+class Membership(BaseModel):
+    membershipId: UUIDv7
+    orgId: UUIDv7
+    userId: UUIDv7
+    email: Optional[str] = None
+    role: UserRole
+    active: bool
+    projectGrants: Optional[List[UUIDv7]] = None
+    createdAt: ISODateTime
+
+class ImportArtifact(BaseModel):
+    artifactId: UUIDv7
+    projectId: UUIDv7
+    filename: str
+    status: str
+    createdAt: ISODateTime
+
+class ParseRun(BaseModel):
+    runId: UUIDv7
+    artifactId: UUIDv7
+    status: RunStatus
+    warnings: Optional[List[Dict[str, Any]]] = None
+    sceneCount: Optional[int] = None
+
+class ScriptVersion(BaseModel):
+    versionId: UUIDv7
+    projectId: UUIDv7
+    versionNumber: int
+    revisionLabel: str
+    sceneCount: Optional[int] = None
+    itemCount: Optional[int] = None
+    createdAt: ISODateTime
+
+class Job(BaseModel):
+    jobId: UUIDv7
+    status: RunStatus
+    jobType: str
+    progress: Optional[float] = None
+    error: Optional[str] = None
+    createdAt: ISODateTime
+
+class ClearanceItem(BaseModel):
+    itemId: UUIDv7
+    projectId: UUIDv7
+    versionId: Optional[UUIDv7] = None
+    category: str
+    entityName: str
+    contextText: Optional[str] = None
+    status: str
+    disposition: Optional[str] = None
+    assignedTo: Optional[UUIDv7] = None
+    dueDate: Optional[ISODateTime] = None
+    claimCount: Optional[int] = None
+
+class SourceSnapshot(BaseModel):
+    snapshotId: UUIDv7
+    url: str
+    retrievedAt: ISODateTime
+    publisher: str
+    tier: str
+    excerpt: Optional[str] = None
+
+class EvidenceClaim(BaseModel):
+    claimId: UUIDv7
+    snapshotId: UUIDv7
+    claimText: str
+    stance: str
+    confidence: Optional[float] = None
+
+class ItemEvidence(BaseModel):
+    itemId: UUIDv7
+    claims: List[EvidenceClaim] = []
+    snapshots: List[SourceSnapshot] = []
+
+class RecordDecisionRequest(BaseModel):
+    decision: str
+    rationale: str
+    expectedVersion: Optional[int] = None
+
+class Referral(BaseModel):
+    referralId: UUIDv7
+    itemId: UUIDv7
+    targetRole: str
+    question: str
+    response: Optional[str] = None
+    status: str
+
+class Comment(BaseModel):
+    commentId: UUIDv7
+    itemId: Optional[UUIDv7] = None
+    authorId: UUIDv7
+    authorEmail: Optional[str] = None
+    body: str
+    parentId: Optional[UUIDv7] = None
+    createdAt: ISODateTime
+
+class RewriteProposal(BaseModel):
+    proposalId: UUIDv7
+    itemId: UUIDv7
+    proposedText: str
+    rationale: Optional[str] = None
+    status: str
+
+class MonitoringPolicy(BaseModel):
+    projectId: UUIDv7
+    cadence: str
+    active: bool
+    lastRunAt: Optional[ISODateTime] = None
+
+class MonitoringRun(BaseModel):
+    runId: UUIDv7
+    projectId: UUIDv7
+    status: RunStatus
+    itemsChecked: int
+    changesDetected: int
+    createdAt: ISODateTime
+
+class Notification(BaseModel):
+    notificationId: UUIDv7
+    orgId: UUIDv7
+    title: str
+    body: str
+    read: bool
+    link: Optional[str] = None
+    createdAt: ISODateTime
+
+class AuditRecord(BaseModel):
+    recordId: UUIDv7
+    orgId: UUIDv7
+    projectId: Optional[UUIDv7] = None
+    eventType: str
+    actorId: UUIDv7
+    actorEmail: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+    receiptHash: Optional[str] = None
+    timestamp: ISODateTime
+
+class ReportPreview(BaseModel):
+    projectId: UUIDv7
+    totalItems: int
+    clearedItems: int
+    flaggedItems: int
+    unresolvedRisk: int
+    categories: Optional[List[Dict[str, Any]]] = None
+
+class ReportSnapshot(BaseModel):
+    snapshotId: UUIDv7
+    projectId: UUIDv7
+    versionId: UUIDv7
+    generatedAt: ISODateTime
+    status: str
+
+class ReportRelease(BaseModel):
+    releaseId: UUIDv7
+    snapshotId: UUIDv7
+    releasedBy: UUIDv7
+    releasedAt: ISODateTime
+    downloadUrl: Optional[str] = None
 
 class ResponseMeta(BaseModel):
     requestId: str
