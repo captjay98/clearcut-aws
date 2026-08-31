@@ -1,13 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="day-shoot" class="day-shoot">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="ClearCut helps production teams find screenplay clearance risks, connect them to source evidence, and record accountable human decisions.">
   <meta name="theme-color" content="#0f172a">
   <title>ClearCut — Screenplay clearance with a paper trail</title>
+  <script>
+    try {
+      var saved = localStorage.getItem("clearcut_theme");
+      if (saved === "night-shoot" || saved === "high-contrast" || saved === "day-shoot") {
+        document.documentElement.setAttribute("data-theme", saved);
+        document.documentElement.className = saved + (saved !== "day-shoot" ? " dark" : "");
+      }
+    } catch (e) {}
+  </script>
 </head>
-<body className="bg-slate-900 text-slate-100 antialiased">
+<body class="bg-slate-950 text-slate-100 antialiased">
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
