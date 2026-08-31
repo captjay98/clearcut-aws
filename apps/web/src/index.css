@@ -482,6 +482,8 @@
     .report-exhibit.is-tab-hidden { display: block; }
     .report-exhibit-nav, .report-nav-group-label, .report-nav-divider { display: none; }
     .skip-link { display: none; }
+    aside, button, .no-print { display: none !important; }
+    main { width: 100% !important; margin: 0 !important; padding: 0 !important; }
   }
 
   /* ── Lists ── */
