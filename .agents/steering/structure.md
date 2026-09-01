@@ -24,9 +24,9 @@ clearcut/
 ├── demo/                       # planned screenplay, fixtures, and expected results
 ├── misc/clearcut-flow/         # existing mock UI and 366-check visual baseline
 ├── docs/plans/                 # planning documents and ADRs
-├── feature-ledger.md           # existing 47-feature mapping
-├── product-plan.md             # product thesis and capability plan
-├── submission-strategy.md      # competition and submission plan
+├── docs/feature-ledger.md      # existing 47-feature mapping
+├── docs/product-plan.md        # product thesis and capability plan
+├── docs/submission-strategy.md # competition and submission plan
 └── LICENSE
 ```
 

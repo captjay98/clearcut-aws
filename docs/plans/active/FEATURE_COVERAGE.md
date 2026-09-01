@@ -1,6 +1,6 @@
 # ClearCut Feature Coverage
 
-**Feature source:** `feature-ledger.md` (47 mandatory rows)  
+**Feature source:** `docs/feature-ledger.md` (47 mandatory rows)  
 **Rule:** a feature is complete only when its acceptance evidence is produced at the owning layer.
 
 | # | Feature | Accountable packet | Contributors | Required acceptance evidence |

@@ -6,8 +6,8 @@
 
 1. Official Agentic Cinema rules and published track requirements.
 2. Accepted ADRs, versioned contracts, approval/evidence/security policies, and architecture invariants.
-3. `feature-ledger.md` and its 47 feature commitments.
-4. `product-plan.md`.
+3. `docs/feature-ledger.md` and its 47 feature commitments.
+4. `docs/product-plan.md`.
 5. This implementation roadmap and the active-plan coverage matrix.
 6. Numbered active plans.
 7. Submission and demo material.

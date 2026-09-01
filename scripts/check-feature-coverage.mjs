@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
-const ledgerPath = path.join(root, 'feature-ledger.md')
+const ledgerPath = path.join(root, 'docs', 'feature-ledger.md')
 const coveragePath = path.join(root, 'docs', 'plans', 'active', 'FEATURE_COVERAGE.md')
 
 console.log('--- Checking ClearCut Feature Coverage (47 Features) ---')
