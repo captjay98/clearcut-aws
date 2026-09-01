@@ -7,6 +7,25 @@
 This document is the authoritative, honest record of what was changed and what was
 deliberately deferred. It does not claim completeness.
 
+## Architecture decision: TanStack Router (no Start/SSR), latest supported Vite
+
+SSR is not needed for this authenticated clearance workspace (no SEO/crawl
+surface; data loads client-side via the generated client). The accepted
+architecture is **TanStack Router + Query**, not TanStack Start.
+
+Upgraded to the latest cleanly Router-supported toolchain (commit `e3f7272`),
+pinned exactly:
+- vite `5.4.14` → `7.3.6`
+- `@vitejs/plugin-react` `4.3.4` → `5.2.0` (the last line peering Vite 7; the
+  6.x "latest" requires Vite 8 + oxc/rolldown/react-compiler, deliberately avoided)
+- vitest `2.1.9` → `4.1.11`
+- jsdom `25.0.1` → `30.0.1`
+
+Verified: Vite 7 build succeeds (210 modules); web unit results unchanged from
+pre-upgrade (same pre-existing hollow-test failures, no new regressions);
+no-legacy PASS; python contract/foundation gates unaffected. Vite 8 was NOT
+taken because it forces the bleeding-edge transformer chain for no product gain.
+
 ## Done (verified)
 
 1. **Removed fabricated evidence data (commit `5f95859`).**
@@ -36,15 +55,11 @@ deliberately deferred. It does not claim completeness.
 
 ## Deliberately deferred (documented, not hidden)
 
-1. **TanStack Start + Vite 7 migration.**
-   The app remains TanStack **Router** + Query on **Vite 5** (builds green).
-   Rationale: `@vitejs/plugin-react@latest` now requires `vite ^8` plus
-   oxc-transform-react / @rolldown/plugin-babel / react-compiler, and `vitest@2.1.9`
-   targets vite 5 — there is no low-risk "bump to Vite 7" path; it is a full
-   toolchain migration coupled to the Start rewrite. Start's value is SSR/server
-   functions, which add little to this authenticated SPA. Deferring protects the
-   verified-good backend that made this branch the winner. Revisit only if SSR is
-   actually required.
+1. **TanStack Start / SSR.**
+   Not adopted. SSR/server functions add no value to this authenticated SPA, and
+   `@vitejs/plugin-react@6` (the only line requiring it) drags in the Vite 8 +
+   oxc/rolldown/react-compiler chain. Accepted architecture is Router + Query on
+   Vite 7 (see decision above). Revisit only if SSR is actually required.
 
 2. **Detection/research run TRIGGERING endpoints.**
    Domain logic and typed provider ports (`research/ports/*`, `detection/ports/*`,
