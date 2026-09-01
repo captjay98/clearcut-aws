@@ -158,3 +158,65 @@ rely on the e2e layer (see `apps/web/tests/e2e/TESTING.md`) for real coverage.
   evidence. Requires real API credentials to verify end-to-end.
 - **Live Playwright e2e run** in a real 2-server environment (see `tests/e2e/TESTING.md`).
 - **TanStack Start / SSR** — not needed; Router + Vite 7 is the accepted architecture.
+
+
+---
+
+## Session 3 addendum — live provider adapters (Parallel + Vertex/Gemini)
+
+### Done (verified locally, NOT verified against live APIs)
+
+- **Parallel search/extract adapters corrected to the real API contract.** The
+  existing adapters had wrong shapes; fixed against docs.parallel.ai:
+  - search sends `{search_queries: [...], objective, max_chars_total}` and reads
+    `excerpts[]` (was `query`/`max_results` + `snippet`);
+  - extract reads `full_content`/`excerpts` (was `content`/`text`);
+  - auth is `x-api-key` only (removed a bogus `Authorization: Bearer` header);
+  - `ProviderFailure.kind` values corrected to the allowed literal set
+    (`authentication` / `rate_limited` / `retryable` / `permanent`).
+  - `get_research_runtime()` now constructs the real Parallel adapters when
+    `PARALLEL_API_KEY` is set; missing key ⇒ typed 503. Hermetic never selected.
+
+- **Vertex/Gemini detection adapter added** (`detection/adapters/vertex_runtime.py`):
+  google-genai SDK in Vertex mode (`vertexai=True`, `project`, `location=global`,
+  ADC auth), structured JSON output constrained to the ten `ClearanceCategory`
+  enum values, rejects any category outside that fixed set, emits typed
+  `CandidateItem`s. `get_detection_runtime()` constructs it when
+  `GOOGLE_CLOUD_PROJECT` is set; missing ⇒ typed 503. Hermetic never selected.
+  Added `google-genai>=1.33.0` to `services/api/pyproject.toml`.
+
+### Configuration surface (all via env; no secrets in code)
+
+- `PARALLEL_API_KEY` — Parallel Search/Extract (header `x-api-key`).
+- `GOOGLE_CLOUD_PROJECT` (or `CLEARCUT_GCP_PROJECT`) — Vertex project; auth via ADC
+  (`gcloud auth application-default login`; set quota project with
+  `gcloud auth application-default set-quota-project clearcut-workspace`).
+- `CLEARCUT_VERTEX_LOCATION` (default `global`), `CLEARCUT_GEMINI_MODEL`,
+  `CLEARCUT_DETECTION_RUNTIME` (default `vertex`).
+
+gcloud confirms `aiplatform.googleapis.com` is enabled on `clearcut-workspace`,
+ADC is available, and `generativelanguage.googleapis.com` is NOT — so Vertex+ADC
+is the correct path (not a Gemini API key).
+
+### Gate (tree clean)
+
+- `uv run pytest tests/contracts tests/foundation services/api/tests` → **127 passed**
+  (added 6 provider-selection tests: 503-when-unconfigured, real-adapter-when-configured,
+  never-hermetic, for both providers; the Vertex one constructs the client with no
+  network call).
+- contract-drift → PASS · no-legacy → PASS · foundation → PASS.
+
+### NOT verified here / follow-up (honest)
+
+1. **No live API call was made.** This environment has no outbound network and the
+   Parallel key / Vertex ADC are not exercised end-to-end. Adapters are built to the
+   documented contracts and unit-verified for wiring, but a real search/extract/detect
+   round-trip must be run in your environment.
+2. **Model name unverified.** `CLEARCUT_GEMINI_MODEL` defaults to
+   `gemini-3.1-pro-preview` (as provided). I could not confirm that ID against the live
+   Vertex model list; if wrong, set the env var — no code change needed. Your other
+   named models (`gemini-3.7-flash`, `gemini-3.1-flash-lite`) are equally selectable.
+3. **Job execution still deferred.** The `:detect` and `:research` endpoints persist a
+   real 202 job + audit event but do not yet *run* the adapter and write
+   snapshots/claims. The job runner that invokes these runtimes and persists results is
+   the next piece of work.

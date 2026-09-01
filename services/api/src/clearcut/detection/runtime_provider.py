@@ -21,31 +21,38 @@ class RuntimeNotConfiguredError(RuntimeError):
 def get_detection_runtime() -> ModelRuntimePort:
     """Return the configured production detection runtime.
 
-    Selection is driven by CLEARCUT_DETECTION_RUNTIME (default: 'gemini').
-    Hermetic is intentionally NOT selectable here.
+    Selection is driven by CLEARCUT_DETECTION_RUNTIME (default: 'vertex').
+    Hermetic is intentionally NOT selectable here — it is test-only.
     """
-    provider = os.getenv("CLEARCUT_DETECTION_RUNTIME", "gemini").lower()
+    provider = os.getenv("CLEARCUT_DETECTION_RUNTIME", "vertex").lower()
 
-    if provider == "gemini":
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not api_key:
+    if provider == "vertex":
+        # Vertex uses project + ADC (google.auth), not an API key. Location is
+        # 'global' per deployment. Model is configurable.
+        project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("CLEARCUT_GCP_PROJECT")
+        if not project:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    "Detection runtime is not configured. Set GEMINI_API_KEY to "
-                    "enable live detection. The hermetic runtime is test-only and "
-                    "is never used to serve real detection results."
+                    "Detection runtime is not configured. Set GOOGLE_CLOUD_PROJECT "
+                    "(with Application Default Credentials) to enable live Vertex "
+                    "Gemini detection. The hermetic runtime is test-only and is never "
+                    "used to serve real detection results."
                 ),
             )
-        # Live adapter is implemented separately; until it lands, a configured but
-        # unbuilt runtime is an explicit, honest failure rather than a silent stub.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Live detection runtime not yet available in this deployment. "
-                "Detection endpoint is wired and scoped; the provider adapter is pending."
-            ),
-        )
+        location = os.getenv("CLEARCUT_VERTEX_LOCATION", "global")
+        try:
+            from clearcut.detection.adapters.vertex_runtime import VertexDetectionRuntime
+
+            return VertexDetectionRuntime(project=project, location=location)
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Vertex detection dependencies are not installed (google-genai). "
+                    "Install service deps to enable live detection."
+                ),
+            )
 
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

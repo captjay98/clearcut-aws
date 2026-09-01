@@ -33,11 +33,11 @@ def get_research_runtime() -> ResearchRuntime:
                 "never used to serve real evidence; zero evidence stays unresolved."
             ),
         )
-    # Live Parallel adapters are constructed here once the client is wired.
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail=(
-            "Live Parallel research runtime not yet available in this deployment. "
-            "Research endpoint is wired and scoped; the provider client is pending."
-        ),
+    # Live Parallel adapters (search + extract), both reading PARALLEL_API_KEY.
+    from clearcut.research.adapters.parallel_extract import ParallelExtractAdapter
+    from clearcut.research.adapters.parallel_search import ParallelSearchAdapter
+
+    return ResearchRuntime(
+        search=ParallelSearchAdapter(api_key=api_key),
+        extract=ParallelExtractAdapter(api_key=api_key),
     )

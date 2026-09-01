@@ -34,15 +34,15 @@ class ParallelExtractAdapter(UrlExtractPort):
         # Live Parallel Extract API Call
         try:
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
                 "x-api-key": self.api_key,
                 "Content-Type": "application/json",
                 "User-Agent": "ClearCut-ResearchDesk/1.0",
             }
+            # Parallel Extract API contract: urls[] (<=20) + optional objective.
             payload = {
-                "urls": list(request.urls),
+                "urls": list(request.urls)[:20],
                 "objective": request.objective,
-                "max_length": getattr(request, "max_length", 18000),
+                "max_chars_total": getattr(request, "max_chars_total", 18000),
             }
 
             with httpx.Client(timeout=30.0) as client:
@@ -58,20 +58,30 @@ class ParallelExtractAdapter(UrlExtractPort):
                         message="Parallel API Key authentication failed (HTTP 401/403)",
                     )
 
+                if resp.status_code == 429:
+                    return ProviderFailure(
+                        kind="rate_limited",
+                        message="Parallel Extract rate limit exceeded (HTTP 429)",
+                    )
+
                 if resp.is_error:
                     return ProviderFailure(
-                        kind="upstream_error",
+                        kind="retryable" if resp.status_code >= 500 else "permanent",
                         message=f"Parallel Extract API error: HTTP {resp.status_code} - {resp.text}",
                     )
 
                 data = resp.json()
                 results = []
                 for item in data.get("results", []):
+                    excerpts = item.get("excerpts", [])
+                    content = item.get("full_content") or (
+                        " … ".join(excerpts) if excerpts else ""
+                    )
                     results.append(
                         ExtractedPage(
                             url=item.get("url", ""),
                             title=item.get("title", ""),
-                            content=item.get("content", item.get("text", "")),
+                            content=content,
                         )
                     )
 
@@ -85,6 +95,6 @@ class ParallelExtractAdapter(UrlExtractPort):
         except Exception as exc:
             logger.warning(f"Parallel extract request error: {exc}")
             return ProviderFailure(
-                kind="network_error",
+                kind="retryable",
                 message=f"Failed to reach Parallel API: {exc}",
             )

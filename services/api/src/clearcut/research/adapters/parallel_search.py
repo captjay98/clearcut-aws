@@ -37,15 +37,19 @@ class ParallelSearchAdapter(WebSearchPort):
         # Live Parallel Search API Call
         try:
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
                 "x-api-key": self.api_key,
                 "Content-Type": "application/json",
                 "User-Agent": "ClearCut-ResearchDesk/1.0",
             }
+            # Parallel Search API contract: search_queries[] + optional objective.
             payload = {
-                "query": request.query,
-                "max_results": getattr(request, "limit", 5),
-                "objective": getattr(request, "objective", "screenplay pre-clearance source verification"),
+                "search_queries": [request.query],
+                "objective": getattr(
+                    request,
+                    "objective",
+                    "screenplay pre-clearance source verification",
+                ),
+                "max_chars_total": getattr(request, "max_chars_total", 6000),
             }
 
             with httpx.Client(timeout=15.0) as client:
@@ -61,33 +65,43 @@ class ParallelSearchAdapter(WebSearchPort):
                         message="Parallel API Key authentication failed (HTTP 401/403)",
                     )
 
+                if resp.status_code == 429:
+                    return ProviderFailure(
+                        kind="rate_limited",
+                        message="Parallel API rate limit exceeded (HTTP 429)",
+                    )
+
                 if resp.is_error:
                     return ProviderFailure(
-                        kind="upstream_error",
+                        kind="retryable" if resp.status_code >= 500 else "permanent",
                         message=f"Parallel API error: HTTP {resp.status_code} - {resp.text}",
                     )
 
                 data = resp.json()
                 results = []
                 for item in data.get("results", []):
+                    # Contract returns excerpts[]; join into a single snippet.
+                    excerpts = item.get("excerpts", [])
+                    snippet = " … ".join(excerpts) if excerpts else item.get("snippet", "")
                     results.append(
                         SearchResultItem(
                             url=item.get("url", ""),
                             title=item.get("title", ""),
                             publisher=item.get("publisher", "Parallel Web Index"),
-                            snippet=item.get("snippet", item.get("excerpt", "")),
+                            snippet=snippet,
+                            published_date=item.get("publish_date"),
                         )
                     )
 
                 return SearchResponse(
                     search_id=data.get("search_id", f"srch_{int(time.time())}"),
-                    session_id=request.session_id or data.get("session_id", "sess_live"),
+                    session_id=data.get("session_id", "sess_live"),
                     results=results,
                     duration_ms=int((time.monotonic() - start_time) * 1000),
                 )
         except Exception as exc:
             logger.warning(f"Parallel search request error: {exc}")
             return ProviderFailure(
-                kind="network_error",
+                kind="retryable",
                 message=f"Failed to reach Parallel API: {exc}",
             )
