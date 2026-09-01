@@ -71,3 +71,22 @@ result until the suite is actually run in a real environment per
 - `node scripts/check-no-legacy-runtime.mjs` → PASS
 - `uv run pytest tests/contracts tests/foundation services/api/tests -q` → 115 passed
 - `pnpm --filter clearcut-web build` → success (Vite 5, 216 modules)
+
+## Pre-existing broken unit tests (NOT caused by this session)
+
+`apps/web/tests/unit/*` contains hollow "symbol is defined" tests. Several import
+named route exports that never existed — e.g. `workspace_routes.test.ts` imports
+`ItemWorklistRoute`/`ScreenplayWorkspaceRoute`, but those route files only export
+`Route` + default. Verified at the pristine baseline commit `f49fb63`: the named
+exports were already absent, so these tests were already failing before any
+remediation edit. Running `vitest run` directly reports `18 failed | 4 passed`
+files (`11 failed | 19 passed` tests).
+
+This is inherited fake-verification debt: the tests assert nothing about real
+behavior and are broken against the actual exports. They should be deleted or
+replaced with real render/interaction tests rather than patched to import the
+current symbol names (which would restore a meaningless green). The prior baseline
+evidence's "30 passed" was an invocation artifact and should not be trusted.
+
+Recommended follow-up: remove `apps/web/tests/unit/*route*` symbol-existence tests;
+rely on the e2e layer (see `apps/web/tests/e2e/TESTING.md`) for real coverage.
