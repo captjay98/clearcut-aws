@@ -68,9 +68,16 @@ result until the suite is actually run in a real environment per
 
 ## Gates confirmed this session
 
-- `node scripts/check-no-legacy-runtime.mjs` → PASS
-- `uv run pytest tests/contracts tests/foundation services/api/tests -q` → 115 passed
+Final full-gate run (tree clean at HEAD `7a54b84`):
+
+- `node scripts/check-no-legacy-runtime.mjs` → PASS (no legacy/architecture violations)
+- `uv run pytest tests/contracts tests/foundation services/api/tests -q` → **115 passed**
 - `pnpm --filter clearcut-web build` → success (Vite 5, 216 modules)
+- `vitest run` (web unit) → 11 failed | 19 passed — the 11 failures are the
+  pre-existing hollow symbol-existence tests documented below, NOT regressions.
+- Live Playwright e2e → NOT run in this environment (background servers blocked);
+  see environment-limitation note. Must be run in a real environment before any
+  release claim.
 
 ## Pre-existing broken unit tests (NOT caused by this session)
 
