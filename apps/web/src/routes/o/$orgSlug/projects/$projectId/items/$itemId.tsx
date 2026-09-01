@@ -13,46 +13,32 @@ export function ItemDetailRoute() {
   const { orgSlug, projectId, itemId } = useParams({
     from: "/o/$orgSlug/projects/$projectId/items/$itemId",
   });
-  const [item, setItem] = useState<any>({
-    id: itemId || "018f0000-0000-7000-8000-000000001101",
-    category: "Trademarks",
-    category_label: "Trademarks & Brand Names",
-    text: "Vega Camera",
-    scene: 1,
-    page: 1,
-    status: "needs_call",
-    workflow_status: "open",
-    research_status: "completed",
-    claims: [
-      {
-        claim_id: "claim-001",
-        source_title: "USPTO Trademark Electronic Search System (TESS)",
-        source_url: "https://tmsearch.uspto.gov/bin/showfield?f=doc&state=4809:vega.2.1",
-        publisher: "USPTO Primary Registry",
-        authority: "Primary Statutory Registry",
-        stance: "supporting",
-        excerpt:
-          "Registration No. 4,892,109 for VEGA CAMERA in Class 09 is currently ACTIVE with owner Vega Optics Inc.",
-        retrieved_at: "2026-08-30T10:15:00Z",
-      },
-    ],
-  });
+  const [item, setItem] = useState<any>(null);
   const [decision, setDecision] = useState("cleared");
   const [rationale, setRationale] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadItem = async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.getClearanceItem({
         path: { org_id: orgSlug, project_id: projectId, item_id: itemId },
       });
       if (res.ok && res.value.data) {
         setItem(res.value.data);
+      } else {
+        setItem(null);
+        setLoadError(res.ok ? "Item not found." : res.error.message || "Failed to load item.");
       }
     } catch {
-      // keep fallback
+      setItem(null);
+      setLoadError("Unable to reach the clearance service.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -78,14 +64,36 @@ export function ItemDetailRoute() {
       }
 
       setFeedback("Decision recorded and committed to immutable audit log.");
-      setItem((prev: any) => ({ ...prev, status: "decided", workflow_status: "closed" }));
+      // Reload authoritative state rather than optimistically inventing it.
+      await loadItem();
     } catch {
-      setFeedback("Decision committed to workspace state.");
-      setItem((prev: any) => ({ ...prev, status: "decided", workflow_status: "closed" }));
+      // A governed decision must not report fake success. Surface the failure.
+      setFeedback("Error: could not reach the clearance service. Your decision was not recorded.");
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (loading) {
+    return <div className="p-6 text-xs text-slate-400 font-sans">Loading clearance item…</div>;
+  }
+
+  if (loadError || !item) {
+    return (
+      <div className="p-6 max-w-2xl font-sans space-y-3">
+        <Link
+          to="/o/$orgSlug/projects/$projectId/workspace"
+          params={{ orgSlug, projectId }}
+          className="text-xs text-amber-500 hover:underline inline-block"
+        >
+          ← Back to Screenplay Workspace
+        </Link>
+        <div role="alert" className="p-4 rounded bg-red-950/50 border border-red-900 text-red-400 text-xs">
+          {loadError || "This clearance item is not available."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-4xl font-sans">

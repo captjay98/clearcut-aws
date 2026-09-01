@@ -18,24 +18,7 @@ export function CommentThread({ comments = [], onAddComment = () => {} }: Commen
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyContent, setReplyContent] = useState("");
 
-  const defaultComments: CommentItem[] = [
-    {
-      id: "comm-1",
-      authorName: "Sarah Producer",
-      content: "Let's propose Greeking to 'Sparkling Cola' if licensing is prohibitive.",
-      createdAt: "1 hour ago",
-      replies: [
-        {
-          id: "comm-2",
-          authorName: "Bob Reviewer",
-          content: "Agreed. Greeking proposal submitted for review.",
-          createdAt: "45 mins ago",
-        },
-      ],
-    },
-  ];
-
-  const displayComments = comments && comments.length > 0 ? comments : defaultComments;
+  const displayComments = comments ?? [];
 
   const handleCreateParent = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +56,11 @@ export function CommentThread({ comments = [], onAddComment = () => {} }: Commen
       </form>
 
       <div className="space-y-4 divide-y divide-slate-100 dark:divide-slate-800">
+        {displayComments.length === 0 && (
+          <p className="text-xs text-slate-500 dark:text-slate-400 pt-2">
+            No comments yet.
+          </p>
+        )}
         {displayComments.map((c) => (
           <div key={c.id} className="pt-4 first:pt-0 space-y-3">
             <div>

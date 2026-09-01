@@ -16,34 +16,25 @@ export interface ClaimTableProps {
 }
 
 export function ClaimTable({ claims = [] }: ClaimTableProps) {
-  const defaultClaims: ClaimRecord[] = [
-    {
-      claimId: "c1",
-      claimText: "Registered US trademark for carbonated beverages",
-      stance: "supports",
-      authorityTier: "primary_official",
-      sourceUrl: "https://tsdr.uspto.gov/#caseNumber=8850142",
-      sourceDomain: "tsdr.uspto.gov",
-      excerpt: "The mark consists of standard characters without claim to any particular font.",
-    },
-    {
-      claimId: "c2",
-      claimText: "Historical registration in class 009 for motion-picture equipment",
-      stance: "supports",
-      authorityTier: "reputable_news",
-      sourceUrl: "https://variety.com/archives",
-      sourceDomain: "variety.com",
-      excerpt: "Camera manufacturer active in 1968 production era.",
-    },
-  ];
-
-  const displayClaims = claims && claims.length > 0 ? claims : defaultClaims;
+  const displayClaims = claims ?? [];
 
   const stanceBadges: Record<string, "success" | "danger" | "neutral"> = {
     supports: "success",
     disagrees: "danger",
     context: "neutral",
   };
+
+  // Zero evidence is an unresolved state, never fabricated clearance.
+  if (displayClaims.length === 0) {
+    return (
+      <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-6 text-center">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          No sourced evidence claims yet. This item is unresolved until research
+          returns cited source snapshots.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">

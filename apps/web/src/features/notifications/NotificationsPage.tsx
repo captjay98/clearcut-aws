@@ -19,27 +19,7 @@ export function NotificationsPage({
 }) {
   const [filterTier, setFilterTier] = useState<string>("all");
 
-  const defaultNotifications: NotificationItem[] = [
-    {
-      id: "n1",
-      tier: "urgent",
-      title: "Material source change detected",
-      body: "A monitored trademark source was flagged for material change.",
-      time: "5 mins ago",
-      read: false,
-    },
-    {
-      id: "n2",
-      tier: "standard",
-      title: "Evidence decision recorded",
-      body: "Sarah recorded 'Accept as-is' on Scene 1 item.",
-      time: "1 hour ago",
-      read: true,
-    },
-  ];
-
-  const displayList =
-    notifications && notifications.length > 0 ? notifications : defaultNotifications;
+  const displayList = notifications ?? [];
 
   const filtered =
     filterTier === "all"
@@ -79,6 +59,11 @@ export function NotificationsPage({
 
         <Card>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {filtered.length === 0 && (
+              <div className="p-3 text-xs text-slate-500 dark:text-slate-400">
+                No notifications.
+              </div>
+            )}
             {filtered.map((n) => (
               <div
                 key={n.id}
