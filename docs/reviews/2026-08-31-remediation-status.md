@@ -112,3 +112,49 @@ evidence's "30 passed" was an invocation artifact and should not be trusted.
 
 Recommended follow-up: remove `apps/web/tests/unit/*route*` symbol-existence tests;
 rely on the e2e layer (see `apps/web/tests/e2e/TESTING.md`) for real coverage.
+
+
+---
+
+## Session 2 addendum — cleanup + detection/research wiring
+
+### Additional work done (verified)
+
+4. **Pruned stale docs + hollow tests (commit `9d3dd51`).** Removed 48 superseded
+   `2026-08-30-*` packet evidence docs (kept `06b` and `ui-plan-to-mock-audit` — both
+   still referenced) and all 11 hollow `apps/web/tests/unit/*` symbol-existence tests.
+   CI updated to drop the deleted path and run the no-legacy scanner.
+
+5. **Moved narrative docs into `docs/` (commit `ecc204a`).** `feature-ledger.md`,
+   `product-plan.md`, `submission-strategy.md` moved out of repo root; feature-coverage
+   script path, steering structure tree, and doc references updated. Root now holds only
+   required governance + config + the `clearcut` CLI + `start.sh`.
+
+6. **Wired detection + research endpoints (commit `ddb0a9c`).** The two previously
+   dormant contract operations are now mounted and scoped:
+   - `POST .../script-versions/{versionId}:detect` (startDetection)
+   - `POST .../clearance-items/{itemId}:research` (startResearch)
+
+   Each verifies CSRF + authenticated org/project/target-ownership scope (cross-tenant
+   target ⇒ 404) and persists a real job row + immutable audit event in one transaction.
+   Runtime selection is production-honest: detection is Gemini-only, research is
+   Parallel-only; missing credentials ⇒ typed **503**, never a hermetic fallback.
+   Hermetic/test doubles are injected only via `dependency_overrides` in tests. Added a
+   `jobs` table and 6 endpoint tests (persistence, 503-unconfigured, cross-tenant 404).
+
+### Final gate (tree clean, HEAD `ddb0a9c`)
+
+- no-legacy scanner → PASS
+- contract-drift → PASS (endpoints implement existing contract ops; no schema change)
+- feature-coverage → PASS (47 features)
+- `uv run pytest tests/contracts tests/foundation services/api/tests` → **121 passed**
+- `pnpm --filter clearcut-web build` (Vite 7) → success
+
+### Still deferred (honest)
+
+- **Live Gemini/Parallel provider adapters.** The detection/research endpoints are wired,
+  scoped, and audited, but a *configured* live provider currently returns 503 until its
+  adapter is implemented. This is intentional — no silent hermetic fallback, no fabricated
+  evidence. Requires real API credentials to verify end-to-end.
+- **Live Playwright e2e run** in a real 2-server environment (see `tests/e2e/TESTING.md`).
+- **TanStack Start / SSR** — not needed; Router + Vite 7 is the accepted architecture.
