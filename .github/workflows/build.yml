@@ -26,6 +26,7 @@ jobs:
           uv run pytest -v
       - name: Run Frontend Checks
         run: |
-          bun test apps/web/tests/unit/ apps/site/tests/ packages/design-system/tests/
+          node scripts/check-no-legacy-runtime.mjs
+          bun test apps/site/tests/ packages/design-system/tests/
           bun scripts/check-contract-drift.mjs
           bun scripts/check-feature-coverage.mjs
