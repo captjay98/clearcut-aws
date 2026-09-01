@@ -164,7 +164,7 @@ rely on the e2e layer (see `apps/web/tests/e2e/TESTING.md`) for real coverage.
 
 ## Session 3 addendum — live provider adapters (Parallel + Vertex/Gemini)
 
-### Done (verified locally, NOT verified against live APIs)
+### Done (verified locally; Vertex global live-probed)
 
 - **Parallel search/extract adapters corrected to the real API contract.** The
   existing adapters had wrong shapes; fixed against docs.parallel.ai:
@@ -206,17 +206,31 @@ is the correct path (not a Gemini API key).
   network call).
 - contract-drift → PASS · no-legacy → PASS · foundation → PASS.
 
-### NOT verified here / follow-up (honest)
+### Live Vertex global verification
 
-1. **No live API call was made.** This environment has no outbound network and the
-   Parallel key / Vertex ADC are not exercised end-to-end. Adapters are built to the
-   documented contracts and unit-verified for wiring, but a real search/extract/detect
-   round-trip must be run in your environment.
-2. **Model name unverified.** `CLEARCUT_GEMINI_MODEL` defaults to
-   `gemini-3.1-pro-preview` (as provided). I could not confirm that ID against the live
-   Vertex model list; if wrong, set the env var — no code change needed. Your other
-   named models (`gemini-3.7-flash`, `gemini-3.1-flash-lite`) are equally selectable.
-3. **Job execution still deferred.** The `:detect` and `:research` endpoints persist a
+On 2026-09-01 UTC, authenticated minimal `generateContent` calls were sent to:
+
+`https://aiplatform.googleapis.com/v1/projects/clearcut-workspace/locations/global/publishers/google/models/{MODEL_ID}:generateContent`
+
+All three configured model IDs returned HTTP 200 and reported the exact matching
+`modelVersion`:
+
+- `gemini-3.7-flash`
+- `gemini-3.1-flash-lite`
+- `gemini-3.1-pro-preview`
+
+The model IDs are valid as bare IDs in the google-genai SDK; no publisher-qualified
+normalization is needed in `VertexDetectionRuntime`. For the `global` location, the
+REST host is `aiplatform.googleapis.com`—not `global-aiplatform.googleapis.com`.
+The checks used a gcloud access token and `x-goog-user-project: clearcut-workspace`,
+which avoided modifying local ADC configuration.
+
+### Remaining live-verification boundary
+
+1. **Parallel is not yet live-verified.** The Parallel key has not been exercised
+   end-to-end here. Its adapters are built to the documented contracts and
+   unit-verified for wiring, but a real search/extract round-trip remains required.
+2. **Job execution is still deferred.** The `:detect` and `:research` endpoints persist a
    real 202 job + audit event but do not yet *run* the adapter and write
    snapshots/claims. The job runner that invokes these runtimes and persists results is
    the next piece of work.
