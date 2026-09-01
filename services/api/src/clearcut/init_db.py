@@ -113,6 +113,19 @@ CREATE_TABLES_SQL = [
     );
     """,
     """
+    CREATE TABLE IF NOT EXISTS jobs (
+        id UUID PRIMARY KEY,
+        org_id UUID NOT NULL,
+        project_id UUID NOT NULL,
+        job_type VARCHAR(50) NOT NULL,
+        target_id UUID NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        progress NUMERIC,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL
+    );
+    """,
+    """
     CREATE TABLE IF NOT EXISTS source_snapshots (
         id UUID PRIMARY KEY,
         org_id UUID NOT NULL,
