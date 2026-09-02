@@ -1,34 +1,61 @@
-
+from clearcut.csrf import verify_csrf_origin
+from clearcut.delivery_errors import error_response
 from clearcut.identity.application.session_service import SessionService
-from fastapi import APIRouter, Cookie, Header, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, EmailStr, Field
 
 router = APIRouter(prefix="/api/v1", tags=["session"])
 
-ALLOWED_ORIGINS = {
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://test",
-}
+LOCAL_SESSION_COOKIE = "clearcut_session"
+HOST_SESSION_COOKIE = "__Host-clearcut_session"
 
 
-def verify_csrf_origin(request: Request) -> None:
-    origin = request.headers.get("origin")
-    host = request.headers.get("host")
-    if not origin:
-        return
-    if host and (origin.endswith(host) or host in origin):
-        return
-    if origin in ALLOWED_ORIGINS:
-        return
-    if "localhost" in origin or "127.0.0.1" in origin:
-        return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Cross-origin state mutation rejected",
+def _session_cookie_policy(request: Request) -> tuple[str, bool]:
+    if request.url.scheme == "https":
+        return HOST_SESSION_COOKIE, True
+    return LOCAL_SESSION_COOKIE, False
+
+
+def _set_session_cookie(request: Request, response: Response, token: str) -> None:
+    cookie_name, secure = _session_cookie_policy(request)
+    response.set_cookie(
+        key=cookie_name,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+        path="/",
     )
+
+
+def _delete_session_cookies(response: Response) -> None:
+    response.delete_cookie(
+        key=LOCAL_SESSION_COOKIE,
+        path="/",
+        secure=False,
+        httponly=True,
+        samesite="lax",
+    )
+    response.delete_cookie(
+        key=HOST_SESSION_COOKIE,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def get_session_token_from_request(request: Request) -> str | None:
+    authorization = request.headers.get("authorization")
+    if authorization:
+        scheme, separator, token = authorization.partition(" ")
+        if separator and scheme.casefold() == "bearer" and token:
+            return token
+        return None
+
+    cookie_name, _secure = _session_cookie_policy(request)
+    return request.cookies.get(cookie_name)
 
 
 class CreateSessionBody(BaseModel):
@@ -37,17 +64,22 @@ class CreateSessionBody(BaseModel):
 
 
 class RegisterUserBody(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8)
 
 
-@router.post("/users", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/users",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="registerUser",
+    response_model=None,
+)
 async def register_user(
     body: RegisterUserBody,
     request: Request,
     response: Response,
-) -> dict:
+) -> dict | JSONResponse:
     verify_csrf_origin(request)
     session_service: SessionService = request.app.state.session_service
     identity_repo = request.app.state.identity_repo
@@ -55,40 +87,28 @@ async def register_user(
 
     existing = await identity_repo.get_user_by_email(body.email)
     if existing:
-        raise HTTPException(
+        return error_response(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email address already exists.",
+            code="conflict",
+            message="An account with this email address already exists.",
         )
 
-    if len(body.password) < 8:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 8 characters long.",
-        )
-
-    pw_hash = identity_provider.hash_password(body.password)
+    password_hash = identity_provider.hash_password(body.password)
     user = await identity_repo.create_user_with_password(
         email=body.email,
-        password_hash=pw_hash,
+        password_hash=password_hash,
     )
 
-    ip = request.client.host if request.client else None
-    ua = request.headers.get("user-agent")
-    session, token = await session_service.create_session(
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    _, token = await session_service.create_session(
         email=body.email,
         password=body.password,
-        ip_address=ip,
-        user_agent=ua,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
-    response.set_cookie(
-        key="__Host-clearcut_session",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        path="/",
-    )
+    _set_session_cookie(request, response, token)
 
     return {
         "data": {
@@ -101,18 +121,7 @@ async def register_user(
     }
 
 
-def get_session_token_from_request(
-    cookie_token: str | None = Cookie(None, alias="__Host-clearcut_session"),
-    authorization: str | None = Header(None),
-) -> str | None:
-    if cookie_token:
-        return cookie_token
-    if authorization and authorization.startswith("Bearer "):
-        return authorization.split(" ", 1)[1]
-    return None
-
-
-@router.post("/sessions", status_code=status.HTTP_201_CREATED)
+@router.post("/sessions", status_code=status.HTTP_201_CREATED, operation_id="createSession")
 async def create_session(
     body: CreateSessionBody,
     request: Request,
@@ -121,12 +130,15 @@ async def create_session(
     verify_csrf_origin(request)
     session_service: SessionService = request.app.state.session_service
 
-    ip = request.client.host if request.client else None
-    ua = request.headers.get("user-agent")
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
 
     try:
         session, token = await session_service.create_session(
-            email=body.email, password=body.password, ip_address=ip, user_agent=ua
+            email=body.email,
+            password=body.password,
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
     except ValueError:
         raise HTTPException(
@@ -134,15 +146,7 @@ async def create_session(
             detail="Invalid email or password",
         ) from None
 
-    # Set secure __Host- cookie
-    response.set_cookie(
-        key="__Host-clearcut_session",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=False,  # Set to True in production HTTPS
-        path="/",
-    )
+    _set_session_cookie(request, response, token)
 
     return {
         "data": {
@@ -154,17 +158,21 @@ async def create_session(
     }
 
 
-@router.get("/session-context")
-async def get_session_context(
-    request: Request,
-    token: str | None = Cookie(None, alias="__Host-clearcut_session"),
-) -> dict:
+@router.get("/session-context", operation_id="getSessionContext")
+async def get_session_context(request: Request) -> dict:
     session_service: SessionService = request.app.state.session_service
+    token = get_session_token_from_request(request)
     context = await session_service.get_session_context(token or "")
 
     if not context or not context.authenticated:
         return {
-            "data": {"authenticated": False},
+            "data": {
+                "authenticated": False,
+                "userId": None,
+                "email": None,
+                "activeOrgId": None,
+                "role": None,
+            },
             "meta": {"requestId": "req_context"},
         }
 
@@ -180,14 +188,15 @@ async def get_session_context(
     }
 
 
-@router.delete("/sessions/current", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_current_session(
-    request: Request,
-    response: Response,
-    token: str | None = Cookie(None, alias="__Host-clearcut_session"),
-) -> None:
+@router.delete(
+    "/sessions/current",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="deleteCurrentSession",
+)
+async def delete_current_session(request: Request, response: Response) -> None:
     verify_csrf_origin(request)
     session_service: SessionService = request.app.state.session_service
+    token = get_session_token_from_request(request)
     if token:
         await session_service.revoke_current_session(token)
-    response.delete_cookie(key="__Host-clearcut_session", path="/")
+    _delete_session_cookies(response)

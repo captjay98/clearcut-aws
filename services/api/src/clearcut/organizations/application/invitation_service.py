@@ -6,7 +6,7 @@ from clearcut.organizations.domain.capabilities import has_capability
 from clearcut.organizations.domain.invitations import (
     Invitation,
 )
-from clearcut.organizations.domain.models import Membership
+from clearcut.organizations.domain.models import Membership, coerce_role_type
 from clearcut.organizations.ports.email_delivery import EmailDeliveryPort
 from clearcut.organizations.ports.organization_repository import (
     OrganizationRepositoryPort,
@@ -79,7 +79,7 @@ class InvitationService:
             membership_id=invitation.invitation_id,
             org_id=invitation.org_id,
             user_id=user_id,
-            role=invitation.role,  # type: ignore
+            role=coerce_role_type(invitation.role),
             status="active",
             created_at=invitation.created_at,
         )

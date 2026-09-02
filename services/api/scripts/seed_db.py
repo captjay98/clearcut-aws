@@ -157,16 +157,23 @@ SOURCES = [
     {"num": 38, "item_idx": 9, "title": "Insurer clearance checklist, item 9", "auth": "Secondary", "stance": "context", "claim": "Lists identifiable health detail among standard pre-delivery removals."},
 ]
 
-async def seed():
+async def seed() -> bool:
+    import os
+
+    enabled = os.getenv("CLEARCUT_SEED_DEMO", "").strip().casefold()
+    if enabled not in {"1", "true", "yes", "on"}:
+        print("Demo seed skipped; set CLEARCUT_SEED_DEMO=true to enable it.")
+        return False
+
     now = datetime.now(UTC)
     async with engine.begin() as conn:
-        print("Cleaning previous seed data...")
-        if is_sqlite:
-            await conn.execute(sa.text("DELETE FROM organizations;"))
-            await conn.execute(sa.text("DELETE FROM users;"))
-        else:
-            await conn.execute(sa.text("TRUNCATE organizations CASCADE;"))
-            await conn.execute(sa.text("TRUNCATE users CASCADE;"))
+        existing_demo = await conn.execute(
+            sa.text("SELECT 1 FROM organizations WHERE id = :id"),
+            {"id": fmt_id(ORG_ID)},
+        )
+        if existing_demo.first() is not None:
+            print("Demo seed already present; leaving existing data unchanged.")
+            return False
 
         print("Seeding Users...")
         for u in USERS:
@@ -196,7 +203,10 @@ async def seed():
 
         print("Seeding Script & Script Version...")
         await conn.execute(
-            sa.text("INSERT INTO scripts (id, org_id, project_id, title, created_at) VALUES (:id, :org_id, :project_id, :title, :created_at)"),
+            sa.text(
+                "INSERT INTO scripts (id, org_id, project_id, title, current_slot, created_at) "
+                "VALUES (:id, :org_id, :project_id, :title, 'current', :created_at)"
+            ),
             {"id": fmt_id(SCRIPT_ID), "org_id": fmt_id(ORG_ID), "project_id": fmt_id(PROJECT_ID), "title": "Borrowed Light", "created_at": fmt_dt(now)},
         )
         await conn.execute(
@@ -378,6 +388,7 @@ async def seed():
         )
 
     print("✨ Database seeding completed successfully!")
+    return True
 
 if __name__ == "__main__":
     asyncio.run(seed())

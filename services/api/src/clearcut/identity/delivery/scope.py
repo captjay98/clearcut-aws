@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from uuid import UUID
+
 import sqlalchemy as sa
-from fastapi import Header, HTTPException, Request, status
 from clearcut.database import session_scope
+from clearcut.identity.delivery.http import get_session_token_from_request
+from fastapi import HTTPException, Request, status
 
 
 @dataclass(frozen=True)
@@ -20,12 +21,8 @@ async def get_request_scope(
     org_id: str | None = None,
     project_id: str | None = None,
 ) -> RequestScope:
-    # 1. Extract session token
-    token = request.cookies.get("__Host-clearcut_session") or request.cookies.get("clearcut_session")
-    if not token:
-        auth_header = request.headers.get("authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
+    # 1. Extract the explicit Bearer token or the cookie allowed for this scheme.
+    token = get_session_token_from_request(request)
 
     if not token:
         raise HTTPException(
@@ -71,7 +68,7 @@ async def get_request_scope(
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail="Organization not found",
-                    )
+                    ) from None
 
         async with session_scope() as session:
             res = await session.execute(
@@ -98,7 +95,7 @@ async def get_request_scope(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
-            )
+            ) from None
 
         async with session_scope() as session:
             res = await session.execute(

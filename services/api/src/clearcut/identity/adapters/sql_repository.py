@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 from uuid import UUID
-import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
 
+import sqlalchemy as sa
 from clearcut.database import session_scope
 from clearcut.identity.domain.models import SecurityEvent, Session, User, normalize_email
 from clearcut.identity.ports.identity_provider import IdentityRepositoryPort
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SqlIdentityRepository(IdentityRepositoryPort):

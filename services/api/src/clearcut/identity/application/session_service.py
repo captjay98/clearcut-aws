@@ -93,7 +93,7 @@ class SessionService:
 
         return session, raw_token
 
-    async def get_session_context(self, token: str) -> SessionContextDto | None:
+    async def get_session_context(self, token: str) -> SessionContextDto:
         if not token:
             return SessionContextDto(authenticated=False)
 

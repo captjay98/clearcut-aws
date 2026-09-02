@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from clearcut.organizations.domain.capabilities import Role, has_capability
-from clearcut.organizations.domain.models import Membership
+from clearcut.organizations.domain.models import Membership, coerce_role_type
 from clearcut.organizations.ports.organization_repository import (
     OrganizationRepositoryPort,
 )
@@ -32,7 +32,7 @@ class MembershipService:
             if active_owners <= 1:
                 raise ValueError("Cannot change role of the only active Owner")
 
-        target_m.role = new_role  # type: ignore
+        target_m.role = coerce_role_type(new_role)
         await self.repository.save_membership(target_m)
         return target_m
 

@@ -1,9 +1,10 @@
 import pytest
-from clearcut.database import session_scope
-from clearcut.init_db import init_and_seed_db
 from clearcut.identity.adapters.local_identity import Argon2idIdentityProvider
-from clearcut.identity.adapters.sql_repository import DatabaseIdentityRepository, SqlIdentityRepository
+from clearcut.identity.adapters.sql_repository import (
+    DatabaseIdentityRepository,
+)
 from clearcut.identity.application.session_service import SessionService
+from clearcut.init_db import init_and_seed_db
 
 
 @pytest.mark.asyncio

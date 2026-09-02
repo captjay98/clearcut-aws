@@ -1,12 +1,12 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
-import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
 
+import sqlalchemy as sa
 from clearcut.database import session_scope
 from clearcut.organizations.domain.invitations import Invitation
 from clearcut.organizations.domain.models import Membership, Organization
 from clearcut.organizations.ports.organization_repository import OrganizationRepositoryPort
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SqlOrganizationRepository(OrganizationRepositoryPort):

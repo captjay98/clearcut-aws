@@ -10,6 +10,18 @@ RoleType = Literal["owner", "admin", "editor", "reviewer"]
 MembershipStatus = Literal["active", "deactivated"]
 
 
+def coerce_role_type(value: str) -> RoleType:
+    if value == "owner":
+        return "owner"
+    if value == "admin":
+        return "admin"
+    if value == "editor":
+        return "editor"
+    if value == "reviewer":
+        return "reviewer"
+    raise ValueError(f"Unknown role: {value!r}")
+
+
 def slugify(text: str) -> str:
     text = text.lower().strip()
     text = re.sub(r"[^\w\s-]", "", text)
