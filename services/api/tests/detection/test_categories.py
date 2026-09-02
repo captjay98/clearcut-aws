@@ -1,6 +1,8 @@
+import pytest
 import uuid6
 from clearcut.detection.adapters.hermetic_runtime import HermeticDetectionRuntime
 from clearcut.detection.domain.candidates import ClearanceCategory
+from clearcut.detection.ports.model_runtime import DetectionSuccess
 from clearcut.scripts.domain.elements import ElementType, ScriptElement
 
 
@@ -21,7 +23,8 @@ def test_ten_protected_categories_exist():
     assert {c.value for c in ClearanceCategory} == expected
 
 
-def test_candidate_detection_across_categories():
+@pytest.mark.asyncio
+async def test_candidate_detection_across_categories() -> None:
     runtime = HermeticDetectionRuntime()
 
     elem_id = uuid6.uuid7()
@@ -35,7 +38,9 @@ def test_candidate_detection_across_categories():
         ),
     )
 
-    candidates = runtime.detect_candidates([action])
+    result = await runtime.detect_element(action)
+    assert isinstance(result, DetectionSuccess)
+    candidates = result.candidates
     assert len(candidates) >= 3
 
     categories = {c.category for c in candidates}

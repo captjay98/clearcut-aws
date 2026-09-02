@@ -6,6 +6,12 @@ from uuid import UUID
 import uuid6
 
 
+class EvaluationStage(StrEnum):
+    DETECTION = "detection"
+    RESEARCH = "research"
+    FINAL = "final"
+
+
 class JudgeDimension(StrEnum):
     DETECTION_RECALL = "detection_recall"
     CLAIM_GROUNDING = "claim_grounding"
@@ -26,15 +32,22 @@ class DimensionStatus(StrEnum):
     FAILED = "failed"
 
 
-def get_stage_eligible_dimensions(stage: str) -> set[JudgeDimension]:
-    if stage == "detection":
+def get_stage_eligible_dimensions(
+    stage: EvaluationStage | str,
+) -> set[JudgeDimension]:
+    try:
+        normalized_stage = EvaluationStage(stage)
+    except ValueError as error:
+        raise ValueError(f"Unknown evaluation stage: {stage!r}") from error
+
+    if normalized_stage is EvaluationStage.DETECTION:
         return {
             JudgeDimension.DETECTION_RECALL,
             JudgeDimension.APPROPRIATE_UNCERTAINTY,
             JudgeDimension.LEGAL_BOUNDARY,
             JudgeDimension.TOOL_EFFICIENCY,
         }
-    if stage == "research":
+    if normalized_stage is EvaluationStage.RESEARCH:
         return {
             JudgeDimension.DETECTION_RECALL,
             JudgeDimension.CLAIM_GROUNDING,
@@ -45,7 +58,6 @@ def get_stage_eligible_dimensions(stage: str) -> set[JudgeDimension]:
             JudgeDimension.LEGAL_BOUNDARY,
             JudgeDimension.TOOL_EFFICIENCY,
         }
-    # Final full clearance run
     return set(JudgeDimension)
 
 

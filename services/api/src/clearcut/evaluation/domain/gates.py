@@ -17,6 +17,7 @@ class GateSeverity(StrEnum):
 @dataclass(frozen=True)
 class GateResult:
     gate_id: UUID
+    candidate_id: UUID
     gate_name: str
     passed: bool
     severity: GateSeverity
@@ -26,6 +27,7 @@ class GateResult:
     @classmethod
     def create(
         cls,
+        candidate_id: UUID,
         gate_name: str,
         passed: bool,
         severity: GateSeverity,
@@ -33,6 +35,7 @@ class GateResult:
     ) -> "GateResult":
         return cls(
             gate_id=uuid6.uuid7(),
+            candidate_id=candidate_id,
             gate_name=gate_name,
             passed=passed,
             severity=severity,
@@ -45,6 +48,7 @@ class SpanBoundaryGate:
     def evaluate(self, candidate: CandidateItem, element_text: str) -> GateResult:
         if candidate.span_start < 0 or candidate.span_end > len(element_text):
             return GateResult.create(
+                candidate_id=candidate.item_id,
                 gate_name="SpanBoundaryGate",
                 passed=False,
                 severity=GateSeverity.BLOCKER,
@@ -55,12 +59,14 @@ class SpanBoundaryGate:
             )
         if candidate.span_start >= candidate.span_end:
             return GateResult.create(
+                candidate_id=candidate.item_id,
                 gate_name="SpanBoundaryGate",
                 passed=False,
                 severity=GateSeverity.BLOCKER,
                 details="Span start must be strictly less than span end",
             )
         return GateResult.create(
+            candidate_id=candidate.item_id,
             gate_name="SpanBoundaryGate",
             passed=True,
             severity=GateSeverity.INFO,
@@ -80,12 +86,14 @@ class LegalCertaintyGate:
     def evaluate(self, candidate: CandidateItem) -> GateResult:
         if LEGAL_CERTAINTY_PATTERNS.search(candidate.rationale):
             return GateResult.create(
+                candidate_id=candidate.item_id,
                 gate_name="LegalCertaintyGate",
                 passed=False,
                 severity=GateSeverity.BLOCKER,
                 details="Model rationale makes impermissible absolute legal clearance claims",
             )
         return GateResult.create(
+            candidate_id=candidate.item_id,
             gate_name="LegalCertaintyGate",
             passed=True,
             severity=GateSeverity.INFO,
@@ -107,12 +115,14 @@ class PromptInjectionGate:
         )
         if has_injection:
             return GateResult.create(
+                candidate_id=candidate.item_id,
                 gate_name="PromptInjectionGate",
                 passed=False,
                 severity=GateSeverity.BLOCKER,
                 details="Prompt injection tokens detected in candidate output",
             )
         return GateResult.create(
+            candidate_id=candidate.item_id,
             gate_name="PromptInjectionGate",
             passed=True,
             severity=GateSeverity.INFO,

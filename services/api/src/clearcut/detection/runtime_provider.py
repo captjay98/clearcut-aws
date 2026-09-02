@@ -9,9 +9,13 @@ The hermetic runtime is only injected explicitly by tests via
 """
 import os
 
-from fastapi import HTTPException, status
-
+from clearcut.ai.model_roles import (
+    GeminiRole,
+    ModelRoleConfigurationError,
+    resolve_model_role,
+)
 from clearcut.detection.ports.model_runtime import ModelRuntimePort
+from fastapi import HTTPException, status
 
 
 class RuntimeNotConfiguredError(RuntimeError):
@@ -44,15 +48,24 @@ def get_detection_runtime() -> ModelRuntimePort:
         try:
             from clearcut.detection.adapters.vertex_runtime import VertexDetectionRuntime
 
-            return VertexDetectionRuntime(project=project, location=location)
-        except ImportError:
+            return VertexDetectionRuntime(
+                project=project,
+                location=location,
+                role_configuration=resolve_model_role(GeminiRole.DETECTION),
+            )
+        except ModelRoleConfigurationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(error),
+            ) from error
+        except ImportError as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
                     "Vertex detection dependencies are not installed (google-genai). "
                     "Install service deps to enable live detection."
                 ),
-            )
+            ) from error
 
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

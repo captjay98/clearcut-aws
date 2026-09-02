@@ -1,3 +1,4 @@
+import pytest
 import uuid6
 from clearcut.evaluation.adapters.hermetic_judge import HermeticJudgeAdapter
 from clearcut.evaluation.application.evaluate import EvaluationService
@@ -89,3 +90,35 @@ def test_arithmetic_mean_over_eligible_scored_dimensions():
     # (90 + 80 + 100 + 90) / 4 = 360 / 4 = 90.0
     assert evaluation.headline_score == 90.0
     assert len(evaluation.verdicts) == 10
+
+
+
+@pytest.mark.asyncio
+async def test_hermetic_judge_satisfies_typed_async_boundary() -> None:
+    from clearcut.evaluation.ports.judge import (
+        JudgeBindings,
+        JudgeRequest,
+        JudgeSuccess,
+    )
+
+    judge = HermeticJudgeAdapter()
+    result = await judge.evaluate(
+        JudgeRequest(
+            org_id=uuid6.uuid7(),
+            project_id=uuid6.uuid7(),
+            run_id=uuid6.uuid7(),
+            stage="detection",
+            candidates=(),
+            gate_results=(),
+            bindings=JudgeBindings(
+                rubric_version="hermetic-rubric",
+                prompt_version="hermetic-prompt",
+                policy_version="hermetic-policy",
+                input_sha256="c" * 64,
+            ),
+        )
+    )
+
+    assert isinstance(result, JudgeSuccess)
+    assert len(result.verdicts) == 10
+    assert result.metadata.requested_model == "hermetic-test-only"

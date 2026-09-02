@@ -6,10 +6,51 @@ from clearcut.evaluation.domain.rubric import (
     JudgeVerdict,
     get_stage_eligible_dimensions,
 )
-from clearcut.evaluation.ports.judge import JudgePort
+from clearcut.evaluation.ports.judge import (
+    JudgeAttemptMetadata,
+    JudgeInvocationMetadata,
+    JudgePort,
+    JudgeRequest,
+    JudgeSuccess,
+    TokenUsage,
+)
 
 
 class HermeticJudgeAdapter(JudgePort):
+    @property
+    def requested_model(self) -> str:
+        return "hermetic-test-only"
+
+    async def evaluate(self, request: JudgeRequest) -> JudgeSuccess:
+        usage = TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
+        verdicts = self.evaluate_stage(
+            request.stage,
+            list(request.candidates),
+            list(request.gate_results),
+        )
+        attempt = JudgeAttemptMetadata(
+            ordinal=1,
+            status="succeeded",
+            returned_model="hermetic-test-only",
+            response_id="hermetic-test-only",
+            usage=usage,
+            latency_ms=0,
+            error=None,
+        )
+        return JudgeSuccess(
+            verdicts=tuple(verdicts),
+            critique="Hermetic test-only evaluation.",
+            metadata=JudgeInvocationMetadata(
+                requested_model="hermetic-test-only",
+                returned_model="hermetic-test-only",
+                response_id="hermetic-test-only",
+                usage=usage,
+                latency_ms=0,
+                repair_count=0,
+                attempts=(attempt,),
+            ),
+        )
+
     def evaluate_stage(
         self,
         stage: str,

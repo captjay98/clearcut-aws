@@ -5,6 +5,7 @@ from clearcut.evaluation.domain.gates import (
     LegalCertaintyGate,
     PromptInjectionGate,
     SpanBoundaryGate,
+    run_deterministic_gates,
 )
 
 
@@ -65,3 +66,39 @@ def test_prompt_injection_gate_blocks_injected_instructions():
     res = PromptInjectionGate().evaluate(injected_item)
     assert res.passed is False
     assert res.severity == GateSeverity.BLOCKER
+
+
+
+def test_each_deterministic_gate_result_identifies_its_candidate() -> None:
+    element_id = uuid6.uuid7()
+    first = CandidateItem.create(
+        category=ClearanceCategory.PRODUCTS_AND_TRADEMARKS,
+        element_id=element_id,
+        span_start=0,
+        span_end=4,
+        text="Nike",
+        rationale="Named commercial trademark.",
+    )
+    second = CandidateItem.create(
+        category=ClearanceCategory.PRODUCTS_AND_TRADEMARKS,
+        element_id=element_id,
+        span_start=9,
+        span_end=14,
+        text="Apple",
+        rationale="Named commercial trademark.",
+    )
+
+    results = run_deterministic_gates(
+        [first, second],
+        {element_id: "Nike and Apple appear."},
+    )
+
+    assert len(results) == 6
+    assert [result.candidate_id for result in results] == [
+        first.item_id,
+        first.item_id,
+        first.item_id,
+        second.item_id,
+        second.item_id,
+        second.item_id,
+    ]
