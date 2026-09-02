@@ -2,7 +2,9 @@
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,7 +18,17 @@ if not DATABASE_URL:
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
 
-engine_kwargs = {"echo": False}
+
+def database_wall_clock_sql(dialect_name: str) -> str:
+    """Return a trusted SQL fragment for statement-evaluated database wall time."""
+    if dialect_name == "postgresql":
+        return "clock_timestamp()"
+    if dialect_name == "sqlite":
+        return "STRFTIME('%Y-%m-%d %H:%M:%f', 'now')"
+    raise RuntimeError(f"Unsupported database dialect: {dialect_name}")
+
+
+engine_kwargs: dict[str, Any] = {"echo": False}
 if not is_sqlite:
     engine_kwargs.update({
         "pool_size": 10,
@@ -25,6 +37,13 @@ if not is_sqlite:
     })
 
 engine: AsyncEngine = create_async_engine(DATABASE_URL, **engine_kwargs)
+
+if is_sqlite:
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
