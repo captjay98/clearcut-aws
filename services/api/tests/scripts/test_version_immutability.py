@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError
+from typing import Any
 
 import pytest
 import uuid6
@@ -35,5 +36,6 @@ def test_committed_version_is_immutable():
     assert len(version.elements) == 1
 
     # Immutability check: frozen dataclass / tuple
+    mutable_view: Any = version
     with pytest.raises(FrozenInstanceError):
-        version.ordinal = 2  # type: ignore
+        mutable_view.ordinal = 2

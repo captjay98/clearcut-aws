@@ -1,19 +1,43 @@
-import hashlib
-import json
-from datetime import UTC, datetime
-from typing import Annotated, Any
+"""Canonical screenplay import and read HTTP boundaries."""
+from typing import Annotated, Literal
 from uuid import UUID
+
 import uuid6
-import sqlalchemy as sa
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from clearcut.delivery_errors import error_response
+from clearcut.identity.delivery.scope import RequestScope, get_request_scope
+from clearcut.organizations.delivery.http import verify_csrf_origin
+from clearcut.scripts.adapters.sql_import_repository import ProjectScriptProjection
+from clearcut.scripts.application.import_script import (
+    MAX_SCRIPT_SIZE_BYTES,
+    ImportArtifactView,
+    ImportConflictError,
+    ImportNotFoundError,
+    ImportScriptService,
+    ImportUnavailableError,
+    ImportValidationError,
+    ParseRunView,
+    ScriptVersionView,
+)
+from fastapi import (
+    APIRouter,
+    File,
+    Header,
+    HTTPException,
+    Path,
+    Request,
+    UploadFile,
+    status,
+)
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from clearcut.database import session_scope
-from clearcut.identity.delivery.scope import get_request_scope
-from clearcut.organizations.delivery.http import verify_csrf_origin
-from clearcut.scripts.application.upload_service import UploadService
-
 router = APIRouter(prefix="/api/v1", tags=["scripts", "uploads"])
+
+OrgIdParam = Annotated[str, Path(alias="orgId")]
+ProjectIdParam = Annotated[str, Path(alias="projectId")]
+ArtifactIdParam = Annotated[UUID, Path(alias="artifactId")]
+RunIdParam = Annotated[UUID, Path(alias="runId")]
+VersionIdParam = Annotated[UUID, Path(alias="versionId")]
 
 
 class CreateCapabilityBody(BaseModel):
@@ -21,219 +45,373 @@ class CreateCapabilityBody(BaseModel):
     content_type: str = Field(alias="contentType", min_length=1, max_length=100)
 
 
-class PasteImportBody(BaseModel):
-    text: str = Field(min_length=1)
-    title: str = Field(default="Pasted Script", min_length=1, max_length=200)
+class CanonicalPasteImportBody(BaseModel):
+    raw_text: str = Field(alias="rawText", min_length=1)
+    format: Literal["fountain", "fdx", "raw"]
 
 
-class CommitVersionBody(BaseModel):
-    title: str | None = None
-    sourceArtifactId: str | None = None
-    diffNotes: str | None = None
+def _service(request: Request) -> ImportScriptService:
+    return request.app.state.import_script_service
 
 
-@router.get("/organizations/{org_id}/projects/{project_id}/script")
-async def get_project_script(org_id: str, project_id: str, request: Request) -> dict:
+async def _project_scope(
+    request: Request, org_id: str, project_id: str
+) -> tuple[RequestScope, UUID, UUID]:
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
-    async with session_scope() as session:
-        # Fetch latest version for this project
-        ver_res = await session.execute(
-            sa.text("""
-                SELECT v.id, v.ordinal, s.title
-                FROM script_versions v
-                JOIN scripts s ON s.id = v.script_id
-                WHERE v.org_id = :org_id AND v.project_id = :project_id
-                ORDER BY v.ordinal DESC
-                LIMIT 1
-            """),
-            {"org_id": str(scope.org_id), "project_id": str(scope.project_id)},
+    if scope.org_id is None or scope.project_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found in organization",
         )
-        ver_row = ver_res.mappings().first()
+    return scope, scope.org_id, scope.project_id
 
-        scenes = []
-        script_title = ver_row["title"] if ver_row else "Untitled Script"
-        version_label = f"v{ver_row['ordinal']}" if ver_row else "v1"
 
-        if ver_row:
-            res = await session.execute(
-                sa.text("""
-                    SELECT e.id, e.version_id, e.ordinal, e.element_type, e.text, e.scene_number, e.page_number,
-                           s.tag as flag
-                    FROM script_elements e
-                    LEFT JOIN element_spans s ON s.element_id = e.id
-                    WHERE e.version_id = :version_id
-                    ORDER BY e.ordinal ASC
-                """),
-                {"version_id": str(ver_row["id"])},
-            )
-            rows = res.fetchall()
+def _meta(*, total_count: int | None = None) -> dict[str, str | int]:
+    result: dict[str, str | int] = {"requestId": str(uuid6.uuid7())}
+    if total_count is not None:
+        result["totalCount"] = total_count
+    return result
 
-            scenes_map = {}
-            for r in rows:
-                sc_num = r.scene_number or 1
-                if sc_num not in scenes_map:
-                    scenes_map[sc_num] = {
-                        "number": sc_num,
-                        "slug": f"SCENE {sc_num}",
-                        "page": r.page_number or 1,
-                        "lines": [],
+
+def _expected_error(error: Exception) -> JSONResponse:
+    if isinstance(error, ImportValidationError):
+        return error_response(
+            status_code=error.status_code,
+            code="validation_failed",
+            message=str(error),
+        )
+    if isinstance(error, ImportNotFoundError):
+        return error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message=str(error),
+        )
+    if isinstance(error, ImportConflictError):
+        return error_response(
+            status_code=status.HTTP_409_CONFLICT,
+            code="conflict",
+            message=str(error),
+        )
+    if isinstance(error, ImportUnavailableError):
+        return error_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="capability_unavailable",
+            message=str(error),
+            retryable=True,
+        )
+    raise error
+
+
+def _artifact_data(artifact: ImportArtifactView) -> dict[str, object]:
+    return {
+        "artifactId": str(artifact.artifact_id),
+        "projectId": str(artifact.project_id),
+        "filename": artifact.filename,
+        "contentType": artifact.content_type,
+        "sizeBytes": artifact.size_bytes,
+        "sha256": artifact.sha256_hash,
+        "status": artifact.status,
+        "createdAt": artifact.created_at.isoformat(),
+    }
+
+
+def _parse_run_data(run: ParseRunView) -> dict[str, object]:
+    return {
+        "runId": str(run.run_id),
+        "artifactId": str(run.artifact_id),
+        "status": run.status,
+        "parserName": run.parser_name,
+        "parserVersion": run.parser_version,
+        "sceneCount": run.scene_count,
+        "elementCount": run.element_count,
+        "warnings": [
+            {
+                "code": warning.code,
+                "line": warning.line_number,
+                "message": warning.message,
+            }
+            for warning in run.warnings
+        ],
+        "warningsAccepted": run.warnings_accepted,
+        "acceptedAt": run.accepted_at.isoformat() if run.accepted_at else None,
+        "createdAt": run.created_at.isoformat(),
+        "completedAt": run.completed_at.isoformat(),
+    }
+
+
+def _version_data(version: ScriptVersionView) -> dict[str, object]:
+    return {
+        "versionId": str(version.version_id),
+        "scriptId": str(version.script_id),
+        "projectId": str(version.project_id),
+        "versionNumber": version.version_number,
+        "revisionLabel": version.revision_label,
+        "title": version.title,
+        "ordinal": version.version_number,
+        "sourceArtifactId": (
+            str(version.source_artifact_id) if version.source_artifact_id else None
+        ),
+        "parseRunId": str(version.parse_run_id) if version.parse_run_id else None,
+        "sourceHash": version.source_hash,
+        "parserVersion": version.parser_version,
+        "sceneCount": version.scene_count,
+        "elementCount": version.element_count,
+        "createdAt": version.created_at.isoformat(),
+    }
+
+
+def _script_data(script: ProjectScriptProjection) -> dict[str, object]:
+    return {
+        "title": script.title,
+        "version": script.version_label,
+        "versionId": str(script.version_id),
+        "scenes": [
+            {
+                "number": scene.number,
+                "slug": scene.slug,
+                "page": scene.page,
+                "lines": [
+                    {
+                        "type": line.element_type,
+                        "text": line.text,
+                        **({"flag": line.flag} if line.flag else {}),
                     }
-                if r.element_type == "scene_heading":
-                    scenes_map[sc_num]["slug"] = r.text
-                else:
-                    line_obj = {"type": r.element_type, "text": r.text}
-                    if r.flag:
-                        line_obj["flag"] = r.flag
-                    scenes_map[sc_num]["lines"].append(line_obj)
+                    for line in scene.lines
+                ],
+            }
+            for scene in script.scenes
+        ],
+    }
 
-            scenes = list(scenes_map.values())
 
-        return {
-            "data": {
-                "title": script_title,
-                "version": version_label,
-                "scenes": scenes,
-            },
-            "meta": {"requestId": "req_get_script"},
-        }
+@router.get(
+    "/organizations/{orgId}/projects/{projectId}/script",
+    operation_id="getProjectScript",
+)
+async def get_project_script(request: Request, org_id: OrgIdParam, project_id: ProjectIdParam):
+    _, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    script = await _service(request).get_current_script(
+        org_id=scope_org_id,
+        project_id=scope_project_id,
+    )
+    if script is None:
+        return error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="No committed screenplay version exists for this project.",
+        )
+    return {"data": _script_data(script), "meta": _meta()}
 
 
 @router.post(
-    "/organizations/{org_id}/projects/{project_id}/upload-capabilities",
+    "/organizations/{orgId}/projects/{projectId}/upload-capabilities",
     status_code=status.HTTP_201_CREATED,
+    operation_id="createUploadCapability",
 )
 async def create_upload_capability(
-    org_id: str,
-    project_id: str,
-    body: CreateCapabilityBody,
     request: Request,
-) -> dict:
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    body: CreateCapabilityBody,
+):
     verify_csrf_origin(request)
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
-    upload_service: UploadService = request.app.state.upload_service
-
-    capability, upload_url = await upload_service.create_upload_capability(
-        org_id=scope.org_id,
-        project_id=scope.project_id,
-        actor_id=scope.user_id,
-        filename=body.filename,
-        content_type=body.content_type,
-    )
-
+    scope, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    try:
+        capability = await _service(request).create_upload_capability(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
+            actor_id=scope.user_id,
+            filename=body.filename,
+            content_type=body.content_type,
+        )
+    except ImportValidationError as error:
+        return _expected_error(error)
     return {
         "data": {
             "capabilityId": str(capability.capability_id),
-            "uploadUrl": upload_url,
+            "uploadUrl": capability.upload_url,
             "nonce": capability.nonce,
             "expiresAt": capability.expires_at.isoformat(),
         },
-        "meta": {"requestId": "req_upload_cap"},
+        "meta": _meta(),
     }
 
 
 @router.post(
-    "/organizations/{org_id}/projects/{project_id}/import-artifacts/finalize",
-    status_code=status.HTTP_201_CREATED,
+    "/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:finalize",
+    operation_id="finalizeImportArtifact",
 )
 async def finalize_import_artifact(
-    org_id: str,
-    project_id: str,
-    capability_id: str,
     request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    artifact_id: ArtifactIdParam,
+    upload_nonce: Annotated[str, Header(alias="X-Upload-Nonce")],
     file: Annotated[UploadFile, File(...)],
-) -> dict:
+):
     verify_csrf_origin(request)
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
-    upload_service: UploadService = request.app.state.upload_service
-
-    data = await file.read()
+    scope, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    data = await file.read(MAX_SCRIPT_SIZE_BYTES + 1)
     try:
-        artifact = await upload_service.finalize_upload(
-            org_id=scope.org_id,
-            project_id=scope.project_id,
+        artifact = await _service(request).finalize_upload(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
             actor_id=scope.user_id,
-            capability_id=UUID(capability_id),
+            capability_id=artifact_id,
+            nonce=upload_nonce,
+            filename=file.filename or "",
+            content_type=file.content_type,
             data=data,
         )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from None
-
-    return {
-        "data": {
-            "artifactId": str(artifact.artifact_id),
-            "filename": artifact.filename,
-            "contentType": artifact.content_type,
-            "sizeBytes": artifact.size_bytes,
-            "sha256": artifact.sha256_hash,
-            "status": artifact.status,
-            "createdAt": artifact.created_at.isoformat(),
-        },
-        "meta": {"requestId": "req_finalize_artifact"},
-    }
+    except (
+        ImportValidationError,
+        ImportNotFoundError,
+        ImportConflictError,
+        ImportUnavailableError,
+    ) as error:
+        return _expected_error(error)
+    return {"data": _artifact_data(artifact), "meta": _meta()}
 
 
 @router.post(
-    "/organizations/{org_id}/projects/{project_id}/imports:paste",
+    "/organizations/{orgId}/projects/{projectId}/paste-imports",
     status_code=status.HTTP_201_CREATED,
+    operation_id="createPasteImport",
 )
 async def create_paste_import(
-    org_id: str,
-    project_id: str,
-    body: PasteImportBody,
     request: Request,
-) -> dict:
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    body: CanonicalPasteImportBody,
+):
     verify_csrf_origin(request)
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
-    artifact_id = uuid6.uuid7()
-    sha256 = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
-    now = datetime.now(UTC)
+    scope, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    try:
+        artifact = await _service(request).create_paste_import(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
+            actor_id=scope.user_id,
+            raw_text=body.raw_text,
+            source_format=body.format,
+        )
+    except ImportValidationError as error:
+        return _expected_error(error)
+    return {"data": _artifact_data(artifact), "meta": _meta()}
 
+
+@router.post(
+    "/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse",
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="parseImportArtifact",
+)
+async def parse_import_artifact(
+    request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    artifact_id: ArtifactIdParam,
+):
+    verify_csrf_origin(request)
+    scope, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    try:
+        run = await _service(request).parse_artifact(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
+            actor_id=scope.user_id,
+            artifact_id=artifact_id,
+        )
+    except (ImportValidationError, ImportNotFoundError, ImportUnavailableError) as error:
+        return _expected_error(error)
+    return {"data": _parse_run_data(run), "meta": _meta()}
+
+
+@router.post(
+    "/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings",
+    operation_id="acceptParseWarnings",
+)
+async def accept_parse_warnings(
+    request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    run_id: RunIdParam,
+):
+    verify_csrf_origin(request)
+    scope, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    try:
+        run = await _service(request).accept_warnings(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
+            actor_id=scope.user_id,
+            run_id=run_id,
+        )
+    except (ImportNotFoundError, ImportConflictError) as error:
+        return _expected_error(error)
+    return {"data": _parse_run_data(run), "meta": _meta()}
+
+
+@router.post(
+    "/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="commitScriptVersion",
+)
+async def commit_script_version(
+    request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    run_id: RunIdParam,
+):
+    verify_csrf_origin(request)
+    _, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    try:
+        version = await _service(request).commit_version_one(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
+            run_id=run_id,
+        )
+    except (ImportNotFoundError, ImportConflictError) as error:
+        return _expected_error(error)
+    return {"data": _version_data(version), "meta": _meta()}
+
+
+@router.get(
+    "/organizations/{orgId}/projects/{projectId}/script-versions",
+    operation_id="listProjectVersions",
+)
+async def list_project_versions(
+    request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+) -> dict:
+    _, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    versions = await _service(request).list_versions(
+        org_id=scope_org_id,
+        project_id=scope_project_id,
+    )
     return {
-        "data": {
-            "artifactId": str(artifact_id),
-            "filename": f"{body.title}.txt",
-            "contentType": "text/plain",
-            "sizeBytes": len(body.text.encode("utf-8")),
-            "sha256": sha256,
-            "status": "ready_to_parse",
-            "createdAt": now.isoformat(),
-        },
-        "meta": {"requestId": "req_paste_import"},
+        "data": [_version_data(version) for version in versions],
+        "meta": _meta(total_count=len(versions)),
     }
 
 
-@router.get("/organizations/{org_id}/projects/{project_id}/script-versions")
-async def list_project_versions(
-    org_id: str, project_id: str, request: Request
-) -> dict:
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
-    async with session_scope() as session:
-        res = await session.execute(
-            sa.text("""
-                SELECT v.id, v.script_id, v.ordinal, v.source_hash, v.parser_version, v.created_at, s.title
-                FROM script_versions v
-                JOIN scripts s ON s.id = v.script_id
-                WHERE v.org_id = :org_id AND v.project_id = :project_id
-                ORDER BY v.ordinal DESC
-            """),
-            {"org_id": str(scope.org_id), "project_id": str(scope.project_id)},
+@router.get(
+    "/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}",
+    operation_id="getProjectVersion",
+)
+async def get_project_version(
+    request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    version_id: VersionIdParam,
+):
+    _, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    version = await _service(request).get_version(
+        org_id=scope_org_id,
+        project_id=scope_project_id,
+        version_id=version_id,
+    )
+    if version is None:
+        return error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="Script version was not found.",
         )
-        rows = res.fetchall()
-        return {
-            "data": [
-                {
-                    "versionId": str(r.id),
-                    "scriptId": str(r.script_id),
-                    "title": r.title,
-                    "ordinal": r.ordinal,
-                    "sourceHash": r.source_hash,
-                    "parserVersion": r.parser_version,
-                    "createdAt": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
-                }
-                for r in rows
-            ],
-            "meta": {"requestId": "req_list_versions", "count": len(rows)},
-        }
+    return {"data": _version_data(version), "meta": _meta()}

@@ -4,13 +4,16 @@ from clearcut.scripts.domain.elements import ElementType, ScriptElement
 from clearcut.scripts.domain.versions import ParseResult, ParseWarning
 from clearcut.scripts.ports.parser import ScriptParserPort
 
-SCENE_HEADING_REGEX = re.compile(r"^(INT|EXT|EST|INT\./EXT|INT/EXT|I/E)\.?\s+", re.IGNORECASE)
+SCENE_HEADING_REGEX = re.compile(
+    r"^(INT|EXT|EST|INT\./EXT|INT/EXT|I/E)\.\s+", re.IGNORECASE
+)
+POSSIBLE_SCENE_HEADING_REGEX = re.compile(r"^(INT|EXT)\s+", re.IGNORECASE)
 TRANSITION_REGEX = re.compile(r"^(>|CUT TO:|FADE TO:|DISSOLVE TO:)", re.IGNORECASE)
 
 
 class FountainParser(ScriptParserPort):
     def parse(self, data: bytes, filename: str) -> ParseResult:
-        text = data.decode("utf-8", errors="replace")
+        text = data.decode("utf-8")
         lines = text.splitlines()
 
         title = "Untitled Screenplay"
@@ -57,6 +60,26 @@ class FountainParser(ScriptParserPort):
                     )
                 )
                 prev_element_type = ElementType.SCENE_HEADING
+            # A likely INT/EXT heading without Fountain's required period remains action.
+            elif POSSIBLE_SCENE_HEADING_REGEX.match(line):
+                warnings.append(
+                    ParseWarning(
+                        warning_code="possible_scene_heading",
+                        message=(
+                            "Possible scene heading is missing a period after INT or EXT."
+                        ),
+                        line_number=i + 1,
+                    )
+                )
+                elements.append(
+                    ScriptElement.create(
+                        ordinal=ordinal,
+                        element_type=ElementType.ACTION,
+                        text=line,
+                        scene_number=scene_count,
+                    )
+                )
+                prev_element_type = ElementType.ACTION
             # Transition
             elif TRANSITION_REGEX.match(line) or (line.startswith(">") and line.endswith("<")):
                 clean_text = line.lstrip(">").rstrip("<").strip()

@@ -1,7 +1,7 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
 from clearcut.init_db import init_and_seed_db
 from clearcut.main import app
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.mark.asyncio
@@ -15,8 +15,6 @@ async def test_script_upload_and_pipeline_flow():
             json={"name": "Script Writer", "email": "writer@studio.com", "password": "Password123!"},
         )
         assert reg_res.status_code == 201
-        cookie = reg_res.cookies.get("__Host-clearcut_session")
-        client.cookies.set("__Host-clearcut_session", cookie)
 
         # Create org & project
         org_res = await client.post(
@@ -34,25 +32,36 @@ async def test_script_upload_and_pipeline_flow():
         # Create upload capability
         cap_res = await client.post(
             f"/api/v1/organizations/{org_id}/projects/{proj_id}/upload-capabilities",
-            json={"filename": "screenplay.pdf", "contentType": "application/pdf"},
+            json={"filename": "screenplay.fountain", "contentType": "text/plain"},
         )
         assert cap_res.status_code == 201
         cap_data = cap_res.json()["data"]
         cap_id = cap_data["capabilityId"]
 
         # Finalize upload
-        files = {"file": ("screenplay.pdf", b"%PDF-1.4 test script content", "application/pdf")}
+        files = {
+            "file": (
+                "screenplay.fountain",
+                b"Title: Pipeline\n\nEXT. STREET - DAY\n\nA test scene.",
+                "text/plain",
+            )
+        }
         fin_res = await client.post(
-            f"/api/v1/organizations/{org_id}/projects/{proj_id}/import-artifacts/finalize?capability_id={cap_id}",
+            f"/api/v1/organizations/{org_id}/projects/{proj_id}/"
+            f"import-artifacts/{cap_id}:finalize",
+            headers={"X-Upload-Nonce": cap_data["nonce"]},
             files=files,
         )
-        assert fin_res.status_code == 201
-        assert fin_res.json()["data"]["status"] in ["finalized", "uploaded"]
+        assert fin_res.status_code == 200
+        assert fin_res.json()["data"]["status"] == "ready_to_parse"
 
-        # Create paste import
+        # Create paste import through the canonical persistent boundary.
         paste_res = await client.post(
-            f"/api/v1/organizations/{org_id}/projects/{proj_id}/imports:paste",
-            json={"text": "EXT. STREET - DAY\nJohn walks down the street.", "title": "Pasted Scene"},
+            f"/api/v1/organizations/{org_id}/projects/{proj_id}/paste-imports",
+            json={
+                "rawText": "EXT. STREET - DAY\nJohn walks down the street.",
+                "format": "fountain",
+            },
         )
         assert paste_res.status_code == 201
         assert paste_res.json()["data"]["status"] == "ready_to_parse"
