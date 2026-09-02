@@ -1,93 +1,100 @@
-"""Scoped research delivery: startResearch (contract operationId)."""
-from datetime import UTC, datetime
+"""Scoped research enqueue and post-commit local dispatch."""
+from typing import Annotated
 from uuid import UUID
 
 import sqlalchemy as sa
-import uuid6
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-
 from clearcut.database import session_scope
 from clearcut.identity.delivery.scope import get_request_scope
+from clearcut.operations.delivery.http import job_to_data
+from clearcut.operations.ports.job_repository import EnqueueJob
 from clearcut.organizations.delivery.http import verify_csrf_origin
 from clearcut.research.runtime_provider import ResearchRuntime, get_research_runtime
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Path,
+    Request,
+    status,
+)
 
 router = APIRouter(
-    prefix="/api/v1/organizations/{org_id}/projects/{project_id}/clearance-items/{item_id}",
+    prefix="/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}",
     tags=["research"],
 )
 
 
-@router.post(":research", status_code=status.HTTP_202_ACCEPTED)
+@router.post(":research", status_code=status.HTTP_202_ACCEPTED, operation_id="startResearch")
 async def start_research(
-    org_id: str,
-    project_id: str,
-    item_id: str,
     request: Request,
-    runtime: ResearchRuntime = Depends(get_research_runtime),
+    background_tasks: BackgroundTasks,
+    org_id: Annotated[str, Path(alias="orgId")],
+    project_id: Annotated[str, Path(alias="projectId")],
+    item_id: Annotated[str, Path(alias="itemId")],
+    _runtime: Annotated[ResearchRuntime, Depends(get_research_runtime)],
 ) -> dict:
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    if scope.org_id is None or scope.project_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found in organization",
+        )
+    scope_org_id = scope.org_id
+    scope_project_id = scope.project_id
 
     try:
         parsed_item_id = UUID(item_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clearance item not found")
-
-    now = datetime.now(UTC)
-    job_id = uuid6.uuid7()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clearance item not found",
+        ) from None
 
     async with session_scope() as session:
-        # Enforce the item belongs to this tenant/project — no cross-tenant research.
-        res = await session.execute(
-            sa.text(
-                "SELECT id FROM clearance_items "
-                "WHERE id = :iid AND org_id = :org AND project_id = :proj"
-            ),
-            {"iid": str(parsed_item_id), "org": str(scope.org_id), "proj": str(scope.project_id)},
-        )
-        if not res.mappings().first():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Clearance item not found in project",
+        item = (
+            await session.execute(
+                sa.text(
+                    "SELECT id FROM clearance_items "
+                    "WHERE id = :item_id AND org_id = :org_id "
+                    "AND project_id = :project_id"
+                ),
+                {
+                    "item_id": str(parsed_item_id),
+                    "org_id": str(scope_org_id),
+                    "project_id": str(scope_project_id),
+                },
             )
-
-        await session.execute(
-            sa.text(
-                "INSERT INTO jobs (id, org_id, project_id, job_type, target_id, status, progress, created_at) "
-                "VALUES (:id, :org, :proj, 'research', :target, 'queued', 0, :created)"
-            ),
-            {
-                "id": str(job_id),
-                "org": str(scope.org_id),
-                "proj": str(scope.project_id),
-                "target": str(parsed_item_id),
-                "created": now.isoformat(),
-            },
-        )
-        await session.execute(
-            sa.text(
-                "INSERT INTO audit_events "
-                "(id, org_id, project_id, action, actor_id, target_id, target_type, details, created_at) "
-                "VALUES (:id, :org, :proj, 'research.started', :actor, :target, 'clearance_item', :details, :created)"
-            ),
-            {
-                "id": str(uuid6.uuid7()),
-                "org": str(scope.org_id),
-                "proj": str(scope.project_id),
-                "actor": str(scope.user_id),
-                "target": str(parsed_item_id),
-                "details": '{"job_type": "research"}',
-                "created": now.isoformat(),
-            },
+        ).mappings().first()
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clearance item not found in project",
         )
 
+    result = await request.app.state.job_repository.enqueue(
+        EnqueueJob(
+            org_id=scope_org_id,
+            project_id=scope_project_id,
+            actor_id=scope.user_id,
+            job_type="research",
+            idempotency_key=f"research:{parsed_item_id}",
+            payload={
+                "schemaVersion": 1,
+                "target": {
+                    "type": "clearance_item",
+                    "id": str(parsed_item_id),
+                },
+            },
+            audit_action="research.started",
+            target_type="clearance_item",
+            target_id=parsed_item_id,
+        )
+    )
+    if result.created:
+        request.app.state.job_dispatcher.dispatch(background_tasks, result.job)
     return {
-        "data": {
-            "jobId": str(job_id),
-            "status": "queued",
-            "jobType": "research",
-            "progress": 0,
-            "createdAt": now.isoformat(),
-        },
-        "meta": {},
+        "data": job_to_data(result.job),
+        "meta": {"requestId": str(result.job.correlation_id)},
     }

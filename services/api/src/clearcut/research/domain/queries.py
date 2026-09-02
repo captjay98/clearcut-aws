@@ -1,4 +1,5 @@
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,6 +11,10 @@ class SearchMode(StrEnum):
 
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=200)
+    objective: str = Field(..., min_length=20, max_length=600)
+    correlation_id: UUID
+    research_run_id: UUID
+    research_query_id: UUID
     mode: SearchMode = SearchMode.FAST
     max_results: int = Field(default=5, ge=1, le=10)
 

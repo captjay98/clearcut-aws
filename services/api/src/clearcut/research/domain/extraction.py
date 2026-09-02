@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -7,6 +8,10 @@ class ExtractRequest(BaseModel):
     urls: list[str] = Field(..., min_length=1, max_length=3)
     objective: str = Field(..., min_length=10, max_length=600)
     session_id: str
+    correlation_id: UUID
+    research_run_id: UUID
+    research_query_id: UUID
+    search_attempt_id: UUID
     full_content: bool = False
 
     @field_validator("urls")

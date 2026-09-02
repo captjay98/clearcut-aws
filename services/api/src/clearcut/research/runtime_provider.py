@@ -41,3 +41,25 @@ def get_research_runtime() -> ResearchRuntime:
         search=ParallelSearchAdapter(api_key=api_key),
         extract=ParallelExtractAdapter(api_key=api_key),
     )
+
+
+
+def get_research_planner():
+    """Return the configured production Flash-Lite research planner."""
+    project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("CLEARCUT_GCP_PROJECT")
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Research planning is not configured. Set GOOGLE_CLOUD_PROJECT "
+                "with Application Default Credentials to enable Vertex planning."
+            ),
+        )
+    from clearcut.ai.model_roles import GeminiRole, resolve_model_role
+    from clearcut.research.adapters.vertex_planner import VertexResearchPlanner
+
+    return VertexResearchPlanner(
+        project=project,
+        location=os.getenv("CLEARCUT_VERTEX_LOCATION", "global"),
+        role_configuration=resolve_model_role(GeminiRole.RESEARCH_PLANNING),
+    )

@@ -1,7 +1,9 @@
-"""Parallel Search API Adapter."""
+"""Parallel Search API adapter."""
+
 import logging
 import os
 import time
+from typing import Any
 
 import httpx
 from clearcut.research.domain.queries import SearchRequest
@@ -19,89 +21,130 @@ PARALLEL_API_BASE_URL = os.getenv("PARALLEL_API_BASE_URL", "https://api.parallel
 
 
 class ParallelSearchAdapter(WebSearchPort):
-    """Adapter for executing web search queries via the Parallel Search API."""
+    """Execute web searches through the Parallel Search API."""
 
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.getenv("PARALLEL_API_KEY", "")
 
     def search(self, request: SearchRequest) -> ProviderResult:
-        """Execute real search against the live Parallel Search API."""
+        """Execute one exact, persisted search query."""
         start_time = time.monotonic()
 
         if not self.api_key:
             return ProviderFailure(
                 kind="authentication",
-                message="PARALLEL_API_KEY is not configured. Parallel Search requires an authentic API key.",
+                message=(
+                    "PARALLEL_API_KEY is not configured. Parallel Search requires "
+                    "an authentic API key."
+                ),
             )
 
-        # Live Parallel Search API Call
         try:
             headers = {
                 "x-api-key": self.api_key,
                 "Content-Type": "application/json",
                 "User-Agent": "ClearCut-ResearchDesk/1.0",
+                "X-ClearCut-Correlation-ID": str(request.correlation_id),
+                "X-ClearCut-Research-Run-ID": str(request.research_run_id),
+                "X-ClearCut-Research-Query-ID": str(request.research_query_id),
             }
-            # Parallel Search API contract: search_queries[] + optional objective.
             payload = {
                 "search_queries": [request.query],
-                "objective": getattr(
-                    request,
-                    "objective",
-                    "screenplay pre-clearance source verification",
-                ),
-                "max_chars_total": getattr(request, "max_chars_total", 6000),
+                "objective": request.objective,
+                "max_chars_total": 6000,
             }
 
             with httpx.Client(timeout=15.0) as client:
-                resp = client.post(
+                response = client.post(
                     f"{PARALLEL_API_BASE_URL}/search",
                     json=payload,
                     headers=headers,
                 )
 
-                if resp.status_code == 401 or resp.status_code == 403:
-                    return ProviderFailure(
-                        kind="authentication",
-                        message="Parallel API Key authentication failed (HTTP 401/403)",
-                    )
-
-                if resp.status_code == 429:
-                    return ProviderFailure(
-                        kind="rate_limited",
-                        message="Parallel API rate limit exceeded (HTTP 429)",
-                    )
-
-                if resp.is_error:
-                    return ProviderFailure(
-                        kind="retryable" if resp.status_code >= 500 else "permanent",
-                        message=f"Parallel API error: HTTP {resp.status_code} - {resp.text}",
-                    )
-
-                data = resp.json()
-                results = []
-                for item in data.get("results", []):
-                    # Contract returns excerpts[]; join into a single snippet.
-                    excerpts = item.get("excerpts", [])
-                    snippet = " … ".join(excerpts) if excerpts else item.get("snippet", "")
-                    results.append(
-                        SearchResultItem(
-                            url=item.get("url", ""),
-                            title=item.get("title", ""),
-                            publisher=item.get("publisher", "Parallel Web Index"),
-                            snippet=snippet,
-                            published_date=item.get("publish_date"),
-                        )
-                    )
-
-                return SearchResponse(
-                    search_id=data.get("search_id", f"srch_{int(time.time())}"),
-                    session_id=data.get("session_id", "sess_live"),
-                    results=results,
-                    duration_ms=int((time.monotonic() - start_time) * 1000),
+            if response.status_code in (401, 403):
+                return ProviderFailure(
+                    kind="authentication",
+                    message="Parallel Search authentication failed.",
                 )
-        except Exception as exc:
-            logger.warning(f"Parallel search request error: {exc}")
+            if response.status_code == 429:
+                return ProviderFailure(
+                    kind="rate_limited",
+                    message="Parallel Search rate limit exceeded.",
+                )
+            if response.is_error:
+                return ProviderFailure(
+                    kind=("retryable" if response.status_code >= 500 else "permanent"),
+                    message=f"Parallel Search failed with HTTP {response.status_code}.",
+                )
+
+            try:
+                data: Any = response.json()
+            except ValueError:
+                return ProviderFailure(
+                    kind="invalid_response",
+                    message="Parallel Search returned an invalid response.",
+                )
+
+            if not isinstance(data, dict):
+                return ProviderFailure(
+                    kind="invalid_response",
+                    message="Parallel Search returned an invalid response.",
+                )
+
+            search_id = data.get("search_id")
+            session_id = data.get("session_id")
+            if (
+                not isinstance(search_id, str)
+                or not search_id.strip()
+                or not isinstance(session_id, str)
+                or not session_id.strip()
+            ):
+                return ProviderFailure(
+                    kind="invalid_response",
+                    message="Parallel Search response omitted provider identity.",
+                )
+
+            raw_results = data.get("results", [])
+            if not isinstance(raw_results, list):
+                return ProviderFailure(
+                    kind="invalid_response",
+                    message="Parallel Search returned invalid results.",
+                )
+
+            results: list[SearchResultItem] = []
+            for item in raw_results:
+                if not isinstance(item, dict):
+                    return ProviderFailure(
+                        kind="invalid_response",
+                        message="Parallel Search returned an invalid result item.",
+                    )
+                excerpts = item.get("excerpts", [])
+                if not isinstance(excerpts, list):
+                    excerpts = []
+                snippet = (
+                    " … ".join(str(excerpt) for excerpt in excerpts)
+                    if excerpts
+                    else str(item.get("snippet", ""))
+                )
+                results.append(
+                    SearchResultItem(
+                        url=str(item.get("url", "")),
+                        title=str(item.get("title", "")),
+                        publisher=str(item.get("publisher", "Parallel Web Index")),
+                        snippet=snippet,
+                        published_date=item.get("publish_date"),
+                    )
+                )
+
+            return SearchResponse(
+                search_id=search_id,
+                session_id=session_id,
+                results=results,
+                duration_ms=int((time.monotonic() - start_time) * 1000),
+            )
+        except Exception:
+            logger.warning("Parallel Search request failed.")
             return ProviderFailure(
                 kind="retryable",
-                message=f"Failed to reach Parallel API: {exc}",
+                message="Parallel Search request failed.",
             )
