@@ -17,7 +17,7 @@ export function AcceptInviteRoute() {
     setError(null);
 
     try {
-      const res = await api.acceptInvitation({ path: { token } });
+      const res = await api.acceptInvitation({ params: { token } });
       if (!res.ok) {
         setError(res.error.message || "Failed to accept invitation");
         return;

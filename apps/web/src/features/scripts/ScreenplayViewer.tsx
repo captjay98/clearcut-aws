@@ -9,7 +9,7 @@ export interface ScriptLine {
 export interface ScriptScene {
   number: number;
   slug: string;
-  page: number;
+  page: number | null;
   lines: ScriptLine[];
 }
 
@@ -24,8 +24,8 @@ export interface ScreenplayViewerProps {
 }
 
 export function ScreenplayViewer({
-  title = "Borrowed Light",
-  version = "v1",
+  title,
+  version,
   scenes = [],
   loading = false,
   selectedSceneNumber,
@@ -43,46 +43,7 @@ export function ScreenplayViewer({
     );
   }
 
-  // If no scenes, provide default canonical screenplay scenes for testing/display
-  const activeScenes: ScriptScene[] =
-    scenes.length > 0
-      ? scenes
-      : [
-          {
-            number: 1,
-            slug: "EXT. DOWNTOWN ROOFTOP - DUSK",
-            page: 1,
-            lines: [
-              {
-                type: "action",
-                text: "LEO (30s) checks his Vega Camera as the horizon turns cobalt.",
-                flag: "Vega Camera",
-              },
-              { type: "character", text: "LEO" },
-              { type: "dialogue", text: "Mina, do you copy? The feed is live." },
-              { type: "character", text: "MINA (O.S.)" },
-              {
-                type: "dialogue",
-                text: "Copy Leo. Sunset Boulevard is clear.",
-                flag: "Sunset Boulevard",
-              },
-            ],
-          },
-          {
-            number: 2,
-            slug: "INT. SURVEILLANCE VAN - CONTINUOUS",
-            page: 2,
-            lines: [
-              {
-                type: "action",
-                text: "A vintage radio plays Blue Monday in the background.",
-                flag: "Blue Monday",
-              },
-              { type: "character", text: "MINA" },
-              { type: "dialogue", text: "Keep the change, kid. We're on the move." },
-            ],
-          },
-        ];
+  const activeScenes = scenes;
 
   return (
     <div
@@ -92,9 +53,9 @@ export function ScreenplayViewer({
       {/* Header bar */}
       <div className="h-10 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between font-sans shrink-0">
         <div className="flex items-center space-x-2">
-          <span className="text-xs font-bold text-slate-200">{title}</span>
+          <span className="text-xs font-bold text-slate-200">{title ?? "No screenplay imported"}</span>
           <span className="text-[10px] px-1.5 py-0.5 bg-amber-950 border border-amber-900 text-amber-400 font-bold rounded">
-            {version}
+            {version ?? "No version"}
           </span>
         </div>
 
@@ -108,7 +69,7 @@ export function ScreenplayViewer({
             >
               {activeScenes.map((s) => (
                 <option key={s.number} value={s.number}>
-                  Scene {s.number} (Pg {s.page})
+                  Scene {s.number} (Pg {s.page ?? "unknown"})
                 </option>
               ))}
             </select>
@@ -118,7 +79,12 @@ export function ScreenplayViewer({
 
       {/* Screenplay Document Surface */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs text-slate-300 selection:bg-amber-500 selection:text-black">
-        {activeScenes.map((scene) => (
+        {activeScenes.length === 0 ? (
+          <div className="mx-auto max-w-xl py-16 text-center text-slate-500">
+            No committed screenplay is available. Import and commit a script version to populate this viewer.
+          </div>
+        ) : (
+          activeScenes.map((scene) => (
           <div key={scene.number} id={`scene-${scene.number}`} className="space-y-3 max-w-2xl mx-auto">
             {/* Scene Heading */}
             <div
@@ -199,7 +165,8 @@ export function ScreenplayViewer({
               })}
             </div>
           </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

@@ -1,28 +1,35 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { createEvidenceWorkspace } from "./support/evidenceWorkspace";
 
-test.describe("Trust Center, Evaluation Rubric, and Learning Gates", () => {
-  test("10-dimension rubric visualizer, protected configs, and candidate gates", async ({ page }) => {
-    await page.goto("/o/northlight/trust");
+test("trust center reports the honest unavailable evaluation boundary", async ({
+  browser,
+}, testInfo) => {
+  const workspace = await createEvidenceWorkspace(
+    browser,
+    String(testInfo.project.use.baseURL),
+  );
 
-    // 1. Check 10-dimension rubric visualizer
-    const rubricVisualizer = page.locator("[data-testid='rubric-visualizer']");
-    await expect(rubricVisualizer).toBeVisible();
+  try {
+    const page = workspace.owner.page;
+    await page.goto(`/o/${workspace.orgId}/trust`);
 
-    const dimensionCards = page.locator("[data-testid='rubric-dimension-card']");
-    expect(await dimensionCards.count()).toBe(10);
-
-    // 2. Check protected configurations card
-    const protectedConfigCard = page.locator("[data-testid='protected-config-card']");
-    await expect(protectedConfigCard).toBeVisible();
-
-    // 3. Check learning candidates table
-    const candidatesTable = page.locator("[data-testid='learning-candidates-table']");
-    await expect(candidatesTable).toBeVisible();
-
-    // 4. Check promote / rollback gate button
-    const promoteBtn = page.locator("button:has-text('Promote Candidate')").first();
-    if (await promoteBtn.isVisible()) {
-      await promoteBtn.click();
-    }
-  });
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "Trust Center & Evaluation Rubric",
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole("status")).toContainText(
+      "The Trust evaluation capability is not available until a project run has persisted its deterministic and judge evaluations.",
+    );
+    await expect(page.getByRole("status")).toContainText(
+      "No score or policy status is inferred in the meantime.",
+    );
+    await expect(page.getByTestId("rubric-visualizer")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /promote candidate/i }),
+    ).toHaveCount(0);
+  } finally {
+    await workspace.close();
+  }
 });

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AuthSignInRouteImport } from './routes/auth/sign-in'
+import { Route as AuthSignUpRouteImport } from './routes/auth/sign-up'
 import { Route as OOrgSlugRouteRouteImport } from './routes/o/$orgSlug/route'
 import { Route as AuthInviteTokenRouteImport } from './routes/auth/invite/$token'
 import { Route as OOrgSlugIndexRouteImport } from './routes/o/$orgSlug/index'
@@ -44,6 +45,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/auth/sign-in',
   path: '/auth/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthSignUpRoute = AuthSignUpRouteImport.update({
+  id: '/auth/sign-up',
+  path: '/auth/sign-up',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OOrgSlugRouteRoute = OOrgSlugRouteRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/o/$orgSlug': typeof OOrgSlugRouteRouteWithChildren
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/sign-up': typeof AuthSignUpRoute
   '/auth/invite/$token': typeof AuthInviteTokenRoute
   '/o/$orgSlug/notifications': typeof OOrgSlugNotificationsRoute
   '/o/$orgSlug/records': typeof OOrgSlugRecordsRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/onboarding': typeof OnboardingRoute
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/sign-up': typeof AuthSignUpRoute
   '/auth/invite/$token': typeof AuthInviteTokenRoute
   '/o/$orgSlug/notifications': typeof OOrgSlugNotificationsRoute
   '/o/$orgSlug/records': typeof OOrgSlugRecordsRoute
@@ -195,6 +203,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/o/$orgSlug': typeof OOrgSlugRouteRouteWithChildren
   '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/sign-up': typeof AuthSignUpRoute
   '/auth/invite/$token': typeof AuthInviteTokenRoute
   '/o/$orgSlug/notifications': typeof OOrgSlugNotificationsRoute
   '/o/$orgSlug/records': typeof OOrgSlugRecordsRoute
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/o/$orgSlug'
     | '/auth/sign-in'
+    | '/auth/sign-up'
     | '/auth/invite/$token'
     | '/o/$orgSlug/notifications'
     | '/o/$orgSlug/records'
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/'
     | '/onboarding'
     | '/auth/sign-in'
+    | '/auth/sign-up'
     | '/auth/invite/$token'
     | '/o/$orgSlug/notifications'
     | '/o/$orgSlug/records'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/o/$orgSlug'
     | '/auth/sign-in'
+    | '/auth/sign-up'
     | '/auth/invite/$token'
     | '/o/$orgSlug/notifications'
     | '/o/$orgSlug/records'
@@ -288,6 +300,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   OOrgSlugRouteRoute: typeof OOrgSlugRouteRouteWithChildren
   AuthSignInRoute: typeof AuthSignInRoute
+  AuthSignUpRoute: typeof AuthSignUpRoute
   AuthInviteTokenRoute: typeof AuthInviteTokenRoute
 }
 
@@ -312,6 +325,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/sign-in'
       fullPath: '/auth/sign-in'
       preLoaderRoute: typeof AuthSignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/sign-up': {
+      id: '/auth/sign-up'
+      path: '/auth/sign-up'
+      fullPath: '/auth/sign-up'
+      preLoaderRoute: typeof AuthSignUpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/o/$orgSlug': {
@@ -507,6 +527,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   OOrgSlugRouteRoute: OOrgSlugRouteRouteWithChildren,
   AuthSignInRoute: AuthSignInRoute,
+  AuthSignUpRoute: AuthSignUpRoute,
   AuthInviteTokenRoute: AuthInviteTokenRoute,
 }
 export const routeTree = rootRouteImport

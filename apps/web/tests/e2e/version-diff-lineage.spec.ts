@@ -1,24 +1,40 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { createEvidenceWorkspace } from "./support/evidenceWorkspace";
 
-test.describe("Version Diffing, Rescan Triggers, and Lineage Views", () => {
-  test("version diff viewer, rescan trigger, and item lineage trace", async ({ page }) => {
-    await page.goto("/o/northlight/projects/018f0000-0000-7000-8000-000000000101/versions");
+test("versions show the persisted revision and honest diff-lineage boundary", async ({
+  browser,
+}, testInfo) => {
+  const workspace = await createEvidenceWorkspace(
+    browser,
+    String(testInfo.project.use.baseURL),
+  );
 
-    // 1. Check version diff viewer container
-    const diffViewer = page.locator("[data-testid='script-diff-viewer']");
-    await expect(diffViewer).toBeVisible();
+  try {
+    const page = workspace.owner.page;
+    await page.goto(
+      `/o/${workspace.orgId}/projects/${workspace.projectId}/versions`,
+    );
 
-    // 2. Check added, modified, removed item categorization
-    const diffSummary = page.locator("[data-testid='diff-summary-card']");
-    await expect(diffSummary).toBeVisible();
-
-    // 3. Check rescan trigger button
-    const rescanBtn = page.locator("button:has-text('Trigger Rescan'), button:has-text('Rescan Revision')").first();
-    await expect(rescanBtn).toBeVisible();
-    await rescanBtn.click();
-
-    // 4. Check item lineage history drawer/section
-    const lineageSection = page.locator("[data-testid='item-lineage-section']");
-    await expect(lineageSection).toBeVisible();
-  });
+    await expect(
+      page.getByRole("heading", {
+        level: 1,
+        name: "Script Versions, Diffing & Lineage",
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("Recorded Script Versions (1)")).toBeVisible();
+    await expect(page.getByText("Version 1", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Active Revision", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Script diff and item-lineage views are unavailable until persisted comparison data exists.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.getByTestId("script-diff-viewer")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /rescan/i })).toHaveCount(0);
+  } finally {
+    await workspace.close();
+  }
 });
