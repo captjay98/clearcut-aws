@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from clearcut.projects.domain.models import Project
@@ -14,8 +15,22 @@ class ProjectService:
         actor_id: UUID,
         title: str,
         description: str | None = None,
+        production_type: str | None = None,
+        production_stage: str | None = None,
+        jurisdiction: str | None = None,
+        target_lock_date: date | None = None,
+        review_brief: str | None = None,
     ) -> Project:
-        project = Project.create(org_id=org_id, title=title, description=description)
+        project = Project.create(
+            org_id=org_id,
+            title=title,
+            description=description,
+            production_type=production_type,
+            production_stage=production_stage,
+            jurisdiction=jurisdiction,
+            target_lock_date=target_lock_date,
+            review_brief=review_brief,
+        )
         return await self.repository.create_project(project)
 
     async def get_project(

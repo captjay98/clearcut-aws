@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -18,7 +18,16 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
-@dataclass
+TERMINAL_STATUSES = frozenset(
+    {
+        RunStatus.SUCCEEDED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+    }
+)
+
+
+@dataclass(frozen=True)
 class Job:
     job_id: UUID
     org_id: UUID
@@ -29,8 +38,8 @@ class Job:
     payload: dict[str, Any]
     result: dict[str, Any] | None = None
     error: str | None = None
-    created_at: datetime = datetime.now(UTC)
-    available_at: datetime = datetime.now(UTC)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    available_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     lease_expires_at: datetime | None = None
 
     @classmethod
@@ -51,9 +60,6 @@ class Job:
             status=RunStatus.QUEUED,
             idempotency_key=idempotency_key,
             payload=payload,
-            result=None,
-            error=None,
             created_at=now,
             available_at=now,
-            lease_expires_at=None,
         )

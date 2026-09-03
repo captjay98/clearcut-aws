@@ -1,13 +1,10 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any
-import uuid6
-import sqlalchemy as sa
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel
 
-from clearcut.database import session_scope
+import uuid6
 from clearcut.identity.delivery.scope import get_request_scope
 from clearcut.organizations.delivery.http import verify_csrf_origin
+from fastapi import APIRouter, Request, status
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/organizations/{org_id}/projects/{project_id}", tags=["monitoring"])
 
@@ -19,7 +16,7 @@ class SetCadenceBody(BaseModel):
 @router.get("/monitoring-cadence")
 @router.get("/watch")
 async def get_watch_config(org_id: str, project_id: str, request: Request) -> dict:
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    await get_request_scope(request, org_id=org_id, project_id=project_id)
     now = datetime.now(UTC)
     next_run = now + timedelta(days=7)
     return {
@@ -39,7 +36,7 @@ async def update_watch_config(
     org_id: str, project_id: str, body: SetCadenceBody, request: Request
 ) -> dict:
     verify_csrf_origin(request)
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    await get_request_scope(request, org_id=org_id, project_id=project_id)
     now = datetime.now(UTC)
     return {
         "data": {

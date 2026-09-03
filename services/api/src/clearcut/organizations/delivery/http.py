@@ -1,42 +1,19 @@
 import hashlib
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated
 from uuid import UUID
-import uuid6
-import sqlalchemy as sa
-from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field, EmailStr
 
+import sqlalchemy as sa
+import uuid6
+from clearcut.csrf import verify_csrf_origin
 from clearcut.database import session_scope
 from clearcut.identity.delivery.scope import get_request_scope
+from clearcut.organizations.domain.capabilities import has_capability
+from fastapi import APIRouter, HTTPException, Path, Request, status
+from pydantic import BaseModel, EmailStr, Field
 
 router = APIRouter(prefix="/api/v1", tags=["organizations", "projects"])
-
-ALLOWED_ORIGINS = {
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:5173",
-    "http://test",
-}
-
-
-def verify_csrf_origin(request: Request) -> None:
-    origin = request.headers.get("origin")
-    host = request.headers.get("host")
-    if not origin:
-        return
-    if host and (origin.endswith(host) or host in origin):
-        return
-    if origin in ALLOWED_ORIGINS:
-        return
-    if "localhost" in origin or "127.0.0.1" in origin:
-        return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Cross-origin state mutation rejected",
-    )
 
 
 async def get_authenticated_user_id(request: Request) -> UUID:
@@ -46,18 +23,27 @@ async def get_authenticated_user_id(request: Request) -> UUID:
 
 class CreateOrgBody(BaseModel):
     name: str = Field(min_length=2, max_length=100)
-    slug: str = Field(min_length=2, max_length=100)
+    slug: str = Field(
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9-]+$",
+    )
 
 
 class CreateProjectBody(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
+    production_type: str | None = Field(default=None, alias="productionType", max_length=100)
+    production_stage: str | None = Field(default=None, alias="productionStage", max_length=100)
+    jurisdiction: str | None = Field(default=None, max_length=200)
+    target_lock_date: date | None = Field(default=None, alias="targetLockDate")
+    review_brief: str | None = Field(default=None, alias="reviewBrief")
 
 
 class CreateInvitationBody(BaseModel):
     email: EmailStr
     role: str = "reviewer"
-    projectGrants: list[str] = []
+    project_grants: list[str] = Field(default=[], alias="projectGrants")
 
 
 class ChangeRoleBody(BaseModel):
@@ -65,10 +51,10 @@ class ChangeRoleBody(BaseModel):
 
 
 class ChangeProjectGrantBody(BaseModel):
-    projectIds: list[str]
+    project_ids: list[UUID] = Field(alias="projectIds")
 
 
-@router.get("/organizations")
+@router.get("/organizations", operation_id="listOrganizations")
 async def list_organizations(request: Request) -> dict:
     scope = await get_request_scope(request)
     async with session_scope() as session:
@@ -89,7 +75,9 @@ async def list_organizations(request: Request) -> dict:
                     "orgId": str(r.id),
                     "name": r.name,
                     "slug": r.slug,
-                    "createdAt": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+                    "createdAt": r.created_at.isoformat()
+                    if hasattr(r.created_at, "isoformat")
+                    else str(r.created_at),
                 }
                 for r in rows
             ],
@@ -97,7 +85,11 @@ async def list_organizations(request: Request) -> dict:
         }
 
 
-@router.post("/organizations", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/organizations",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createOrganization",
+)
 async def create_organization(body: CreateOrgBody, request: Request) -> dict:
     verify_csrf_origin(request)
     scope = await get_request_scope(request)
@@ -148,7 +140,7 @@ async def create_organization(body: CreateOrgBody, request: Request) -> dict:
     }
 
 
-@router.get("/organization-entry")
+@router.get("/organization-entry", operation_id="resolveOrganizationEntry")
 async def resolve_organization_entry(request: Request) -> dict:
     scope = await get_request_scope(request)
     async with session_scope() as session:
@@ -183,13 +175,14 @@ async def resolve_organization_entry(request: Request) -> dict:
         }
 
 
-@router.get("/organizations/{org_id}/projects")
-async def list_projects(org_id: str, request: Request) -> dict:
+@router.get("/organizations/{orgId}/projects", operation_id="listProjects")
+async def list_projects(request: Request, org_id: Annotated[str, Path(alias="orgId")]) -> dict:
     scope = await get_request_scope(request, org_id=org_id)
     async with session_scope() as session:
         res = await session.execute(
             sa.text(
-                "SELECT id, org_id, title, description, created_at "
+                "SELECT id, org_id, title, description, production_type, "
+                "production_stage, jurisdiction, target_lock_date, review_brief, created_at "
                 "FROM projects WHERE org_id = :org_id ORDER BY created_at DESC"
             ),
             {"org_id": str(scope.org_id)},
@@ -202,7 +195,16 @@ async def list_projects(org_id: str, request: Request) -> dict:
                     "orgId": str(r.org_id),
                     "title": r.title,
                     "description": r.description,
-                    "createdAt": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+                    "productionType": r.production_type,
+                    "productionStage": r.production_stage,
+                    "jurisdiction": r.jurisdiction,
+                    "targetLockDate": r.target_lock_date.isoformat()
+                    if hasattr(r.target_lock_date, "isoformat")
+                    else (str(r.target_lock_date) if r.target_lock_date else None),
+                    "reviewBrief": r.review_brief,
+                    "createdAt": r.created_at.isoformat()
+                    if hasattr(r.created_at, "isoformat")
+                    else str(r.created_at),
                 }
                 for r in rows
             ],
@@ -210,11 +212,15 @@ async def list_projects(org_id: str, request: Request) -> dict:
         }
 
 
-@router.post("/organizations/{org_id}/projects", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/organizations/{orgId}/projects",
+    status_code=status.HTTP_201_CREATED,
+    operation_id="createProject",
+)
 async def create_project(
-    org_id: str,
-    body: CreateProjectBody,
     request: Request,
+    org_id: Annotated[str, Path(alias="orgId")],
+    body: CreateProjectBody,
 ) -> dict:
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id)
@@ -224,14 +230,21 @@ async def create_project(
     async with session_scope() as session:
         await session.execute(
             sa.text(
-                "INSERT INTO projects (id, org_id, title, description, created_at) "
-                "VALUES (:id, :org_id, :title, :description, :created_at)"
+                "INSERT INTO projects (id, org_id, title, description, production_type, "
+                "production_stage, jurisdiction, target_lock_date, review_brief, created_at) "
+                "VALUES (:id, :org_id, :title, :description, :production_type, "
+                ":production_stage, :jurisdiction, :target_lock_date, :review_brief, :created_at)"
             ),
             {
                 "id": str(proj_id),
                 "org_id": str(scope.org_id),
                 "title": body.title,
                 "description": body.description,
+                "production_type": body.production_type,
+                "production_stage": body.production_stage,
+                "jurisdiction": body.jurisdiction,
+                "target_lock_date": body.target_lock_date,
+                "review_brief": body.review_brief,
                 "created_at": now,
             },
         )
@@ -242,18 +255,34 @@ async def create_project(
             "orgId": str(scope.org_id),
             "title": body.title,
             "description": body.description,
+            "productionType": body.production_type,
+            "productionStage": body.production_stage,
+            "jurisdiction": body.jurisdiction,
+            "targetLockDate": body.target_lock_date.isoformat() if body.target_lock_date else None,
+            "reviewBrief": body.review_brief,
             "createdAt": now.isoformat(),
         },
         "meta": {"requestId": "req_create_project"},
     }
 
 
-@router.get("/organizations/{org_id}/projects/{project_id}")
-async def get_project(org_id: str, project_id: str, request: Request) -> dict:
+@router.get(
+    "/organizations/{orgId}/projects/{projectId}",
+    operation_id="getProject",
+)
+async def get_project(
+    request: Request,
+    org_id: Annotated[str, Path(alias="orgId")],
+    project_id: Annotated[str, Path(alias="projectId")],
+) -> dict:
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
     async with session_scope() as session:
         res = await session.execute(
-            sa.text("SELECT id, org_id, title, description, created_at FROM projects WHERE id = :id AND org_id = :org_id"),
+            sa.text(
+                "SELECT id, org_id, title, description, production_type, production_stage, "
+                "jurisdiction, target_lock_date, review_brief, created_at FROM projects "
+                "WHERE id = :id AND org_id = :org_id"
+            ),
             {"id": str(scope.project_id), "org_id": str(scope.org_id)},
         )
         row = res.mappings().first()
@@ -265,7 +294,16 @@ async def get_project(org_id: str, project_id: str, request: Request) -> dict:
                 "orgId": str(row["org_id"]),
                 "title": row["title"],
                 "description": row["description"],
-                "createdAt": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+                "productionType": row["production_type"],
+                "productionStage": row["production_stage"],
+                "jurisdiction": row["jurisdiction"],
+                "targetLockDate": row["target_lock_date"].isoformat()
+                if hasattr(row["target_lock_date"], "isoformat")
+                else (str(row["target_lock_date"]) if row["target_lock_date"] else None),
+                "reviewBrief": row["review_brief"],
+                "createdAt": row["created_at"].isoformat()
+                if hasattr(row["created_at"], "isoformat")
+                else str(row["created_at"]),
             },
             "meta": {"requestId": "req_get_project"},
         }
@@ -286,6 +324,20 @@ async def list_memberships(org_id: str, request: Request) -> dict:
             {"org_id": str(scope.org_id)},
         )
         rows = res.fetchall()
+        grant_rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT membership_id, project_id FROM project_grants "
+                    "WHERE org_id = :org_id ORDER BY membership_id, project_id"
+                ),
+                {"org_id": str(scope.org_id)},
+            )
+        ).fetchall()
+        grants_by_membership: dict[str, list[str]] = {}
+        for grant in grant_rows:
+            grants_by_membership.setdefault(str(grant.membership_id), []).append(
+                str(grant.project_id)
+            )
         return {
             "data": [
                 {
@@ -295,7 +347,10 @@ async def list_memberships(org_id: str, request: Request) -> dict:
                     "email": r.email,
                     "role": r.role.lower(),
                     "active": r.status == "active",
-                    "createdAt": r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+                    "projectGrants": grants_by_membership.get(str(r.id), []),
+                    "createdAt": r.created_at.isoformat()
+                    if hasattr(r.created_at, "isoformat")
+                    else str(r.created_at),
                 }
                 for r in rows
             ],
@@ -312,7 +367,9 @@ async def create_invitation(
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id)
     if scope.role not in ["owner", "admin"]:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied to invite members")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied to invite members"
+        )
 
     invitation_id = uuid6.uuid7()
     token = secrets.token_urlsafe(32)
@@ -362,21 +419,29 @@ async def change_membership_role(
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id)
     if scope.role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners may change membership roles")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only owners may change membership roles"
+        )
 
     async with session_scope() as session:
         # Protect last active owner
         target_res = await session.execute(
-            sa.text("SELECT id, role, status, user_id FROM memberships WHERE id = :id AND org_id = :org_id"),
+            sa.text(
+                "SELECT id, role, status, user_id FROM memberships WHERE id = :id AND org_id = :org_id"
+            ),
             {"id": membership_id, "org_id": str(scope.org_id)},
         )
         target = target_res.mappings().first()
         if not target:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found"
+            )
 
         if target["role"] == "owner" and body.role.lower() != "owner":
             owner_count_res = await session.execute(
-                sa.text("SELECT count(*) FROM memberships WHERE org_id = :org_id AND role = 'owner' AND status = 'active'"),
+                sa.text(
+                    "SELECT count(*) FROM memberships WHERE org_id = :org_id AND role = 'owner' AND status = 'active'"
+                ),
                 {"org_id": str(scope.org_id)},
             )
             owner_count = owner_count_res.scalar() or 0
@@ -404,6 +469,93 @@ async def change_membership_role(
     }
 
 
+@router.post(
+    "/organizations/{orgId}/memberships/{membershipId}:changeProjectGrant",
+    operation_id="changeProjectGrant",
+)
+async def change_project_grant(
+    request: Request,
+    org_id: Annotated[str, Path(alias="orgId")],
+    membership_id: Annotated[str, Path(alias="membershipId")],
+    body: ChangeProjectGrantBody,
+) -> dict:
+    verify_csrf_origin(request)
+    scope = await get_request_scope(request, org_id=org_id)
+    if not has_capability(scope.role, "member:manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied to manage project grants",
+        )
+
+    project_ids = list(dict.fromkeys(body.project_ids))
+    now = datetime.now(UTC)
+    async with session_scope() as session:
+        target_result = await session.execute(
+            sa.text(
+                "SELECT m.id, m.user_id, m.role, m.status, m.created_at, u.email "
+                "FROM memberships m JOIN users u ON u.id = m.user_id "
+                "WHERE m.id = :membership_id AND m.org_id = :org_id"
+            ),
+            {"membership_id": membership_id, "org_id": str(scope.org_id)},
+        )
+        target = target_result.mappings().first()
+        if not target:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Membership not found",
+            )
+
+        for project_id in project_ids:
+            project_result = await session.execute(
+                sa.text("SELECT id FROM projects WHERE id = :id AND org_id = :org_id"),
+                {"id": str(project_id), "org_id": str(scope.org_id)},
+            )
+            if not project_result.mappings().first():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Project not found",
+                )
+
+        await session.execute(
+            sa.text(
+                "DELETE FROM project_grants "
+                "WHERE org_id = :org_id AND membership_id = :membership_id"
+            ),
+            {"org_id": str(scope.org_id), "membership_id": membership_id},
+        )
+        for project_id in project_ids:
+            await session.execute(
+                sa.text(
+                    "INSERT INTO project_grants "
+                    "(id, org_id, project_id, membership_id, granted_at) "
+                    "VALUES (:id, :org_id, :project_id, :membership_id, :granted_at)"
+                ),
+                {
+                    "id": str(uuid6.uuid7()),
+                    "org_id": str(scope.org_id),
+                    "project_id": str(project_id),
+                    "membership_id": membership_id,
+                    "granted_at": now,
+                },
+            )
+
+    return {
+        "data": {
+            "membershipId": membership_id,
+            "orgId": str(scope.org_id),
+            "userId": str(target["user_id"]),
+            "email": target["email"],
+            "role": target["role"],
+            "active": target["status"] == "active",
+            "projectGrants": [str(project_id) for project_id in project_ids],
+            "createdAt": target["created_at"].isoformat()
+            if hasattr(target["created_at"], "isoformat")
+            else str(target["created_at"]),
+        },
+        "meta": {"requestId": "req_change_project_grant"},
+    }
+
+
 @router.post("/organizations/{org_id}/memberships/{membership_id}:deactivate")
 async def deactivate_membership(
     org_id: str,
@@ -413,20 +565,28 @@ async def deactivate_membership(
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id)
     if scope.role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners may deactivate memberships")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only owners may deactivate memberships"
+        )
 
     async with session_scope() as session:
         target_res = await session.execute(
-            sa.text("SELECT id, role, status, user_id FROM memberships WHERE id = :id AND org_id = :org_id"),
+            sa.text(
+                "SELECT id, role, status, user_id FROM memberships WHERE id = :id AND org_id = :org_id"
+            ),
             {"id": membership_id, "org_id": str(scope.org_id)},
         )
         target = target_res.mappings().first()
         if not target:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found"
+            )
 
         if target["role"] == "owner":
             owner_count_res = await session.execute(
-                sa.text("SELECT count(*) FROM memberships WHERE org_id = :org_id AND role = 'owner' AND status = 'active'"),
+                sa.text(
+                    "SELECT count(*) FROM memberships WHERE org_id = :org_id AND role = 'owner' AND status = 'active'"
+                ),
                 {"org_id": str(scope.org_id)},
             )
             owner_count = owner_count_res.scalar() or 0
@@ -437,7 +597,9 @@ async def deactivate_membership(
                 )
 
         await session.execute(
-            sa.text("UPDATE memberships SET status = 'inactive' WHERE id = :id AND org_id = :org_id"),
+            sa.text(
+                "UPDATE memberships SET status = 'inactive' WHERE id = :id AND org_id = :org_id"
+            ),
             {"id": membership_id, "org_id": str(scope.org_id)},
         )
 
@@ -472,10 +634,22 @@ async def accept_invitation(token: str, request: Request) -> dict:
         )
         inv = res.mappings().first()
         if not inv:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid or expired invitation")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Invalid or expired invitation"
+            )
 
-        if inv["expires_at"] and (inv["expires_at"] if isinstance(inv["expires_at"], datetime) else datetime.fromisoformat(str(inv["expires_at"]))) < now:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation has expired")
+        if (
+            inv["expires_at"]
+            and (
+                inv["expires_at"]
+                if isinstance(inv["expires_at"], datetime)
+                else datetime.fromisoformat(str(inv["expires_at"]))
+            )
+            < now
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation has expired"
+            )
 
         membership_id = uuid6.uuid7()
         await session.execute(
@@ -493,7 +667,9 @@ async def accept_invitation(token: str, request: Request) -> dict:
             },
         )
         await session.execute(
-            sa.text("UPDATE invitations SET status = 'accepted', accepted_at = :accepted_at WHERE id = :id"),
+            sa.text(
+                "UPDATE invitations SET status = 'accepted', accepted_at = :accepted_at WHERE id = :id"
+            ),
             {"id": str(inv["id"]), "accepted_at": now},
         )
 
