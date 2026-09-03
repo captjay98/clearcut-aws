@@ -27,6 +27,60 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /api/v1/users:
+    post:
+      summary: Register a local email and password account
+      operationId: registerUser
+      tags:
+        - session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+                - password
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '201':
+          description: User registered and local session created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SessionContext'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '409':
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Registration payload validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/session-context:
     get:
       summary: Retrieve current authenticated session and tenancy context
@@ -219,10 +273,13 @@ paths:
                       hasOrganizations:
                         type: boolean
                       defaultOrgSlug:
-                        type: string
-                        nullable: true
+                        anyOf:
+                          - type: string
+                          - type: 'null'
                       defaultOrgId:
-                        $ref: '#/components/schemas/UUIDv7'
+                        anyOf:
+                          - $ref: '#/components/schemas/UUIDv7'
+                          - type: 'null'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
@@ -774,15 +831,16 @@ paths:
               type: object
               required:
                 - filename
-                - mimeType
-                - sizeBytes
+                - contentType
               properties:
                 filename:
                   type: string
-                mimeType:
+                  minLength: 1
+                  maxLength: 255
+                contentType:
                   type: string
-                sizeBytes:
-                  type: integer
+                  minLength: 1
+                  maxLength: 100
       responses:
         '201':
           description: Upload capability created
@@ -797,13 +855,20 @@ paths:
                   data:
                     type: object
                     required:
-                      - artifactId
+                      - capabilityId
                       - uploadUrl
+                      - nonce
+                      - expiresAt
                     properties:
-                      artifactId:
+                      capabilityId:
                         $ref: '#/components/schemas/UUIDv7'
                       uploadUrl:
                         type: string
+                      nonce:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
@@ -824,6 +889,24 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - name: X-Upload-Nonce
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
       responses:
         '200':
           description: Import artifact finalized
@@ -982,6 +1065,40 @@ paths:
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
+  /api/v1/organizations/{orgId}/projects/{projectId}/script:
+    get:
+      summary: Read the current committed screenplay projection
+      operationId: getProjectScript
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Current project screenplay
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ProjectScript'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          description: No committed screenplay exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/organizations/{orgId}/projects/{projectId}/script-versions:
     get:
       summary: List committed script versions for a project
@@ -1110,6 +1227,55 @@ paths:
                     $ref: '#/components/schemas/Job'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/jobs:
+    get:
+      summary: List observable jobs for a project
+      operationId: listJobs
+      tags:
+        - operations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Project jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '503':
+          description: Observable job reads are not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:
     get:
@@ -1279,7 +1445,7 @@ paths:
                   - meta
                 properties:
                   data:
-                    $ref: '#/components/schemas/ClearanceItem'
+                    $ref: '#/components/schemas/ClearanceItemDetail'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
@@ -1318,7 +1484,7 @@ paths:
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign:
     post:
-      summary: Assign clearance item to a member
+      summary: Assign clearance item to an authorized project member
       operationId: assignClearanceItem
       tags:
         - review
@@ -1333,20 +1499,16 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - assigneeId
-              properties:
-                assigneeId:
-                  $ref: '#/components/schemas/UUIDv7'
+              $ref: '#/components/schemas/AssignClearanceItemRequest'
       responses:
         '200':
-          description: Item assigned
+          description: Item assigned with the resulting item version
           content:
             application/json:
               schema:
@@ -1359,6 +1521,30 @@ paths:
                     $ref: '#/components/schemas/ClearanceItem'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current assignment capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item or assignee is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Assignment command validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate:
     post:
@@ -1406,7 +1592,8 @@ paths:
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision:
     post:
-      summary: Record human reviewer evidence decision
+      summary: Record a human reviewer's treatment of cited evidence
+      description: Records an evidence review outcome for pre-clearance workflow only; it is not a legal-clearance conclusion.
       operationId: recordEvidenceDecision
       tags:
         - decisions
@@ -1421,15 +1608,16 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RecordDecisionRequest'
+              $ref: '#/components/schemas/RecordEvidenceDecisionRequest'
       responses:
         '200':
-          description: Decision recorded
+          description: Evidence decision recorded with the resulting item version
           content:
             application/json:
               schema:
@@ -1442,10 +1630,35 @@ paths:
                     $ref: '#/components/schemas/ClearanceItem'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current evidence-decision capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Decision, rationale, intent, or evidence policy validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition:
     post:
-      summary: Set item disposition
+      summary: Set the human pre-clearance workflow disposition for an item
+      description: Records a governed workflow disposition without guaranteeing legal clearance.
       operationId: setDisposition
       tags:
         - decisions
@@ -1460,22 +1673,16 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - disposition
-              properties:
-                disposition:
-                  type: string
-                rationale:
-                  type: string
+              $ref: '#/components/schemas/SetDispositionRequest'
       responses:
         '200':
-          description: Disposition updated
+          description: Disposition recorded with the resulting item version
           content:
             application/json:
               schema:
@@ -1488,10 +1695,34 @@ paths:
                     $ref: '#/components/schemas/ClearanceItem'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current disposition capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Disposition, rationale, intent, or evidence policy validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer:
     post:
-      summary: Refer item to counsel or external expert
+      summary: Submit an item referral to an authorized specialist role
       operationId: referClearanceItem
       tags:
         - collaboration
@@ -1506,23 +1737,16 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - targetRole
-                - question
-              properties:
-                targetRole:
-                  type: string
-                question:
-                  type: string
+              $ref: '#/components/schemas/ReferClearanceItemRequest'
       responses:
         '201':
-          description: Referral created
+          description: Referral submitted with the resulting item version
           content:
             application/json:
               schema:
@@ -1535,10 +1759,34 @@ paths:
                     $ref: '#/components/schemas/Referral'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current referral capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item or referral target is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Referral command validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
-  /api/v1/organizations/{orgId}/projects/{projectId}/referrals/{referralId}:acknowledge:
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/referrals/{referralId}:acknowledge:
     post:
-      summary: Acknowledge or answer a referral
+      summary: Acknowledge or answer an item-scoped referral
       operationId: acknowledgeReferral
       tags:
         - collaboration
@@ -1548,25 +1796,26 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OrgId'
         - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
         - name: referralId
           in: path
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - response
-              properties:
-                response:
-                  type: string
+              $ref: '#/components/schemas/AcknowledgeReferralRequest'
       responses:
         '200':
-          description: Referral acknowledged
+          description: Referral acknowledged with the resulting item version
           content:
             application/json:
               schema:
@@ -1579,10 +1828,34 @@ paths:
                     $ref: '#/components/schemas/Referral'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current referral acknowledgement capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item or referral is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Referral acknowledgement validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments:
     post:
-      summary: Add comment to item discussion
+      summary: Add an attributable comment to an item discussion
       operationId: addComment
       tags:
         - collaboration
@@ -1597,24 +1870,16 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - body
-              properties:
-                body:
-                  type: string
-                mentions:
-                  type: array
-                  items:
-                    $ref: '#/components/schemas/UUIDv7'
+              $ref: '#/components/schemas/AddCommentRequest'
       responses:
         '201':
-          description: Comment created
+          description: Comment created with the resulting item version
           content:
             application/json:
               schema:
@@ -1627,10 +1892,34 @@ paths:
                     $ref: '#/components/schemas/Comment'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current comment capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item or mentioned member is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Comment or mention validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
-  /api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:reply:
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:reply:
     post:
-      summary: Reply to a comment
+      summary: Add a one-level reply to an item comment
       operationId: replyToComment
       tags:
         - collaboration
@@ -1640,25 +1929,26 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OrgId'
         - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
         - name: commentId
           in: path
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - body
-              properties:
-                body:
-                  type: string
+              $ref: '#/components/schemas/ReplyToCommentRequest'
       responses:
         '201':
-          description: Reply added
+          description: Reply created with the resulting item version
           content:
             application/json:
               schema:
@@ -1671,10 +1961,34 @@ paths:
                     $ref: '#/components/schemas/Comment'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current comment capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item, parent comment, or mentioned member is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Reply depth, content, or mention validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
-  /api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:revise:
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:revise:
     post:
-      summary: Revise/edit a comment
+      summary: Append an immutable revision to an item comment
       operationId: reviseComment
       tags:
         - collaboration
@@ -1684,25 +1998,26 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OrgId'
         - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
         - name: commentId
           in: path
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - body
-              properties:
-                body:
-                  type: string
+              $ref: '#/components/schemas/ReviseCommentRequest'
       responses:
         '200':
-          description: Comment revised
+          description: Comment revision appended with the resulting item version
           content:
             application/json:
               schema:
@@ -1715,6 +2030,30 @@ paths:
                     $ref: '#/components/schemas/Comment'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the current comment revision capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item, comment, or mentioned member is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Stale item version or idempotency-key intent mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Revision content or mention validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite:
     post:
@@ -2246,6 +2585,88 @@ paths:
         '204':
           description: Subscription revoked
 
+  /api/v1/organizations/{orgId}/projects/{projectId}/evaluations:
+    get:
+      summary: List persisted deterministic and judge evaluations
+      operationId: listTrustEvaluations
+      tags:
+        - trust
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: jobId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Persisted Trust evaluations
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '503':
+          description: Trust evaluation reads are not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/evaluations/{evaluationId}:
+    get:
+      summary: Read one persisted Trust evaluation and its version bindings
+      operationId: getTrustEvaluation
+      tags:
+        - trust
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: evaluationId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Persisted Trust evaluation
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '503':
+          description: Trust evaluation reads are not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/organizations/{orgId}/records:
     get:
       summary: List immutable audit records and receipts
@@ -2257,6 +2678,27 @@ paths:
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/OrgId'
+        - name: view
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - activity
+              - runsAndTools
+              - evaluations
+              - policies
+              - operations
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
       responses:
         '200':
           description: Audit records list
@@ -2306,6 +2748,45 @@ paths:
                     $ref: '#/components/schemas/AuditRecord'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/provider-attempts/{attemptId}:
+    get:
+      summary: Read redacted provider-attempt details
+      operationId: getProviderAttempt
+      tags:
+        - records
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Redacted provider-attempt details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '503':
+          description: Provider-attempt reads are not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate:
     post:
@@ -2620,6 +3101,15 @@ paths:
       parameters:
         - $ref: '#/components/parameters/OrgId'
         - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scriptVersionId:
+                  $ref: '#/components/schemas/UUIDv7'
       responses:
         '201':
           description: Report snapshot generated
@@ -2686,6 +3176,19 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - attestation
+              properties:
+                attestation:
+                  type: string
+                  minLength: 40
+                  maxLength: 2000
       responses:
         '200':
           description: Report released
@@ -2699,6 +3202,69 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/ReportRelease'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-history:
+    get:
+      summary: List report snapshots, releases, and redacted receipts
+      operationId: listReportHistory
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Governed report history
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportHistoryEntry'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact-metadata:
+    get:
+      summary: Read authorized released-report artifact metadata
+      operationId: getReportDownloadMetadata
+      tags:
+        - reports
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: releaseId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Authorized released HTML artifact metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReportArtifactMetadata'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
@@ -2752,7 +3318,16 @@ components:
       name: Idempotency-Key
       in: header
       required: false
-      description: Client-provided idempotency key for safe retries
+      description: Client-provided idempotency key for safe retries when supported
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    RequiredIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-provided idempotency key required for safe, intent-bound command retries
       schema:
         type: string
         minLength: 16
@@ -2799,12 +3374,25 @@ components:
         - manual_retry
         - cancelled
 
+    JobDispatchMetadata:
+      type: object
+      required:
+        - mode
+        - durable
+      properties:
+        mode:
+          type: string
+          enum: [disabled, local, cloud_tasks]
+        durable:
+          type: boolean
+
     HealthResponse:
       type: object
       required:
         - status
         - timestamp
         - version
+        - jobDispatch
       properties:
         status:
           type: string
@@ -2814,6 +3402,8 @@ components:
         version:
           type: string
           example: "0.1.0"
+        jobDispatch:
+          $ref: '#/components/schemas/JobDispatchMetadata'
 
     SessionContext:
       type: object
@@ -2823,19 +3413,28 @@ components:
         authenticated:
           type: boolean
         userId:
-          $ref: '#/components/schemas/UUIDv7'
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
         email:
-          type: string
-          format: email
+          anyOf:
+            - type: string
+              format: email
+            - type: 'null'
         activeOrgId:
-          $ref: '#/components/schemas/UUIDv7'
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
         role:
-          $ref: '#/components/schemas/UserRole'
+          anyOf:
+            - $ref: '#/components/schemas/UserRole'
+            - type: 'null'
 
     CreateSessionRequest:
       type: object
       required:
         - email
+        - password
       properties:
         email:
           type: string
@@ -2875,6 +3474,8 @@ components:
           maxLength: 100
         slug:
           type: string
+          minLength: 2
+          maxLength: 100
           pattern: "^[a-z0-9-]+$"
 
     Project:
@@ -2883,6 +3484,11 @@ components:
         - projectId
         - orgId
         - title
+        - productionType
+        - productionStage
+        - jurisdiction
+        - targetLockDate
+        - reviewBrief
         - createdAt
       properties:
         projectId:
@@ -2892,7 +3498,30 @@ components:
         title:
           type: string
         description:
-          type: string
+          anyOf:
+            - type: string
+            - type: 'null'
+        productionType:
+          anyOf:
+            - type: string
+            - type: 'null'
+        productionStage:
+          anyOf:
+            - type: string
+            - type: 'null'
+        jurisdiction:
+          anyOf:
+            - type: string
+            - type: 'null'
+        targetLockDate:
+          anyOf:
+            - type: string
+              format: date
+            - type: 'null'
+        reviewBrief:
+          anyOf:
+            - type: string
+            - type: 'null'
         isDemo:
           type: boolean
           default: false
@@ -2909,7 +3538,33 @@ components:
           minLength: 1
           maxLength: 200
         description:
-          type: string
+          anyOf:
+            - type: string
+            - type: 'null'
+        productionType:
+          anyOf:
+            - type: string
+              maxLength: 100
+            - type: 'null'
+        productionStage:
+          anyOf:
+            - type: string
+              maxLength: 100
+            - type: 'null'
+        jurisdiction:
+          anyOf:
+            - type: string
+              maxLength: 200
+            - type: 'null'
+        targetLockDate:
+          anyOf:
+            - type: string
+              format: date
+            - type: 'null'
+        reviewBrief:
+          anyOf:
+            - type: string
+            - type: 'null'
 
     Invitation:
       type: object
@@ -2987,6 +3642,9 @@ components:
         - artifactId
         - projectId
         - filename
+        - contentType
+        - sizeBytes
+        - sha256
         - status
         - createdAt
       properties:
@@ -2996,10 +3654,34 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         filename:
           type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
         status:
           type: string
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
+
+    ParseWarning:
+      type: object
+      required:
+        - code
+        - line
+        - message
+      properties:
+        code:
+          type: string
+        line:
+          anyOf:
+            - type: integer
+            - type: 'null'
+        message:
+          type: string
 
     ParseRun:
       type: object
@@ -3007,8 +3689,15 @@ components:
         - runId
         - artifactId
         - status
+        - parserName
+        - parserVersion
         - warnings
         - sceneCount
+        - elementCount
+        - warningsAccepted
+        - acceptedAt
+        - createdAt
+        - completedAt
       properties:
         runId:
           $ref: '#/components/schemas/UUIDv7'
@@ -3016,28 +3705,52 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         status:
           $ref: '#/components/schemas/RunStatus'
+        parserName:
+          type: string
+        parserVersion:
+          type: string
         warnings:
           type: array
           items:
-            type: object
-            properties:
-              line:
-                type: integer
-              message:
-                type: string
+            $ref: '#/components/schemas/ParseWarning'
         sceneCount:
           type: integer
+          minimum: 0
+        elementCount:
+          type: integer
+          minimum: 0
+        warningsAccepted:
+          type: boolean
+        acceptedAt:
+          anyOf:
+            - $ref: '#/components/schemas/ISODateTime'
+            - type: 'null'
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+        completedAt:
+          $ref: '#/components/schemas/ISODateTime'
 
     ScriptVersion:
       type: object
       required:
         - versionId
+        - scriptId
         - projectId
         - versionNumber
         - revisionLabel
+        - title
+        - ordinal
+        - sourceArtifactId
+        - parseRunId
+        - sourceHash
+        - parserVersion
+        - sceneCount
+        - elementCount
         - createdAt
       properties:
         versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        scriptId:
           $ref: '#/components/schemas/UUIDv7'
         projectId:
           $ref: '#/components/schemas/UUIDv7'
@@ -3045,12 +3758,151 @@ components:
           type: integer
         revisionLabel:
           type: string
+        title:
+          type: string
+        ordinal:
+          type: integer
+        sourceArtifactId:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+        parseRunId:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+        sourceHash:
+          type: string
+        parserVersion:
+          type: string
         sceneCount:
           type: integer
-        itemCount:
+          minimum: 0
+        elementCount:
           type: integer
+          minimum: 0
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
+
+    ProjectScriptLine:
+      type: object
+      required:
+        - type
+        - text
+      properties:
+        type:
+          type: string
+          enum: [scene_heading, action, character, parenthetical, dialogue, transition]
+        text:
+          type: string
+        flag:
+          type: string
+
+    ProjectScriptScene:
+      type: object
+      required:
+        - number
+        - slug
+        - page
+        - lines
+      properties:
+        number:
+          type: integer
+        slug:
+          type: string
+        page:
+          anyOf:
+            - type: integer
+            - type: 'null'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectScriptLine'
+
+    ProjectScript:
+      type: object
+      required:
+        - title
+        - version
+        - versionId
+        - scenes
+      properties:
+        title:
+          type: string
+        version:
+          type: string
+        versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        scenes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectScriptScene'
+
+    SafeJobError:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+
+    JobAttempt:
+      type: object
+      required:
+        - number
+        - status
+        - startedAt
+        - completedAt
+        - error
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [running, succeeded, failed, cancelled, interrupted]
+        startedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        completedAt:
+          anyOf:
+            - $ref: '#/components/schemas/ISODateTime'
+            - type: 'null'
+        error:
+          anyOf:
+            - $ref: '#/components/schemas/SafeJobError'
+            - type: 'null'
+
+    JobLifecycleEvent:
+      type: object
+      required:
+        - action
+        - actorId
+        - occurredAt
+      properties:
+        action:
+          type: string
+          enum: [cancelled, retry_requested]
+        actorId:
+          $ref: '#/components/schemas/UUIDv7'
+        occurredAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    JobTarget:
+      type: object
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum: [project, script_version, clearance_item, legacy_unknown]
+        id:
+          $ref: '#/components/schemas/UUIDv7'
 
     Job:
       type: object
@@ -3058,7 +3910,18 @@ components:
         - jobId
         - status
         - jobType
+        - target
+        - canRetry
+        - progress
+        - stage
+        - resultSummary
+        - error
+        - attemptCount
+        - attempts
+        - history
+        - availableAt
         - createdAt
+        - updatedAt
       properties:
         jobId:
           $ref: '#/components/schemas/UUIDv7'
@@ -3066,11 +3929,41 @@ components:
           $ref: '#/components/schemas/RunStatus'
         jobType:
           type: string
+        target:
+          $ref: '#/components/schemas/JobTarget'
+        canRetry:
+          type: boolean
         progress:
           type: number
-        error:
+          minimum: 0
+          maximum: 100
+        stage:
           type: string
+        resultSummary:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: 'null'
+        error:
+          anyOf:
+            - $ref: '#/components/schemas/SafeJobError'
+            - type: 'null'
+        attemptCount:
+          type: integer
+          minimum: 0
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobAttempt'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobLifecycleEvent'
+        availableAt:
+          $ref: '#/components/schemas/ISODateTime'
         createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+        updatedAt:
           $ref: '#/components/schemas/ISODateTime'
 
     ClearanceItem:
@@ -3078,6 +3971,7 @@ components:
       required:
         - itemId
         - projectId
+        - version
         - category
         - entityName
         - status
@@ -3088,6 +3982,10 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         versionId:
           $ref: '#/components/schemas/UUIDv7'
+        version:
+          type: integer
+          minimum: 0
+          description: Current optimistic concurrency version for the item
         category:
           type: string
         entityName:
@@ -3097,13 +3995,321 @@ components:
         status:
           type: string
         disposition:
-          type: string
+          $ref: '#/components/schemas/ClearanceDisposition'
         assignedTo:
           $ref: '#/components/schemas/UUIDv7'
         dueDate:
           $ref: '#/components/schemas/ISODateTime'
         claimCount:
           type: integer
+
+    ItemEvidenceState:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - unresolved
+        - claimCount
+        - reason
+      properties:
+        status:
+          type: string
+          enum: [pending, no_results, failed, unavailable, cited]
+        unresolved:
+          type: boolean
+          description: Always true until a qualified human completes the governed workflow.
+        claimCount:
+          type: integer
+          minimum: 0
+        reason:
+          type: string
+
+    ItemDetailEvidenceClaim:
+      type: object
+      additionalProperties: false
+      required:
+        - claimId
+        - snapshotId
+        - claimText
+        - stance
+        - authorityTier
+        - provenanceExcerpt
+        - createdAt
+      properties:
+        claimId:
+          $ref: '#/components/schemas/UUIDv7'
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        claimText:
+          type: string
+        stance:
+          type: string
+        authorityTier:
+          type: string
+        provenanceExcerpt:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ItemDetailSourceSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshotId
+        - url
+        - title
+        - publisher
+        - excerpt
+        - origin
+        - retrievedAt
+      properties:
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+        publisher:
+          type: string
+        excerpt:
+          type: string
+        origin:
+          type: string
+        retrievedAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ItemEvidenceConflict:
+      type: object
+      additionalProperties: false
+      required:
+        - conflictId
+        - description
+        - createdAt
+      properties:
+        conflictId:
+          $ref: '#/components/schemas/UUIDv7'
+        description:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ItemDecisionRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - recordId
+        - kind
+        - value
+        - rationale
+        - actorId
+        - expectedVersion
+        - resultingVersion
+        - createdAt
+      properties:
+        recordId:
+          $ref: '#/components/schemas/UUIDv7'
+        kind:
+          type: string
+        value:
+          type: string
+        rationale:
+          type: string
+        actorId:
+          $ref: '#/components/schemas/UUIDv7'
+        expectedVersion:
+          type: integer
+          minimum: 0
+        resultingVersion:
+          type: integer
+          minimum: 1
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ItemReferral:
+      type: object
+      additionalProperties: false
+      required:
+        - referralId
+        - targetRole
+        - question
+        - status
+        - submittedByActorId
+        - submittedAt
+      properties:
+        referralId:
+          $ref: '#/components/schemas/UUIDv7'
+        targetRole:
+          type: string
+        question:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+        submittedByActorId:
+          $ref: '#/components/schemas/UUIDv7'
+        acknowledgedByActorId:
+          $ref: '#/components/schemas/UUIDv7'
+        submittedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        acknowledgedAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ItemCommentRevision:
+      type: object
+      additionalProperties: false
+      required:
+        - revisionId
+        - ordinal
+        - authorId
+        - body
+        - createdAt
+        - mentionRecipientIds
+      properties:
+        revisionId:
+          $ref: '#/components/schemas/UUIDv7'
+        ordinal:
+          type: integer
+          minimum: 1
+        authorId:
+          $ref: '#/components/schemas/UUIDv7'
+        body:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+        mentionRecipientIds:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+
+    ItemDetailComment:
+      type: object
+      additionalProperties: false
+      required:
+        - commentId
+        - authorId
+        - replyDepth
+        - createdAt
+        - revisions
+      properties:
+        commentId:
+          $ref: '#/components/schemas/UUIDv7'
+        authorId:
+          $ref: '#/components/schemas/UUIDv7'
+        parentId:
+          $ref: '#/components/schemas/UUIDv7'
+        replyDepth:
+          type: integer
+          minimum: 0
+          maximum: 1
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+        revisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemCommentRevision'
+
+    ItemCapability:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+        - allowed
+        - explanation
+      properties:
+        action:
+          type: string
+        allowed:
+          type: boolean
+        explanation:
+          type: string
+
+    ClearanceItemDetail:
+      type: object
+      additionalProperties: false
+      description: >-
+        Authoritative, project-scoped collaboration and evidence projection. Cited evidence
+        remains material for qualified human review and is not a legal-clearance conclusion.
+      required:
+        - itemId
+        - projectId
+        - versionId
+        - version
+        - category
+        - entityName
+        - status
+        - workflowStatus
+        - researchStatus
+        - evidenceState
+        - claims
+        - snapshots
+        - conflicts
+        - decisions
+        - referrals
+        - comments
+        - capabilities
+      properties:
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        version:
+          type: integer
+          minimum: 1
+        category:
+          type: string
+        entityName:
+          type: string
+        contextText:
+          type: string
+        scene:
+          type: integer
+        page:
+          type: integer
+        status:
+          type: string
+        workflowStatus:
+          type: string
+        researchStatus:
+          type: string
+        disposition:
+          $ref: '#/components/schemas/ClearanceDisposition'
+        assignedTo:
+          $ref: '#/components/schemas/UUIDv7'
+        evidenceState:
+          $ref: '#/components/schemas/ItemEvidenceState'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemDetailEvidenceClaim'
+        snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemDetailSourceSnapshot'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemEvidenceConflict'
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemDecisionRecord'
+        referrals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemReferral'
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemDetailComment'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemCapability'
 
     SourceSnapshot:
       type: object
@@ -3164,25 +4370,211 @@ components:
           items:
             $ref: '#/components/schemas/SourceSnapshot'
 
-    RecordDecisionRequest:
+    EvidenceDecision:
+      type: string
+      description: Reviewer's treatment of the cited evidence; this is not a legal-clearance conclusion.
+      enum:
+        - accepted
+        - rejected
+        - further_review_required
+
+    ClearanceDisposition:
+      type: string
+      description: Human pre-clearance workflow disposition; this does not guarantee legal clearance.
+      enum:
+        - pending
+        - verified
+        - ruled_out
+        - fixed_in_rewrite
+        - deferred
+
+    AssignClearanceItemRequest:
       type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+        - intentHash
+      properties:
+        assigneeId:
+          description: >-
+            Target project member to assign, or null to unassign. Assignment is
+            operational, so unassignment (null) is a first-class outcome and this
+            field is optional and nullable; a UUIDv7 is required when present.
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+        expectedVersion:
+          type: integer
+          minimum: 0
+        intentHash:
+          type: string
+          minLength: 1
+
+    RecordEvidenceDecisionRequest:
+      type: object
+      additionalProperties: false
       required:
         - decision
         - rationale
+        - expectedVersion
+        - intentHash
       properties:
         decision:
-          type: string
-          enum: [cleared, flagged, rejected, further_review]
+          $ref: '#/components/schemas/EvidenceDecision'
         rationale:
           type: string
+          minLength: 1
         expectedVersion:
           type: integer
+          minimum: 0
+        intentHash:
+          type: string
+          minLength: 1
+
+    SetDispositionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - disposition
+        - rationale
+        - expectedVersion
+        - intentHash
+      properties:
+        disposition:
+          $ref: '#/components/schemas/ClearanceDisposition'
+        rationale:
+          type: string
+          minLength: 1
+        expectedVersion:
+          type: integer
+          minimum: 0
+        intentHash:
+          type: string
+          minLength: 1
+
+    ReferClearanceItemRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - targetRole
+        - question
+        - rationale
+        - expectedVersion
+        - intentHash
+      properties:
+        targetRole:
+          type: string
+          minLength: 1
+        question:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
+        expectedVersion:
+          type: integer
+          minimum: 0
+        intentHash:
+          type: string
+          minLength: 1
+
+    AcknowledgeReferralRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - response
+        - rationale
+        - expectedVersion
+        - intentHash
+      properties:
+        response:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
+        expectedVersion:
+          type: integer
+          minimum: 0
+        intentHash:
+          type: string
+          minLength: 1
+
+    AddCommentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - body
+        - expectedVersion
+        - intentHash
+      properties:
+        body:
+          type: string
+          minLength: 1
+        mentions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+        expectedVersion:
+          type: integer
+          minimum: 1
+        intentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    ReplyToCommentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - body
+        - expectedVersion
+        - intentHash
+      properties:
+        body:
+          type: string
+          minLength: 1
+        mentions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+        expectedVersion:
+          type: integer
+          minimum: 1
+        intentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    ReviseCommentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - body
+        - expectedVersion
+        - intentHash
+      properties:
+        body:
+          type: string
+          minLength: 1
+        mentions:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+        expectedVersion:
+          type: integer
+          minimum: 1
+        intentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
 
     Referral:
       type: object
       required:
         - referralId
         - itemId
+        - itemVersion
         - targetRole
         - question
         - status
@@ -3191,6 +4583,9 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         itemId:
           $ref: '#/components/schemas/UUIDv7'
+        itemVersion:
+          type: integer
+          minimum: 0
         targetRole:
           type: string
         question:
@@ -3204,6 +4599,8 @@ components:
       type: object
       required:
         - commentId
+        - itemId
+        - itemVersion
         - authorId
         - body
         - createdAt
@@ -3212,6 +4609,9 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         itemId:
           $ref: '#/components/schemas/UUIDv7'
+        itemVersion:
+          type: integer
+          minimum: 0
         authorId:
           $ref: '#/components/schemas/UUIDv7'
         authorEmail:
@@ -3365,12 +4765,16 @@ components:
 
     ReportSnapshot:
       type: object
+      additionalProperties: false
       required:
         - snapshotId
         - projectId
         - versionId
         - generatedAt
         - status
+        - contentHash
+        - bindingManifest
+        - artifactId
       properties:
         snapshotId:
           $ref: '#/components/schemas/UUIDv7'
@@ -3382,14 +4786,28 @@ components:
           $ref: '#/components/schemas/ISODateTime'
         status:
           type: string
+          enum: [generated, released]
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        bindingManifest:
+          type: object
+          additionalProperties: true
+        artifactId:
+          $ref: '#/components/schemas/UUIDv7'
 
     ReportRelease:
       type: object
+      additionalProperties: false
       required:
         - releaseId
         - snapshotId
         - releasedBy
         - releasedAt
+        - attestation
+        - contentHash
+        - artifactId
+        - downloadUrl
       properties:
         releaseId:
           $ref: '#/components/schemas/UUIDv7'
@@ -3399,6 +4817,101 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         releasedAt:
           $ref: '#/components/schemas/ISODateTime'
+        attestation:
+          type: string
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        artifactId:
+          $ref: '#/components/schemas/UUIDv7'
+        downloadUrl:
+          type: string
+
+    ReportHistoryEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshotId
+        - versionId
+        - status
+        - contentHash
+        - generatedAt
+        - artifactId
+        - artifactHash
+        - releaseId
+        - releasedBy
+        - attestation
+        - releasedAt
+      properties:
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        versionId:
+          $ref: '#/components/schemas/UUIDv7'
+        status:
+          type: string
+          enum: [generated, released]
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        generatedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        artifactId:
+          $ref: '#/components/schemas/UUIDv7'
+        artifactHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        releaseId:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+        releasedBy:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+        attestation:
+          anyOf:
+            - type: string
+            - type: 'null'
+        releasedAt:
+          anyOf:
+            - $ref: '#/components/schemas/ISODateTime'
+            - type: 'null'
+
+    ReportArtifactMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - releaseId
+        - snapshotId
+        - artifactId
+        - mediaType
+        - contentHash
+        - artifactHash
+        - sizeBytes
+        - status
+        - downloadUrl
+      properties:
+        releaseId:
+          $ref: '#/components/schemas/UUIDv7'
+        snapshotId:
+          $ref: '#/components/schemas/UUIDv7'
+        artifactId:
+          $ref: '#/components/schemas/UUIDv7'
+        mediaType:
+          type: string
+          enum: [text/html]
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        artifactHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        sizeBytes:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [released]
         downloadUrl:
           type: string
 
@@ -3436,11 +4949,14 @@ components:
                 - authentication_required
                 - permission_denied
                 - not_found
+                - conflict
                 - conflict_stale_version
+                - conflict_idempotency_mismatch
                 - rate_limited
                 - research_provider_unavailable
                 - research_provider_rate_limited
                 - model_provider_error
+                - capability_unavailable
                 - rejected_output
                 - internal_error
             message:

@@ -19,23 +19,29 @@ export type RunStatus =
 
 export type UserRole = 'owner' | 'admin' | 'editor' | 'reviewer';
 
+export interface JobDispatchMetadata {
+  mode: 'disabled' | 'local' | 'cloud_tasks';
+  durable: boolean;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: ISODateTime;
   version: string;
+  jobDispatch: JobDispatchMetadata;
 }
 
 export interface SessionContext {
   authenticated: boolean;
-  userId?: UUIDv7;
-  email?: string;
-  activeOrgId?: UUIDv7;
-  role?: UserRole;
+  userId?: UUIDv7 | null;
+  email?: string | null;
+  activeOrgId?: UUIDv7 | null;
+  role?: UserRole | null;
 }
 
 export interface CreateSessionRequest {
   email: string;
-  password?: string;
+  password: string;
 }
 
 export interface Organization {
@@ -55,14 +61,24 @@ export interface Project {
   projectId: UUIDv7;
   orgId: UUIDv7;
   title: string;
-  description?: string;
+  description?: string | null;
+  productionType: string | null;
+  productionStage: string | null;
+  jurisdiction: string | null;
+  targetLockDate: string | null;
+  reviewBrief: string | null;
   isDemo?: boolean;
   createdAt: ISODateTime;
 }
 
 export interface CreateProjectRequest {
   title: string;
-  description?: string;
+  description?: string | null;
+  productionType?: string | null;
+  productionStage?: string | null;
+  jurisdiction?: string | null;
+  targetLockDate?: string | null;
+  reviewBrief?: string | null;
 }
 
 export interface Invitation {
@@ -95,49 +111,112 @@ export interface ImportArtifact {
   artifactId: UUIDv7;
   projectId: UUIDv7;
   filename: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
   status: string;
   createdAt: ISODateTime;
+}
+
+export interface ParseWarning {
+  code: string;
+  line: number | null;
+  message: string;
 }
 
 export interface ParseRun {
   runId: UUIDv7;
   artifactId: UUIDv7;
   status: RunStatus;
-  warnings?: Array<{ line?: number; message?: string }>;
-  sceneCount?: number;
+  parserName: string;
+  parserVersion: string;
+  warnings: ParseWarning[];
+  sceneCount: number;
+  elementCount: number;
+  warningsAccepted: boolean;
+  acceptedAt: ISODateTime | null;
+  createdAt: ISODateTime;
+  completedAt: ISODateTime;
 }
 
 export interface ScriptVersion {
   versionId: UUIDv7;
+  scriptId: UUIDv7;
   projectId: UUIDv7;
   versionNumber: number;
   revisionLabel: string;
-  sceneCount?: number;
-  itemCount?: number;
+  title: string;
+  ordinal: number;
+  sourceArtifactId: UUIDv7 | null;
+  parseRunId: UUIDv7 | null;
+  sourceHash: string;
+  parserVersion: string;
+  sceneCount: number;
+  elementCount: number;
   createdAt: ISODateTime;
+}
+
+export interface ProjectScriptLine {
+  type: 'scene_heading' | 'action' | 'character' | 'parenthetical' | 'dialogue' | 'transition';
+  text: string;
+  flag?: string;
+}
+
+export interface ProjectScriptScene {
+  number: number;
+  slug: string;
+  page: number | null;
+  lines: ProjectScriptLine[];
+}
+
+export interface ProjectScript {
+  title: string;
+  version: string;
+  versionId: UUIDv7;
+  scenes: ProjectScriptScene[];
+}
+
+export interface SafeJobError {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface JobAttempt {
+  number: number;
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
+  startedAt: ISODateTime;
+  completedAt: ISODateTime | null;
+  error: SafeJobError | null;
+}
+
+export interface JobLifecycleEvent {
+  action: 'cancelled' | 'retry_requested';
+  actorId: UUIDv7;
+  occurredAt: ISODateTime;
+}
+
+export interface JobTarget {
+  type: 'project' | 'script_version' | 'clearance_item' | 'legacy_unknown';
+  id: UUIDv7;
 }
 
 export interface Job {
   jobId: UUIDv7;
   status: RunStatus;
   jobType: string;
-  progress?: number;
-  error?: string;
+  target: JobTarget;
+  canRetry: boolean;
+  progress: number;
+  stage: string;
+  resultSummary: Record<string, unknown> | null;
+  error: SafeJobError | null;
+  attemptCount: number;
+  attempts: JobAttempt[];
+  history: JobLifecycleEvent[];
+  availableAt: ISODateTime;
   createdAt: ISODateTime;
-}
-
-export interface ClearanceItem {
-  itemId: UUIDv7;
-  projectId: UUIDv7;
-  versionId?: UUIDv7;
-  category: string;
-  entityName: string;
-  contextText?: string;
-  status: string;
-  disposition?: string;
-  assignedTo?: UUIDv7;
-  dueDate?: ISODateTime;
-  claimCount?: number;
+  updatedAt: ISODateTime;
 }
 
 export interface SourceSnapshot {
@@ -163,15 +242,208 @@ export interface ItemEvidence {
   snapshots: SourceSnapshot[];
 }
 
-export interface RecordDecisionRequest {
-  decision: 'cleared' | 'flagged' | 'rejected' | 'further_review' | string;
+export interface AssignClearanceItemRequest {
+  assigneeId?: UUIDv7 | null;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export type EvidenceDecision = 'accepted' | 'rejected' | 'further_review_required';
+
+export interface RecordEvidenceDecisionRequest {
+  decision: EvidenceDecision;
   rationale: string;
-  expectedVersion?: number;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export type ClearanceDisposition = 'pending' | 'verified' | 'ruled_out' | 'fixed_in_rewrite' | 'deferred';
+
+export interface SetDispositionRequest {
+  disposition: ClearanceDisposition;
+  rationale: string;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export interface ReferClearanceItemRequest {
+  targetRole: string;
+  question: string;
+  rationale: string;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export interface AcknowledgeReferralRequest {
+  response: string;
+  rationale: string;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export interface AddCommentRequest {
+  body: string;
+  mentions?: Array<UUIDv7>;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export interface ReplyToCommentRequest {
+  body: string;
+  mentions?: Array<UUIDv7>;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export interface ReviseCommentRequest {
+  body: string;
+  mentions?: Array<UUIDv7>;
+  expectedVersion: number;
+  intentHash: string;
+}
+
+export interface ItemCapability {
+  action: string;
+  allowed: boolean;
+  explanation: string;
+}
+
+export interface ItemDecisionRecord {
+  recordId: UUIDv7;
+  kind: string;
+  value: string;
+  rationale: string;
+  actorId: UUIDv7;
+  expectedVersion: number;
+  resultingVersion: number;
+  createdAt: ISODateTime;
+}
+
+export interface ItemCommentRevision {
+  revisionId: UUIDv7;
+  ordinal: number;
+  authorId: UUIDv7;
+  body: string;
+  createdAt: ISODateTime;
+  mentionRecipientIds: Array<UUIDv7>;
+}
+
+export interface ItemDetailComment {
+  commentId: UUIDv7;
+  authorId: UUIDv7;
+  parentId?: UUIDv7;
+  replyDepth: number;
+  createdAt: ISODateTime;
+  revisions: Array<ItemCommentRevision>;
+}
+
+export interface ItemDetailEvidenceClaim {
+  claimId: UUIDv7;
+  snapshotId: UUIDv7;
+  claimText: string;
+  stance: string;
+  authorityTier: string;
+  provenanceExcerpt: string;
+  createdAt: ISODateTime;
+}
+
+export interface ItemDetailSourceSnapshot {
+  snapshotId: UUIDv7;
+  url: string;
+  title: string;
+  publisher: string;
+  excerpt: string;
+  origin: string;
+  retrievedAt: ISODateTime;
+}
+
+export interface ItemEvidenceConflict {
+  conflictId: UUIDv7;
+  description: string;
+  createdAt: ISODateTime;
+}
+
+export interface ItemEvidenceState {
+  status: 'pending' | 'no_results' | 'failed' | 'unavailable' | 'cited';
+  unresolved: boolean;
+  claimCount: number;
+  reason: string;
+}
+
+export interface ItemReferral {
+  referralId: UUIDv7;
+  targetRole: string;
+  question: string;
+  notes?: string;
+  status: string;
+  submittedByActorId: UUIDv7;
+  acknowledgedByActorId?: UUIDv7;
+  submittedAt: ISODateTime;
+  acknowledgedAt?: ISODateTime;
+}
+
+export interface ClearanceItemDetail {
+  itemId: UUIDv7;
+  projectId: UUIDv7;
+  versionId: UUIDv7;
+  version: number;
+  category: string;
+  entityName: string;
+  contextText?: string;
+  scene?: number;
+  page?: number;
+  status: string;
+  workflowStatus: string;
+  researchStatus: string;
+  disposition?: ClearanceDisposition;
+  assignedTo?: UUIDv7;
+  evidenceState: ItemEvidenceState;
+  claims: Array<ItemDetailEvidenceClaim>;
+  snapshots: Array<ItemDetailSourceSnapshot>;
+  conflicts: Array<ItemEvidenceConflict>;
+  decisions: Array<ItemDecisionRecord>;
+  referrals: Array<ItemReferral>;
+  comments: Array<ItemDetailComment>;
+  capabilities: Array<ItemCapability>;
+}
+
+export interface ResponseMeta {
+  requestId: string;
+  nextCursor?: string | null;
+  totalCount?: number | null;
+}
+
+export interface ClearanceItem {
+  itemId: UUIDv7;
+  projectId: UUIDv7;
+  versionId?: UUIDv7;
+  version: number;
+  category: string;
+  entityName: string;
+  contextText?: string;
+  status: string;
+  disposition?: ClearanceDisposition;
+  assignedTo?: UUIDv7;
+  dueDate?: ISODateTime;
+  claimCount?: number;
+}
+
+export interface ApiError {
+  code: 'validation_failed' | 'authentication_required' | 'permission_denied' | 'not_found' | 'conflict' | 'conflict_stale_version' | 'conflict_idempotency_mismatch' | 'rate_limited' | 'research_provider_unavailable' | 'research_provider_rate_limited' | 'model_provider_error' | 'capability_unavailable' | 'rejected_output' | 'internal_error';
+  message: string;
+  requestId: string;
+  retryable: boolean;
+  details?: Array<{ field?: string; issue?: string }>;
+}
+
+export interface ErrorEnvelope {
+  error: ApiError;
 }
 
 export interface Referral {
   referralId: UUIDv7;
   itemId: UUIDv7;
+  itemVersion: number;
   targetRole: string;
   question: string;
   response?: string;
@@ -180,13 +452,15 @@ export interface Referral {
 
 export interface Comment {
   commentId: UUIDv7;
-  itemId?: UUIDv7;
+  itemId: UUIDv7;
+  itemVersion: number;
   authorId: UUIDv7;
   authorEmail?: string;
   body: string;
   parentId?: UUIDv7;
   createdAt: ISODateTime;
 }
+
 
 export interface RewriteProposal {
   proposalId: UUIDv7;
@@ -248,7 +522,10 @@ export interface ReportSnapshot {
   projectId: UUIDv7;
   versionId: UUIDv7;
   generatedAt: ISODateTime;
-  status: string;
+  status: 'generated' | 'released';
+  contentHash: string;
+  bindingManifest: Record<string, unknown>;
+  artifactId: UUIDv7;
 }
 
 export interface ReportRelease {
@@ -256,41 +533,41 @@ export interface ReportRelease {
   snapshotId: UUIDv7;
   releasedBy: UUIDv7;
   releasedAt: ISODateTime;
-  downloadUrl?: string;
+  attestation: string;
+  contentHash: string;
+  artifactId: UUIDv7;
+  downloadUrl: string;
 }
 
-export interface ResponseMeta {
-  requestId: string;
-  nextCursor?: string | null;
-  totalCount?: number | null;
+export interface ReportHistoryEntry {
+  snapshotId: UUIDv7;
+  versionId: UUIDv7;
+  status: 'generated' | 'released';
+  contentHash: string;
+  generatedAt: ISODateTime;
+  artifactId: UUIDv7;
+  artifactHash: string;
+  releaseId: UUIDv7 | null;
+  releasedBy: UUIDv7 | null;
+  attestation: string | null;
+  releasedAt: ISODateTime | null;
 }
 
-export interface ApiError {
-  code:
-    | 'validation_failed'
-    | 'authentication_required'
-    | 'permission_denied'
-    | 'not_found'
-    | 'conflict_stale_version'
-    | 'rate_limited'
-    | 'research_provider_unavailable'
-    | 'research_provider_rate_limited'
-    | 'model_provider_error'
-    | 'rejected_output'
-    | 'internal_error'
-    | string;
-  message: string;
-  requestId?: string;
-  retryable?: boolean;
-  details?: Array<{ field?: string; issue?: string }>;
+export interface ReportArtifactMetadata {
+  releaseId: UUIDv7;
+  snapshotId: UUIDv7;
+  artifactId: UUIDv7;
+  mediaType: 'text/html';
+  contentHash: string;
+  artifactHash: string;
+  sizeBytes: number;
+  status: 'released';
+  downloadUrl: string;
 }
 
-export interface ErrorEnvelope {
-  error: ApiError;
-}
 
 export type ApiResult<T, E extends ApiError = ApiError> =
-  | { ok: true; value: T }
+  | { ok: true; value: T; meta?: ResponseMeta }
   | { ok: false; error: E };
 
 export interface ApiClientConfig {
@@ -305,8 +582,9 @@ async function request<T>(
   path: string,
   options: {
     params?: Record<string, string | number | boolean | undefined>;
-    query?: Record<string, string | number | boolean | undefined>;
-    body?: any;
+    query?: Record<string, unknown>;
+    body?: unknown;
+    bodyMediaType?: 'application/json' | 'multipart/form-data';
     headers?: Record<string, string>;
   } = {}
 ): Promise<ApiResult<T>> {
@@ -318,7 +596,7 @@ async function request<T>(
   }
 
   const url = new URL(resolvedPath.startsWith('http') ? resolvedPath : `${baseUrl}${resolvedPath}`, typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
-  
+
   if (options.query) {
     for (const [k, v] of Object.entries(options.query)) {
       if (v !== undefined) {
@@ -332,17 +610,27 @@ async function request<T>(
     ...(options.headers || {})
   };
 
-  let bodyStr: string | undefined = undefined;
-  if (options.body !== undefined) {
+  let requestBody: BodyInit | undefined;
+  if (options.body !== undefined && options.bodyMediaType === 'multipart/form-data') {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(options.body as Record<string, unknown>)) {
+      if (value instanceof Blob) {
+        form.append(name, value);
+      } else if (value !== undefined && value !== null) {
+        form.append(name, String(value));
+      }
+    }
+    requestBody = form;
+  } else if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
-    bodyStr = JSON.stringify(options.body);
+    requestBody = JSON.stringify(options.body);
   }
 
   try {
     const res = await fetchFn(url.toString(), {
       method,
       headers,
-      body: bodyStr,
+      body: requestBody,
       credentials: 'include'
     });
 
@@ -350,7 +638,19 @@ async function request<T>(
       return { ok: true, value: undefined as unknown as T };
     }
 
-    const json = await res.json().catch(() => null);
+    const json = await res.json().catch(() => undefined);
+
+    if (res.ok && json === undefined) {
+      return {
+        ok: false,
+        error: {
+          code: 'internal_error',
+          message: 'Successful response did not contain valid JSON',
+          requestId: res.headers.get('x-request-id') || '',
+          retryable: false
+        }
+      };
+    }
 
     if (!res.ok) {
       const apiErr: ApiError = (json && json.error) ? json.error : {
@@ -363,13 +663,15 @@ async function request<T>(
     }
 
     const data = (json && json.data !== undefined) ? json.data : json;
-    return { ok: true, value: data as T };
-  } catch (err: any) {
+    const meta = (json && json.meta !== undefined) ? json.meta as ResponseMeta : undefined;
+    return { ok: true, value: data as T, meta };
+  } catch (err: unknown) {
     return {
       ok: false,
       error: {
         code: 'internal_error',
-        message: err?.message || 'Network request failed',
+        message: err instanceof Error ? err.message : 'Network request failed',
+        requestId: '',
         retryable: true
       }
     };
@@ -378,6 +680,7 @@ async function request<T>(
 
 export interface Operations {
   getHealth: { method: 'GET'; path: '/healthz' };
+  registerUser: { method: 'POST'; path: '/api/v1/users' };
   getSessionContext: { method: 'GET'; path: '/api/v1/session-context' };
   createSession: { method: 'POST'; path: '/api/v1/sessions' };
   deleteCurrentSession: { method: 'DELETE'; path: '/api/v1/sessions/current' };
@@ -405,10 +708,12 @@ export interface Operations {
   parseImportArtifact: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse' };
   acceptParseWarnings: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings' };
   commitScriptVersion: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion' };
+  getProjectScript: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script' };
   listProjectVersions: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions' };
   getProjectVersion: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}' };
   startDetection: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect' };
   startResearch: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research' };
+  listJobs: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs' };
   getJob: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}' };
   retryJob: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:retry' };
   cancelJob: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:cancel' };
@@ -420,10 +725,10 @@ export interface Operations {
   recordEvidenceDecision: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision' };
   setDisposition: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition' };
   referClearanceItem: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer' };
-  acknowledgeReferral: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/referrals/{referralId}:acknowledge' };
+  acknowledgeReferral: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/referrals/{referralId}:acknowledge' };
   addComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments' };
-  replyToComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:reply' };
-  reviseComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:revise' };
+  replyToComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:reply' };
+  reviseComment: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:revise' };
   proposeRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite' };
   approveRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve' };
   rejectRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject' };
@@ -439,8 +744,11 @@ export interface Operations {
   markNotificationRead: { method: 'POST'; path: '/api/v1/organizations/{orgId}/notifications/{notificationId}:markRead' };
   registerPushSubscription: { method: 'POST'; path: '/api/v1/push-subscriptions' };
   revokePushSubscription: { method: 'DELETE'; path: '/api/v1/push-subscriptions/{subscriptionId}' };
+  listTrustEvaluations: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations' };
+  getTrustEvaluation: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations/{evaluationId}' };
   listRecords: { method: 'GET'; path: '/api/v1/organizations/{orgId}/records' };
   getRecord: { method: 'GET'; path: '/api/v1/organizations/{orgId}/records/{recordId}' };
+  getProviderAttempt: { method: 'GET'; path: '/api/v1/organizations/{orgId}/provider-attempts/{attemptId}' };
   validateProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate' };
   activateProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate' };
   promoteLearningCandidate: { method: 'POST'; path: '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote' };
@@ -452,6 +760,8 @@ export interface Operations {
   generateReportSnapshot: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots' };
   getReportSnapshot: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}' };
   releaseReport: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:release' };
+  listReportHistory: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-history' };
+  getReportDownloadMetadata: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact-metadata' };
   downloadReleasedReport: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact' };
 }
 
@@ -463,15 +773,26 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Health check endpoint */
     getHealth: async (
       args?: {
-        query?: Record<string, string | number | boolean | undefined>;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<HealthResponse>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/healthz', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<HealthResponse>(baseUrl, fetchFn, 'GET', '/healthz', {
+        headers,
+      });
+    },
+
+    /** Register a local email and password account */
+    registerUser: async (
+      args: {
+        body: { name: string; email: string; password: string };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<SessionContext>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<SessionContext>(baseUrl, fetchFn, 'POST', '/api/v1/users', {
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -479,15 +800,11 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Retrieve current authenticated session and tenancy context */
     getSessionContext: async (
       args?: {
-        query?: Record<string, string | number | boolean | undefined>;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<SessionContext>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/session-context', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<SessionContext>(baseUrl, fetchFn, 'GET', '/api/v1/session-context', {
         headers,
       });
     },
@@ -495,20 +812,14 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Create a new authenticated session */
     createSession: async (
       args: {
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        body: CreateSessionRequest;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<SessionContext>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/sessions', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<SessionContext>(baseUrl, fetchFn, 'POST', '/api/v1/sessions', {
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -516,15 +827,11 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Revoke current session */
     deleteCurrentSession: async (
       args?: {
-        query?: Record<string, string | number | boolean | undefined>;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<void>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'DELETE', '/api/v1/sessions/current', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<void>(baseUrl, fetchFn, 'DELETE', '/api/v1/sessions/current', {
         headers,
       });
     },
@@ -532,20 +839,14 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Request password recovery token */
     requestPasswordRecovery: async (
       args: {
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        body: { email: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ message: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/password-recovery-requests', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ message: string }>(baseUrl, fetchFn, 'POST', '/api/v1/password-recovery-requests', {
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -553,20 +854,14 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Complete password recovery using token */
     completePasswordRecovery: async (
       args: {
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        body: { token: string; newPassword: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ message: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/password-recovery-completions', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ message: string }>(baseUrl, fetchFn, 'POST', '/api/v1/password-recovery-completions', {
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -574,15 +869,11 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Resolve organization entry for current user */
     resolveOrganizationEntry: async (
       args?: {
-        query?: Record<string, string | number | boolean | undefined>;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ hasOrganizations: boolean; defaultOrgSlug?: string | null; defaultOrgId?: UUIDv7 | null }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organization-entry', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ hasOrganizations: boolean; defaultOrgSlug?: string | null; defaultOrgId?: UUIDv7 | null }>(baseUrl, fetchFn, 'GET', '/api/v1/organization-entry', {
         headers,
       });
     },
@@ -590,15 +881,11 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List organizations for current user */
     listOrganizations: async (
       args?: {
-        query?: Record<string, string | number | boolean | undefined>;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<Organization>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Array<Organization>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations', {
         headers,
       });
     },
@@ -606,20 +893,14 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Create a new organization */
     createOrganization: async (
       args: {
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        body: CreateOrganizationRequest;
+        headers?: { "Idempotency-Key"?: string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Organization>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Organization>(baseUrl, fetchFn, 'POST', '/api/v1/organizations', {
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -627,16 +908,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List film projects within an organization */
     listProjects: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<Project>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Array<Project>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects', {
+        params: args?.params,
         headers,
       });
     },
@@ -644,21 +922,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Create a new film project */
     createProject: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7 };
+        body: CreateProjectRequest;
+        headers?: { "Idempotency-Key"?: string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Project>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Project>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -666,16 +939,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get details of a project */
     getProject: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Project>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Project>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -683,21 +953,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Create an invitation to join organization */
     createInvitation: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7 };
+        body: CreateInvitationRequest;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Invitation>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Invitation>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -705,21 +970,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Resend an invitation */
     resendInvitation: async (
       args: {
-        params: { orgId: string; invitationId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; invitationId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Invitation>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations/{invitationId}:resend', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Invitation>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations/{invitationId}:resend', {
+        params: args?.params,
         headers,
       });
     },
@@ -727,21 +984,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Revoke an invitation */
     revokeInvitation: async (
       args: {
-        params: { orgId: string; invitationId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; invitationId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Invitation>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations/{invitationId}:revoke', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Invitation>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/invitations/{invitationId}:revoke', {
+        params: args?.params,
         headers,
       });
     },
@@ -750,20 +999,12 @@ export function createApiClient(config: ApiClientConfig = {}) {
     acceptInvitation: async (
       args: {
         params: { token: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Membership>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/invitations/{token}:accept', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Membership>(baseUrl, fetchFn, 'POST', '/api/v1/invitations/{token}:accept', {
+        params: args?.params,
         headers,
       });
     },
@@ -772,20 +1013,12 @@ export function createApiClient(config: ApiClientConfig = {}) {
     declineInvitation: async (
       args: {
         params: { token: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ declined: boolean }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/invitations/{token}:decline', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ declined: boolean }>(baseUrl, fetchFn, 'POST', '/api/v1/invitations/{token}:decline', {
+        params: args?.params,
         headers,
       });
     },
@@ -793,16 +1026,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List members in an organization */
     listOrganizationMembers: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<Membership>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/memberships', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Array<Membership>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/memberships', {
+        params: args?.params,
         headers,
       });
     },
@@ -810,21 +1040,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Change member role within organization */
     changeMembershipRole: async (
       args: {
-        params: { orgId: string; membershipId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; membershipId: UUIDv7 };
+        body: { role: UserRole };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Membership>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeRole', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Membership>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeRole', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -832,21 +1057,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Change project grants for a member */
     changeProjectGrant: async (
       args: {
-        params: { orgId: string; membershipId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; membershipId: UUIDv7 };
+        body: { projectIds: Array<UUIDv7> };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Membership>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeProjectGrant', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Membership>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:changeProjectGrant', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -854,21 +1074,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Deactivate a membership */
     deactivateMembership: async (
       args: {
-        params: { orgId: string; membershipId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; membershipId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Membership>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:deactivate', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Membership>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:deactivate', {
+        params: args?.params,
         headers,
       });
     },
@@ -876,21 +1088,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Reactivate a deactivated membership */
     reactivateMembership: async (
       args: {
-        params: { orgId: string; membershipId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; membershipId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Membership>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:reactivate', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Membership>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/memberships/{membershipId}:reactivate', {
+        params: args?.params,
         headers,
       });
     },
@@ -898,21 +1102,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Create upload capability / signed upload slot */
     createUploadCapability: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        body: { filename: string; contentType: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ capabilityId: UUIDv7; uploadUrl: string; nonce: string; expiresAt: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/upload-capabilities', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ capabilityId: UUIDv7; uploadUrl: string; nonce: string; expiresAt: string }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/upload-capabilities', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -920,21 +1119,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Finalize uploaded import artifact */
     finalizeImportArtifact: async (
       args: {
-        params: { orgId: string; projectId: string; artifactId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; artifactId: UUIDv7 };
+        body: { file: Blob };
+        headers: { "X-Upload-Nonce": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ImportArtifact>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:finalize', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ImportArtifact>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:finalize', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'multipart/form-data',
         headers,
       });
     },
@@ -942,21 +1136,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Import script content via raw text paste */
     createPasteImport: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        body: { rawText: string; format: 'fountain' | 'fdx' | 'raw' };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ImportArtifact>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/paste-imports', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ImportArtifact>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/paste-imports', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -964,21 +1153,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Start parsing an import artifact */
     parseImportArtifact: async (
       args: {
-        params: { orgId: string; projectId: string; artifactId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; artifactId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ParseRun>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ParseRun>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/import-artifacts/{artifactId}:parse', {
+        params: args?.params,
         headers,
       });
     },
@@ -986,21 +1167,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Acknowledge and accept parse warnings */
     acceptParseWarnings: async (
       args: {
-        params: { orgId: string; projectId: string; runId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; runId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ParseRun>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ParseRun>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:acceptWarnings', {
+        params: args?.params,
         headers,
       });
     },
@@ -1008,21 +1181,27 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Commit parsed script as immutable version */
     commitScriptVersion: async (
       args: {
-        params: { orgId: string; projectId: string; runId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; runId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ScriptVersion>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
+      return request<ScriptVersion>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Read the current committed screenplay projection */
+    getProjectScript: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        headers?: Record<string, string>;
       }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+    ): Promise<ApiResult<ProjectScript>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<ProjectScript>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script', {
+        params: args?.params,
         headers,
       });
     },
@@ -1030,16 +1209,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List committed script versions for a project */
     listProjectVersions: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<ScriptVersion>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Array<ScriptVersion>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions', {
+        params: args?.params,
         headers,
       });
     },
@@ -1047,16 +1223,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get details of a script version */
     getProjectVersion: async (
       args: {
-        params: { orgId: string; projectId: string; versionId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; versionId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ScriptVersion>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ScriptVersion>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -1064,21 +1237,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Start entity clearance detection on script version */
     startDetection: async (
       args: {
-        params: { orgId: string; projectId: string; versionId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; versionId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect', {
+        params: args?.params,
         headers,
       });
     },
@@ -1086,21 +1251,29 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Start automated Parallel search & extract research for a clearance item */
     startResearch: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
+      return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** List observable jobs for a project */
+    listJobs: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        query?: { limit?: number; cursor?: UUIDv7 };
+        headers?: Record<string, string>;
       }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research', {
-        params: args && 'params' in args ? (args as any).params : undefined,
+    ): Promise<ApiResult<Array<Job>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<Job>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs', {
+        params: args?.params,
         query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
         headers,
       });
     },
@@ -1108,16 +1281,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get job status and progress */
     getJob: async (
       args: {
-        params: { orgId: string; projectId: string; jobId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; jobId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Job>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -1125,21 +1295,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Retry a failed job */
     retryJob: async (
       args: {
-        params: { orgId: string; projectId: string; jobId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; jobId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:retry', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:retry', {
+        params: args?.params,
         headers,
       });
     },
@@ -1147,21 +1309,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Cancel a running or queued job */
     cancelJob: async (
       args: {
-        params: { orgId: string; projectId: string; jobId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; jobId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:cancel', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/jobs/{jobId}:cancel', {
+        params: args?.params,
         headers,
       });
     },
@@ -1169,16 +1323,15 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List clearance items in project */
     listClearanceItems: async (
       args: {
-        params: { orgId: string; projectId: string };
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         query?: { category?: string; status?: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<ClearanceItem>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items', {
-        params: args && 'params' in args ? (args as any).params : undefined,
+      return request<Array<ClearanceItem>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items', {
+        params: args?.params,
         query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
         headers,
       });
     },
@@ -1186,16 +1339,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get clearance item detail */
     getClearanceItem: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ClearanceItemDetail>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ClearanceItemDetail>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -1203,38 +1353,30 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get evidence claims and cited source snapshots for an item */
     getClearanceItemEvidence: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ItemEvidence>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ItemEvidence>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence', {
+        params: args?.params,
         headers,
       });
     },
 
-    /** Assign clearance item to a member */
+    /** Assign clearance item to an authorized project member */
     assignClearanceItem: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: AssignClearanceItemRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ClearanceItem>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ClearanceItem>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1242,175 +1384,135 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Change due date of clearance item */
     changeClearanceItemDueDate: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: { dueDate: ISODateTime };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ClearanceItem>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ClearanceItem>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Record human reviewer evidence decision */
+    /** Record a human reviewer's treatment of cited evidence */
     recordEvidenceDecision: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: RecordEvidenceDecisionRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ClearanceItem>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ClearanceItem>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Set item disposition */
+    /** Set the human pre-clearance workflow disposition for an item */
     setDisposition: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: SetDispositionRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ClearanceItem>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ClearanceItem>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:setDisposition', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Refer item to counsel or external expert */
+    /** Submit an item referral to an authorized specialist role */
     referClearanceItem: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: ReferClearanceItemRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Referral>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Referral>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:refer', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Acknowledge or answer a referral */
+    /** Acknowledge or answer an item-scoped referral */
     acknowledgeReferral: async (
       args: {
-        params: { orgId: string; projectId: string; referralId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7; referralId: UUIDv7 };
+        body: AcknowledgeReferralRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Referral>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/referrals/{referralId}:acknowledge', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Referral>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/referrals/{referralId}:acknowledge', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Add comment to item discussion */
+    /** Add an attributable comment to an item discussion */
     addComment: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: AddCommentRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Comment>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Comment>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Reply to a comment */
+    /** Add a one-level reply to an item comment */
     replyToComment: async (
       args: {
-        params: { orgId: string; projectId: string; commentId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7; commentId: UUIDv7 };
+        body: ReplyToCommentRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Comment>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:reply', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Comment>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:reply', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
 
-    /** Revise/edit a comment */
+    /** Append an immutable revision to an item comment */
     reviseComment: async (
       args: {
-        params: { orgId: string; projectId: string; commentId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
-        headers?: Record<string, string>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7; commentId: UUIDv7 };
+        body: ReviseCommentRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Comment>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/comments/{commentId}:revise', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Comment>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:revise', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1418,21 +1520,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Propose script dialogue/action rewrite */
     proposeRewrite: async (
       args: {
-        params: { orgId: string; projectId: string; itemId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        body: { proposedText: string; rationale?: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<RewriteProposal>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<RewriteProposal>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:proposeRewrite', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1440,21 +1537,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Approve a rewrite proposal */
     approveRewrite: async (
       args: {
-        params: { orgId: string; projectId: string; proposalId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; proposalId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<RewriteProposal>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<RewriteProposal>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve', {
+        params: args?.params,
         headers,
       });
     },
@@ -1462,21 +1551,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Reject a rewrite proposal */
     rejectRewrite: async (
       args: {
-        params: { orgId: string; projectId: string; proposalId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; proposalId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<RewriteProposal>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<RewriteProposal>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject', {
+        params: args?.params,
         headers,
       });
     },
@@ -1484,21 +1565,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Withdraw a rewrite proposal */
     withdrawRewrite: async (
       args: {
-        params: { orgId: string; projectId: string; proposalId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; proposalId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<RewriteProposal>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<RewriteProposal>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw', {
+        params: args?.params,
         headers,
       });
     },
@@ -1506,21 +1579,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Start selective rescan of affected items for revision */
     startSelectiveRescan: async (
       args: {
-        params: { orgId: string; projectId: string; versionId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; versionId: UUIDv7 };
+        body?: { itemIds?: Array<UUIDv7> };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1528,16 +1596,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get monitoring policy configuration */
     getMonitoringPolicy: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<MonitoringPolicy>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<MonitoringPolicy>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy', {
+        params: args?.params,
         headers,
       });
     },
@@ -1545,21 +1610,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Change monitoring frequency cadence */
     changeMonitoringCadence: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        body: { cadence: 'daily' | 'weekly' | 'biweekly' | 'monthly' };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<MonitoringPolicy>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<MonitoringPolicy>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1567,16 +1627,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List monitoring run history */
     listMonitoringRuns: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<MonitoringRun>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Array<MonitoringRun>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
+        params: args?.params,
         headers,
       });
     },
@@ -1584,21 +1641,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Trigger manual monitoring run */
     startMonitoringRun: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
+        params: args?.params,
         headers,
       });
     },
@@ -1606,21 +1655,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Record decision on monitoring delta change */
     reviewMonitoringChange: async (
       args: {
-        params: { orgId: string; projectId: string; reviewId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; reviewId: UUIDv7 };
+        body: { decision: 'accepted' | 'rejected' | 'escalated'; rationale?: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ reviewId: UUIDv7; decision: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ reviewId: UUIDv7; decision: string }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1628,16 +1672,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List notifications for user in organization */
     listNotifications: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<Notification>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/notifications', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Array<Notification>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/notifications', {
+        params: args?.params,
         headers,
       });
     },
@@ -1645,21 +1686,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Mark all notifications read */
     markAllNotificationsRead: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ updatedCount: number }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/notifications', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ updatedCount: number }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/notifications', {
+        params: args?.params,
         headers,
       });
     },
@@ -1667,21 +1700,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Mark single notification read */
     markNotificationRead: async (
       args: {
-        params: { orgId: string; notificationId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; notificationId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Notification>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/notifications/{notificationId}:markRead', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<Notification>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/notifications/{notificationId}:markRead', {
+        params: args?.params,
         headers,
       });
     },
@@ -1689,20 +1714,14 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Register Web Push subscription */
     registerPushSubscription: async (
       args: {
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        body: { endpoint: string; keys: { p256dh: string; auth: string } };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ subscriptionId: UUIDv7 }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/push-subscriptions', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ subscriptionId: UUIDv7 }>(baseUrl, fetchFn, 'POST', '/api/v1/push-subscriptions', {
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1710,16 +1729,43 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Revoke push subscription */
     revokePushSubscription: async (
       args: {
-        params: { subscriptionId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { subscriptionId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<void>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'DELETE', '/api/v1/push-subscriptions/{subscriptionId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
+      return request<void>(baseUrl, fetchFn, 'DELETE', '/api/v1/push-subscriptions/{subscriptionId}', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** List persisted deterministic and judge evaluations */
+    listTrustEvaluations: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        query?: { jobId?: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Array<Record<string, unknown>>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<Record<string, unknown>>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations', {
+        params: args?.params,
         query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+        headers,
+      });
+    },
+
+    /** Read one persisted Trust evaluation and its version bindings */
+    getTrustEvaluation: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7; evaluationId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Record<string, unknown>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Record<string, unknown>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations/{evaluationId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -1727,16 +1773,15 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** List immutable audit records and receipts */
     listRecords: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7 };
+        query: { view: 'activity' | 'runsAndTools' | 'evaluations' | 'policies' | 'operations'; cursor?: string; projectId?: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<Array<AuditRecord>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/records', {
-        params: args && 'params' in args ? (args as any).params : undefined,
+      return request<Array<AuditRecord>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/records', {
+        params: args?.params,
         query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
         headers,
       });
     },
@@ -1744,16 +1789,27 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get detailed audit record with verification receipt */
     getRecord: async (
       args: {
-        params: { orgId: string; recordId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; recordId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<AuditRecord>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/records/{recordId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<AuditRecord>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/records/{recordId}', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Read redacted provider-attempt details */
+    getProviderAttempt: async (
+      args: {
+        params: { orgId: UUIDv7; attemptId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Record<string, unknown>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Record<string, unknown>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/provider-attempts/{attemptId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -1761,21 +1817,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Validate a candidate protected configuration */
     validateProtectedConfiguration: async (
       args: {
-        params: { orgId: string; configurationId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; configurationId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ valid: boolean; issues?: Array<string> }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ valid: boolean; issues?: Array<string> }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate', {
+        params: args?.params,
         headers,
       });
     },
@@ -1783,21 +1831,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Activate a validated protected configuration (Owner-only) */
     activateProtectedConfiguration: async (
       args: {
-        params: { orgId: string; configurationId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; configurationId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ configurationId: UUIDv7; status: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ configurationId: UUIDv7; status: string }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate', {
+        params: args?.params,
         headers,
       });
     },
@@ -1805,21 +1845,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Promote a learning candidate (Owner-only) */
     promoteLearningCandidate: async (
       args: {
-        params: { orgId: string; candidateId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; candidateId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ candidateId: UUIDv7; stage: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ candidateId: UUIDv7; stage: string }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote', {
+        params: args?.params,
         headers,
       });
     },
@@ -1827,21 +1859,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Rollback a promoted candidate */
     rollbackLearningCandidate: async (
       args: {
-        params: { orgId: string; candidateId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; candidateId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ candidateId: UUIDv7; stage: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:rollback', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ candidateId: UUIDv7; stage: string }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:rollback', {
+        params: args?.params,
         headers,
       });
     },
@@ -1849,21 +1873,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Schedule project or organization data deletion */
     scheduleDeletion: async (
       args: {
-        params: { orgId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7 };
+        body: { targetType: 'project' | 'organization'; targetId: UUIDv7; retentionDays?: number };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ requestId: UUIDv7; scheduledPurgeAt: ISODateTime }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/deletion-requests', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ requestId: UUIDv7; scheduledPurgeAt: ISODateTime }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/deletion-requests', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1871,42 +1890,25 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Restore a scheduled deletion before purge */
     restoreDeletion: async (
       args: {
-        params: { orgId: string; requestId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; requestId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ requestId: UUIDv7; restored: boolean }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/deletion-requests/{requestId}:restore', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ requestId: UUIDv7; restored: boolean }>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/deletion-requests/{requestId}:restore', {
+        params: args?.params,
         headers,
       });
     },
 
     /** Ingress webhook for verified Parallel Monitor events */
     receiveParallelMonitorWebhook: async (
-      args: {
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+      args?: {
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ received: boolean }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/webhooks/parallel/monitor', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ received: boolean }>(baseUrl, fetchFn, 'POST', '/api/v1/webhooks/parallel/monitor', {
         headers,
       });
     },
@@ -1914,16 +1916,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Preview draft clearance report */
     previewReport: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ReportPreview>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-preview', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ReportPreview>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-preview', {
+        params: args?.params,
         headers,
       });
     },
@@ -1931,21 +1930,16 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Generate immutable version-bound report snapshot */
     generateReportSnapshot: async (
       args: {
-        params: { orgId: string; projectId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        body: { scriptVersionId?: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ReportSnapshot>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
-      }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ReportSnapshot>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },
@@ -1953,16 +1947,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Get report snapshot by ID */
     getReportSnapshot: async (
       args: {
-        params: { orgId: string; projectId: string; snapshotId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; snapshotId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ReportSnapshot>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<ReportSnapshot>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}', {
+        params: args?.params,
         headers,
       });
     },
@@ -1970,21 +1961,44 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Officially release report snapshot (governed action) */
     releaseReport: async (
       args: {
-        params: { orgId: string; projectId: string; snapshotId: string };
-        query?: Record<string, string | number | boolean | undefined>;
-        body?: any;
-        idempotencyKey?: string;
+        params: { orgId: UUIDv7; projectId: UUIDv7; snapshotId: UUIDv7 };
+        body: { attestation: string };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<ReportRelease>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      if (args && 'idempotencyKey' in args && args.idempotencyKey) {
-        headers['Idempotency-Key'] = args.idempotencyKey;
+      return request<ReportRelease>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:release', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
+        headers,
+      });
+    },
+
+    /** List report snapshots, releases, and redacted receipts */
+    listReportHistory: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        headers?: Record<string, string>;
       }
-      return request(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/report-snapshots/{snapshotId}:release', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+    ): Promise<ApiResult<Array<ReportHistoryEntry>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<ReportHistoryEntry>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-history', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Read authorized released-report artifact metadata */
+    getReportDownloadMetadata: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7; releaseId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<ReportArtifactMetadata>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<ReportArtifactMetadata>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact-metadata', {
+        params: args?.params,
         headers,
       });
     },
@@ -1992,16 +2006,13 @@ export function createApiClient(config: ApiClientConfig = {}) {
     /** Download released report artifact PDF/HTML */
     downloadReleasedReport: async (
       args: {
-        params: { orgId: string; projectId: string; releaseId: string };
-        query?: Record<string, string | number | boolean | undefined>;
+        params: { orgId: UUIDv7; projectId: UUIDv7; releaseId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<any>> => {
+    ): Promise<ApiResult<{ downloadUrl: string }>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact', {
-        params: args && 'params' in args ? (args as any).params : undefined,
-        query: args?.query,
-        body: args && 'body' in args ? (args as any).body : undefined,
+      return request<{ downloadUrl: string }>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/report-releases/{releaseId}/artifact', {
+        params: args?.params,
         headers,
       });
     },

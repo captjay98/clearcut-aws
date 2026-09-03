@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 
-const root = process.cwd()
+const root = process.env.CLEARCUT_CONTRACT_ROOT || process.cwd()
+const generatorPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'generate-clients.mjs')
 const openapiPath = path.join(root, 'packages', 'contracts', 'openapi.yaml')
 const tsPath = path.join(root, 'packages', 'contracts', 'generated', 'typescript', 'index.ts')
 const pyPath = path.join(root, 'packages', 'contracts', 'generated', 'python', '__init__.py')
@@ -43,18 +46,40 @@ for (const filePath of [tsPath, pyPath]) {
 }
 console.log('✅ Generated client headers verified.')
 
-// 3. Check drift by re-running generator
+// 3. Check drift by generating into an isolated temporary directory.
 const tsBefore = fs.readFileSync(tsPath, 'utf-8')
 const pyBefore = fs.readFileSync(pyPath, 'utf-8')
+const temporaryGeneratedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'clearcut-contract-'))
 
-execSync('bun scripts/generate-clients.mjs', { stdio: 'inherit' })
+try {
+  execFileSync('bun', [generatorPath], {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, CLEARCUT_CONTRACT_ROOT: root, CLEARCUT_GENERATED_ROOT: temporaryGeneratedRoot },
+  })
 
-const tsAfter = fs.readFileSync(tsPath, 'utf-8')
-const pyAfter = fs.readFileSync(pyPath, 'utf-8')
+  const tsAfter = fs.readFileSync(path.join(temporaryGeneratedRoot, 'typescript', 'index.ts'), 'utf-8')
+  const pyAfter = fs.readFileSync(path.join(temporaryGeneratedRoot, 'python', '__init__.py'), 'utf-8')
 
-if (tsBefore !== tsAfter || pyBefore !== pyAfter) {
-  console.error('❌ Contract drift detected! Generated clients were out of sync with openapi.yaml.')
-  process.exit(1)
+  if (tsBefore !== tsAfter || pyBefore !== pyAfter) {
+    console.error('❌ Contract drift detected! Generated clients are out of sync with openapi.yaml.')
+    process.exitCode = 1
+  } else {
+    console.log('✅ Zero contract drift verified.')
+  }
+} finally {
+  fs.rmSync(temporaryGeneratedRoot, { recursive: true, force: true })
 }
 
-console.log('✅ Zero contract drift verified.')
+
+if (!process.exitCode) {
+  execSync('uv run pytest tests/contracts/test_mounted_operation_ids.py -q', {
+    cwd: root,
+    stdio: 'inherit',
+  })
+  execSync(
+    'pnpm --filter clearcut-web exec tsc --project ../../tests/contracts/tsconfig.json',
+    { cwd: root, stdio: 'inherit' },
+  )
+  console.log('✅ Mounted operation parity and generated-client usage verified.')
+}

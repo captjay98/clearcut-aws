@@ -108,4 +108,3 @@ def test_operations_have_valid_operation_ids():
 
     missing_required = set(REQUIRED_OPERATIONS) - operation_ids
     assert not missing_required, f"OpenAPI spec missing required operations from API_OPERATIONS.md: {sorted(missing_required)}"
-
