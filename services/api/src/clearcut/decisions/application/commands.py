@@ -4,7 +4,6 @@ from clearcut.decisions.domain.models import (
     AuditEvent,
     EvidenceDecision,
     EvidenceDecisionType,
-    ItemReferral,
 )
 from clearcut.organizations.domain.capabilities import Role, has_capability
 
@@ -12,7 +11,6 @@ from clearcut.organizations.domain.capabilities import Role, has_capability
 class DecisionCommandService:
     def __init__(self) -> None:
         self.decisions: dict[UUID, EvidenceDecision] = {}
-        self.referrals: dict[UUID, ItemReferral] = {}
         self.audits: list[AuditEvent] = []
 
     async def record_evidence_decision(
@@ -58,37 +56,3 @@ class DecisionCommandService:
         self.audits.append(audit)
 
         return decision, audit
-
-    async def refer_clearance_item(
-        self,
-        org_id: UUID,
-        project_id: UUID,
-        item_id: UUID,
-        actor_id: UUID,
-        target_role: str,
-        notes: str,
-    ) -> tuple[ItemReferral, AuditEvent]:
-        referral = ItemReferral.create(
-            item_id=item_id,
-            actor_id=actor_id,
-            target_role=target_role,
-            notes=notes,
-        )
-        self.referrals[referral.referral_id] = referral
-
-        audit = AuditEvent.create(
-            org_id=org_id,
-            project_id=project_id,
-            action="item_referred",
-            actor_id=actor_id,
-            target_id=referral.referral_id,
-            target_type="item_referral",
-            details={
-                "item_id": str(item_id),
-                "target_role": target_role,
-                "notes": notes,
-            },
-        )
-        self.audits.append(audit)
-
-        return referral, audit

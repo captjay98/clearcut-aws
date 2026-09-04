@@ -1,25 +1,24 @@
-import pytest
-import uuid6
+"""The legacy ungoverned referral path must not exist on the decision service.
+
+Referrals are governed exclusively through the collaboration slice
+(``referral.submit`` / ``referral.acknowledge`` via
+:class:`~clearcut.collaboration.application.referrals.ReferralService`), which
+carries capability, tenant-and-project scope, expected-version concurrency, an
+accountable idempotency receipt, the authoritative audit event, and a
+schema-versioned outbox event in one transaction.
+
+The in-memory :class:`DecisionCommandService` previously exposed a parallel,
+ungoverned ``refer_clearance_item`` that emitted a competing ``item_referred``
+audit action with none of those guarantees. That path is retired; this test pins
+its absence so it cannot silently return.
+"""
+
 from clearcut.decisions.application.commands import DecisionCommandService
 
 
-@pytest.mark.asyncio
-async def test_referral_generates_matching_audit_event():
+def test_decision_service_has_no_ungoverned_referral_path():
     service = DecisionCommandService()
-    org_id = uuid6.uuid7()
-    project_id = uuid6.uuid7()
-    item_id = uuid6.uuid7()
-    actor_id = uuid6.uuid7()
-
-    referral, audit = await service.refer_clearance_item(
-        org_id=org_id,
-        project_id=project_id,
-        item_id=item_id,
-        actor_id=actor_id,
-        target_role="legal_counsel",
-        notes="Requires external legal opinion on fair use."
-    )
-
-    assert referral.target_role == "legal_counsel"
-    assert audit.action == "item_referred"
-    assert audit.target_id == referral.referral_id
+    # The ungoverned referral method must not exist.
+    assert not hasattr(service, "refer_clearance_item")
+    # No in-memory referral store remains to support it.
+    assert not hasattr(service, "referrals")

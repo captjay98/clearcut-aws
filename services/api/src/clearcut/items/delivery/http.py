@@ -1,161 +1,185 @@
-from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated
 from uuid import UUID
-import uuid6
+
 import sqlalchemy as sa
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field
-
+import uuid6
+from clearcut.commanding.errors import (
+    CommandForbiddenError,
+    CommandNotFoundError,
+    CommandValidationError,
+    IdempotencyIntentConflictError,
+    StaleVersionConflictError,
+)
 from clearcut.database import session_scope
+from clearcut.delivery_errors import error_response
 from clearcut.identity.delivery.scope import get_request_scope
+from clearcut.items.adapters.sql_command_repository import SqlItemCommandRepository
+from clearcut.items.adapters.sql_read_repository import SqlItemReadRepository
+from clearcut.items.application.assign_item import AssignItemCommand, AssignItemService
+from clearcut.items.application.read_models import (
+    ClearanceItemDetailResponse,
+    ItemDetailResponseMeta,
+)
+from clearcut.items.ports.command_repository import PersistedAssignment
 from clearcut.organizations.delivery.http import verify_csrf_origin
+from fastapi import APIRouter, Header, HTTPException, Path, Query, Request, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
-prefix = "/api/v1/organizations/{org_id}/projects/{project_id}/items"
+prefix = "/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items"
 router = APIRouter(prefix=prefix, tags=["items"])
 
+OrgIdParam = Annotated[str, Path(alias="orgId")]
+ProjectIdParam = Annotated[str, Path(alias="projectId")]
+ItemIdParam = Annotated[str, Path(alias="itemId")]
 
-class AssignBody(BaseModel):
-    assignedToUserId: str | None = None
+_assign_service = AssignItemService(repository=SqlItemCommandRepository())
+_read_repository = SqlItemReadRepository()
+
+LIST_ITEMS_QUERY = sa.text("""
+    SELECT i.id, i.project_id, i.version_id, i.version, i.category, i.text, i.status,
+           i.disposition_status, i.assigned_to_user_id, e.text AS context_text,
+           (SELECT count(*) FROM evidence_claims c
+            WHERE c.item_id = i.id
+              AND c.org_id = i.org_id
+              AND c.project_id = i.project_id) as claims_count
+    FROM clearance_items i
+    LEFT JOIN script_elements e ON e.id = i.element_id
+    WHERE i.org_id = :org_id AND i.project_id = :project_id
+      AND (:category IS NULL OR i.category = :category)
+      AND (:item_status IS NULL OR i.status = :item_status)
+    ORDER BY e.ordinal ASC, i.created_at ASC
+""")
 
 
-class SetDispositionBody(BaseModel):
-    disposition: str
-    rationale: str | None = None
+class AssignClearanceItemBody(BaseModel):
+    """Contract-aligned request body for ``assignClearanceItem``.
+
+    ``assigneeId`` is the target member; ``null`` unassigns the item. Assignment
+    is operational, so both assign and unassign are first-class outcomes.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    assignee_id: Annotated[str | None, Field(alias="assigneeId")] = None
+    expected_version: Annotated[int, Field(ge=1, alias="expectedVersion")]
+    intent_hash: Annotated[str, Field(min_length=1, alias="intentHash")]
 
 
 class ReferItemBody(BaseModel):
-    targetRole: str
+    target_role: str = Field(alias="targetRole")
     notes: str
 
 
 class AddCommentBody(BaseModel):
     content: str
-    parentCommentId: str | None = None
+    parent_comment_id: str | None = Field(default=None, alias="parentCommentId")
 
 
 class ProposeRewriteBody(BaseModel):
-    originalText: str
-    proposedText: str
+    original_text: str = Field(alias="originalText")
+    proposed_text: str = Field(alias="proposedText")
     rationale: str | None = None
 
 
-@router.get("")
-async def list_items(org_id: str, project_id: str, request: Request) -> dict:
+@router.get("", operation_id="listClearanceItems")
+async def list_items(
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    request: Request,
+    category: Annotated[str | None, Query()] = None,
+    item_status: Annotated[str | None, Query(alias="status")] = None,
+) -> dict:
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
     async with session_scope() as session:
         result = await session.execute(
-            sa.text("""
-                SELECT i.id, i.category, i.text, i.status, i.workflow_status, i.research_status,
-                       i.disposition_status, i.assigned_to_user_id,
-                       e.scene_number, e.page_number,
-                       (SELECT count(*) FROM evidence_claims c WHERE c.item_id = i.id) as claims_count
-                FROM clearance_items i
-                LEFT JOIN script_elements e ON e.id = i.element_id
-                WHERE i.org_id = :org_id AND i.project_id = :project_id
-                ORDER BY e.ordinal ASC, i.created_at ASC
-            """),
-            {"org_id": str(scope.org_id), "project_id": str(scope.project_id)},
+            LIST_ITEMS_QUERY,
+            {
+                "org_id": str(scope.org_id),
+                "project_id": str(scope.project_id),
+                "category": category,
+                "item_status": item_status,
+            },
         )
         rows = result.fetchall()
         items = []
         for r in rows:
-            items.append({
-                "id": str(r.id),
+            item = {
+                "itemId": str(r.id),
+                "projectId": str(r.project_id),
+                "versionId": str(r.version_id),
+                "version": int(r.version),
                 "category": r.category,
-                "category_label": r.category,
-                "text": r.text,
-                "scene": r.scene_number or 1,
-                "page": r.page_number or 1,
+                "entityName": r.text,
                 "status": r.status,
-                "workflow_status": r.workflow_status,
-                "research_status": r.research_status,
-                "disposition_status": r.disposition_status or "undisposed",
-                "assigned_to_user_id": str(r.assigned_to_user_id) if r.assigned_to_user_id else None,
-                "claims_count": r.claims_count,
-            })
-    return {"data": items, "meta": {"total_count": len(items)}}
-
-
-@router.get("/{item_id}")
-async def get_item(org_id: str, project_id: str, item_id: str, request: Request) -> dict:
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
-    try:
-        parsed_item_id = UUID(item_id)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clearance item not found")
-
-    async with session_scope() as session:
-        res = await session.execute(
-            sa.text("""
-                SELECT i.id, i.category, i.text, i.status, i.workflow_status, i.research_status,
-                       i.disposition_status, i.assigned_to_user_id,
-                       e.scene_number, e.page_number
-                FROM clearance_items i
-                LEFT JOIN script_elements e ON e.id = i.element_id
-                WHERE i.id = :id AND i.org_id = :org_id AND i.project_id = :project_id
-            """),
-            {
-                "id": str(parsed_item_id),
-                "org_id": str(scope.org_id),
-                "project_id": str(scope.project_id),
-            },
-        )
-        row = res.fetchone()
-        if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clearance item not found")
-
-        # Query real sources and claims
-        src_res = await session.execute(
-            sa.text("""
-                SELECT c.id as claim_id, c.stance, c.authority_tier, c.claim_text, c.provenance_excerpt,
-                       s.title as source_title, s.url as source_url, s.publisher
-                FROM evidence_claims c
-                JOIN source_snapshots s ON s.id = c.snapshot_id
-                WHERE c.item_id = :item_id
-                ORDER BY c.created_at ASC
-            """),
-            {"item_id": str(parsed_item_id)},
-        )
-        claims = [
-            {
-                "claim_id": str(s.claim_id),
-                "source_title": s.source_title,
-                "source_url": s.source_url,
-                "publisher": s.publisher,
-                "stance": s.stance,
-                "authority": s.authority_tier,
-                "claim_text": s.claim_text,
-                "excerpt": s.provenance_excerpt,
+                "disposition": r.disposition_status or "undisposed",
+                "claimCount": r.claims_count,
             }
-            for s in src_res.fetchall()
-        ]
-
-        item_data = {
-            "id": str(row.id),
-            "category": row.category,
-            "category_label": row.category,
-            "text": row.text,
-            "scene": getattr(row, "scene_number", 1) or 1,
-            "page": getattr(row, "page_number", 1) or 1,
-            "status": row.status,
-            "workflow_status": row.workflow_status,
-            "research_status": row.research_status,
-            "disposition_status": row.disposition_status or "undisposed",
-            "assigned_to_user_id": str(row.assigned_to_user_id) if row.assigned_to_user_id else None,
-            "claims": claims,
-            "comments": [],
-        }
-
-    return {"data": item_data, "meta": {"requestId": "req_get_item"}}
+            if r.context_text is not None:
+                item["contextText"] = r.context_text
+            if r.assigned_to_user_id is not None:
+                item["assignedTo"] = str(r.assigned_to_user_id)
+            items.append(item)
+    return {"data": items, "meta": {"requestId": str(uuid6.uuid7()), "totalCount": len(items)}}
 
 
-@router.get("/{item_id}/evidence")
-async def get_item_evidence(org_id: str, project_id: str, item_id: str, request: Request) -> dict:
+@router.get(
+    "/{itemId}",
+    operation_id="getClearanceItem",
+    response_model=ClearanceItemDetailResponse,
+    response_model_exclude_none=True,
+)
+async def get_item(
+    org_id: OrgIdParam, project_id: ProjectIdParam, item_id: ItemIdParam, request: Request
+) -> ClearanceItemDetailResponse:
+    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    parsed_item_id = _parse_uuid(item_id)
+    if parsed_item_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clearance item not found",
+        )
+
+    assert scope.org_id is not None
+    assert scope.project_id is not None
+    try:
+        async with session_scope() as session:
+            detail = await _read_repository.load_detail(
+                session,
+                org_id=scope.org_id,
+                project_id=scope.project_id,
+                item_id=parsed_item_id,
+                actor_id=scope.user_id,
+                actor_role=scope.role or "",
+            )
+    except CommandForbiddenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=error.message,
+        ) from error
+    except CommandNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=error.message,
+        ) from error
+
+    return ClearanceItemDetailResponse(
+        data=detail,
+        meta=ItemDetailResponseMeta(request_id=str(uuid6.uuid7())),
+    )
+
+
+@router.get("/{itemId}/evidence")
+async def get_item_evidence(
+    org_id: OrgIdParam, project_id: ProjectIdParam, item_id: ItemIdParam, request: Request
+) -> dict:
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
     try:
         parsed_item_id = UUID(item_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Item not found"
+        ) from None
 
     async with session_scope() as session:
         src_res = await session.execute(
@@ -183,84 +207,132 @@ async def get_item_evidence(org_id: str, project_id: str, item_id: str, request:
                 "authorityTier": s.authority_tier,
                 "claimText": s.claim_text,
                 "provenanceExcerpt": s.provenance_excerpt,
-                "retrievedAt": s.retrieved_at.isoformat() if hasattr(s.retrieved_at, "isoformat") else str(s.retrieved_at),
+                "retrievedAt": s.retrieved_at.isoformat()
+                if hasattr(s.retrieved_at, "isoformat")
+                else str(s.retrieved_at),
             }
             for s in src_res.fetchall()
         ]
         return {"data": claims, "meta": {"count": len(claims)}}
 
 
-@router.post("/{item_id}:assign")
+@router.post("/{itemId}:assign", operation_id="assignClearanceItem")
 async def assign_item(
-    org_id: str, project_id: str, item_id: str, body: AssignBody, request: Request
-) -> dict:
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    item_id: ItemIdParam,
+    body: AssignClearanceItemBody,
+    request: Request,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=16, max_length=128)],
+) -> JSONResponse:
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+
+    parsed_item_id = _parse_uuid(item_id)
+    if parsed_item_id is None:
+        # An unparseable item id is a resource that cannot exist in scope: neutral
+        # not-found parity, never a distinguishing validation error.
+        return _assign_error(CommandNotFoundError())
+
+    parsed_assignee_id: UUID | None = None
+    if body.assignee_id is not None:
+        parsed_assignee_id = _parse_uuid(body.assignee_id)
+        if parsed_assignee_id is None:
+            # An unparseable assignee id cannot be an active member in scope.
+            return _assign_error(CommandNotFoundError())
+
+    assert scope.org_id is not None  # get_request_scope enforced org membership
+    assert scope.project_id is not None  # get_request_scope enforced project scope
+
+    command = AssignItemCommand(
+        org_id=scope.org_id,
+        project_id=scope.project_id,
+        item_id=parsed_item_id,
+        actor_id=scope.user_id,
+        actor_role=scope.role or "",
+        assignee_id=parsed_assignee_id,
+        expected_version=body.expected_version,
+        intent_hash=body.intent_hash,
+        idempotency_key=idempotency_key,
+    )
+
     try:
-        parsed_item_id = UUID(item_id)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        async with session_scope() as session:
+            result = await _assign_service.assign(session, command)
+    except (
+        CommandForbiddenError,
+        CommandNotFoundError,
+        StaleVersionConflictError,
+        IdempotencyIntentConflictError,
+        CommandValidationError,
+    ) as error:
+        return _assign_error(error)
 
-    async with session_scope() as session:
-        assigned_uuid = UUID(body.assignedToUserId) if body.assignedToUserId else None
-        await session.execute(
-            sa.text("""
-                UPDATE clearance_items
-                SET assigned_to_user_id = :assigned_id
-                WHERE id = :id AND org_id = :org_id AND project_id = :project_id
-            """),
-            {
-                "id": str(parsed_item_id),
-                "org_id": str(scope.org_id),
-                "project_id": str(scope.project_id),
-                "assigned_id": str(assigned_uuid) if assigned_uuid else None,
-            },
-        )
-    return {"data": {"itemId": str(parsed_item_id), "assignedToUserId": body.assignedToUserId}}
+    return _assign_success(result)
 
 
-@router.post("/{item_id}:setDisposition")
-async def set_item_disposition(
-    org_id: str, project_id: str, item_id: str, body: SetDispositionBody, request: Request
-) -> dict:
-    verify_csrf_origin(request)
-    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+def _parse_uuid(value: str) -> UUID | None:
     try:
-        parsed_item_id = UUID(item_id)
+        return UUID(value)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        return None
 
-    now = datetime.now(UTC)
-    async with session_scope() as session:
-        await session.execute(
-            sa.text("""
-                UPDATE clearance_items
-                SET disposition_status = :disposition, workflow_status = 'disposed'
-                WHERE id = :id AND org_id = :org_id AND project_id = :project_id
-            """),
-            {
-                "id": str(parsed_item_id),
-                "org_id": str(scope.org_id),
-                "project_id": str(scope.project_id),
-                "disposition": body.disposition,
-            },
-        )
-        # Record audit event
-        audit_id = uuid6.uuid7()
-        await session.execute(
-            sa.text("""
-                INSERT INTO audit_events (id, org_id, project_id, action, actor_id, target_id, target_type, details, created_at)
-                VALUES (:id, :org_id, :project_id, 'item.disposition_set', :actor_id, :target_id, 'clearance_item', :details, :created_at)
-            """),
-            {
-                "id": str(audit_id),
-                "org_id": str(scope.org_id),
-                "project_id": str(scope.project_id),
-                "actor_id": str(scope.user_id),
-                "target_id": str(parsed_item_id),
-                "details": f'{{"disposition": "{body.disposition}"}}',
-                "created_at": now,
-            },
-        )
 
-    return {"data": {"itemId": str(parsed_item_id), "disposition": body.disposition, "status": "disposed"}}
+def _assign_error(error: Exception) -> JSONResponse:
+    if isinstance(error, CommandForbiddenError):
+        return error_response(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="permission_denied",
+            message=error.message,
+        )
+    if isinstance(error, CommandNotFoundError):
+        return error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message=error.message,
+        )
+    if isinstance(error, StaleVersionConflictError):
+        return error_response(
+            status_code=status.HTTP_409_CONFLICT,
+            code="conflict_stale_version",
+            message=error.message,
+        )
+    if isinstance(error, IdempotencyIntentConflictError):
+        return error_response(
+            status_code=status.HTTP_409_CONFLICT,
+            code="conflict_idempotency_mismatch",
+            message=error.message,
+        )
+    message = getattr(error, "message", "The assignment inputs were invalid.")
+    return error_response(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        code="validation_failed",
+        message=message,
+    )
+
+
+def _assign_success(result: PersistedAssignment) -> JSONResponse:
+    data: dict[str, object] = {
+        "itemId": str(result.item_id),
+        "projectId": str(result.project_id),
+        "version": result.resulting_version,
+        "category": result.category,
+        "entityName": result.entity_name,
+        "status": result.status,
+        "claimCount": result.cited_claim_count,
+    }
+    if result.version_id is not None:
+        data["versionId"] = str(result.version_id)
+    if result.context_text is not None:
+        data["contextText"] = result.context_text
+    # Only surface a disposition that is part of the canonical vocabulary; the
+    # storage default ("undisposed") is not a contract disposition value.
+    if result.disposition_status is not None and result.disposition_status != "undisposed":
+        data["disposition"] = result.disposition_status
+    if result.assigned_to_user_id is not None:
+        data["assignedTo"] = str(result.assigned_to_user_id)
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"data": data, "meta": {"requestId": str(uuid6.uuid7())}},
+    )

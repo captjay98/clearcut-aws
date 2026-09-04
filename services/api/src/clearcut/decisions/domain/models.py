@@ -48,33 +48,6 @@ class EvidenceDecision:
 
 
 @dataclass(frozen=True)
-class ItemReferral:
-    referral_id: UUID
-    item_id: UUID
-    actor_id: UUID
-    target_role: str
-    notes: str
-    created_at: datetime = datetime.now(UTC)
-
-    @classmethod
-    def create(
-        cls,
-        item_id: UUID,
-        actor_id: UUID,
-        target_role: str,
-        notes: str,
-    ) -> "ItemReferral":
-        return cls(
-            referral_id=uuid6.uuid7(),
-            item_id=item_id,
-            actor_id=actor_id,
-            target_role=target_role.strip(),
-            notes=notes.strip(),
-            created_at=datetime.now(UTC),
-        )
-
-
-@dataclass(frozen=True)
 class AuditEvent:
     event_id: UUID
     org_id: UUID
