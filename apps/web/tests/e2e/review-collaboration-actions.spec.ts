@@ -1,29 +1,33 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { createEvidenceWorkspace, itemPath } from "./support/evidenceWorkspace";
 
-test.describe("Review Actions, Comments, Rewrites, and Referrals", () => {
-  test("decision recording, comments thread, rewrite proposal, and referrals", async ({ page }) => {
-    await page.goto("/o/northlight/projects/018f0000-0000-7000-8000-000000000101/items/018f0000-0000-7000-8000-000000001101");
+test("authenticated owner reaches current governed collaboration surfaces", async ({
+  browser,
+}, testInfo) => {
+  const workspace = await createEvidenceWorkspace(
+    browser,
+    String(testInfo.project.use.baseURL),
+  );
 
-    // 1. Check decision recorder
-    const rationaleInput = page.locator("textarea#rationale");
-    await expect(rationaleInput).toBeVisible();
+  try {
+    const page = workspace.owner.page;
+    await page.goto(itemPath(workspace, workspace.citedItemId));
 
-    const commitDecisionBtn = page.locator("button:has-text('Commit Governed Decision')");
-    await expect(commitDecisionBtn).toBeVisible();
-
-    // 2. Check comments thread section
-    const commentInput = page.locator("[data-testid='comment-input']");
-    await expect(commentInput).toBeVisible();
-
-    const postCommentBtn = page.locator("[data-testid='post-comment-btn']");
-    await expect(postCommentBtn).toBeVisible();
-
-    // 3. Check rewrite proposals section
-    const rewriteSection = page.locator("[data-testid='rewrite-proposals-section']");
-    await expect(rewriteSection).toBeVisible();
-
-    // 4. Check referral section / modal
-    const referralSection = page.locator("[data-testid='referral-section']");
-    await expect(referralSection).toBeVisible();
-  });
+    await expect(page.locator("textarea#rationale")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Record Review Decision" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("comment-input")).toBeVisible();
+    await expect(page.getByTestId("post-comment-btn")).toBeVisible();
+    await expect(page.getByTestId("rewrite-proposals-section")).toBeVisible();
+    await expect(page.getByTestId("referral-section")).toBeVisible();
+    await expect(
+      page.getByText(
+        "ClearCut provides sourced findings for qualified human review. It does not provide legal advice or final legal clearance.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+  } finally {
+    await workspace.close();
+  }
 });
