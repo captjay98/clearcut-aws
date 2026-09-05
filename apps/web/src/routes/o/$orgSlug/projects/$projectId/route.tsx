@@ -15,9 +15,9 @@ export function ProjectLayout() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await api.getProject({ path: { org_id: orgSlug, project_id: projectId } });
-        if (res.ok && res.value.data) {
-          setProjectTitle(res.value.data.title);
+        const res = await api.getProject({ params: { orgId: orgSlug, projectId } });
+        if (res.ok && res.value) {
+          setProjectTitle(res.value.title);
         }
       } catch {
         // keep fallback

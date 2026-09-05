@@ -17,9 +17,9 @@ export function ProjectsListRoute() {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.listProjects({ path: { org_id: orgSlug } });
+        const res = await api.listProjects({ params: { orgId: orgSlug } });
         if (res.ok) {
-          setProjects(res.value.data || []);
+          setProjects(res.value || []);
         } else {
           setError(res.error.message || "Failed to load projects");
         }
