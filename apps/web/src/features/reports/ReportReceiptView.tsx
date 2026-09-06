@@ -1,78 +1,90 @@
 import React from "react";
 
 export interface ReportReceiptViewProps {
-  receiptId?: string;
-  projectName?: string;
-  releasedBy?: string;
-  releasedAt?: string;
-  manifestHash?: string;
-  itemsClearedCount?: number;
+  releaseId: string;
+  releasedBy: string;
+  releasedAt: string;
+  manifestHash: string;
+  attestation: string;
+  downloadUrl: string;
 }
 
 export function ReportReceiptView({
-  receiptId = "rec-001",
-  projectName = "Borrowed Light",
-  releasedBy = "Jamie Park (Lead Reviewer)",
-  releasedAt = "2026-08-30T17:00:00Z",
-  manifestHash = "8f49a88cd72b9a714e8248c8715873918f49a88cd72b9a714e8248c871587391",
-  itemsClearedCount = 38,
+  releaseId,
+  releasedBy,
+  releasedAt,
+  manifestHash,
+  attestation,
+  downloadUrl,
 }: ReportReceiptViewProps) {
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
-    <div
+    <section
       data-testid="report-receipt-view"
-      className="p-5 bg-slate-900 border border-slate-800 rounded-lg space-y-4 font-sans shadow-sm"
+      className="space-y-4 rounded-lg border border-emerald-900 bg-slate-900 p-5 font-sans shadow-sm"
+      aria-labelledby="report-receipt-heading"
     >
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+      <div className="flex flex-col gap-3 border-b border-slate-800 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-sm font-bold text-white">Immutable Clearance Release Receipt</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Audit-backed cryptographic release projection for counsel review and production archive.
+          <h2
+            id="report-receipt-heading"
+            className="text-sm font-bold text-white"
+          >
+            Report release receipt
+          </h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Server-persisted projection of the accountable release transaction.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={handlePrint}
-          className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded flex items-center space-x-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
+        <a
+          href={downloadUrl}
+          className="w-fit rounded bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400"
         >
-          <span>🖨️</span>
-          <span>Print / Export PDF</span>
-        </button>
+          Download released HTML
+        </a>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-          <span className="text-[10px] text-slate-500 font-bold uppercase">Receipt Identifier</span>
-          <div className="font-mono font-bold text-slate-200 mt-1">{receiptId}</div>
+      <dl className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+        <div className="rounded border border-slate-800 bg-slate-950 p-3">
+          <dt className="font-bold uppercase text-slate-500">
+            Release identifier
+          </dt>
+          <dd className="mt-1 break-all font-mono text-slate-200">
+            Release ID: <span data-testid="release-id">{releaseId}</span>
+          </dd>
         </div>
+        <div className="rounded border border-slate-800 bg-slate-950 p-3">
+          <dt className="font-bold uppercase text-slate-500">
+            Accountable reviewer
+          </dt>
+          <dd className="mt-1 break-all font-mono text-slate-200">
+            {releasedBy}
+          </dd>
+        </div>
+        <div className="rounded border border-slate-800 bg-slate-950 p-3">
+          <dt className="font-bold uppercase text-slate-500">Released at</dt>
+          <dd className="mt-1 text-slate-200">
+            {new Date(releasedAt).toLocaleString()}
+          </dd>
+        </div>
+        <div className="rounded border border-slate-800 bg-slate-950 p-3">
+          <dt className="font-bold uppercase text-slate-500">Frozen binding</dt>
+          <dd className="mt-1 break-all font-mono text-slate-200">
+            Binding manifest SHA-256: {manifestHash}
+          </dd>
+        </div>
+      </dl>
 
-        <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-          <span className="text-[10px] text-slate-500 font-bold uppercase">Authorizing Reviewer</span>
-          <div className="font-bold text-slate-200 mt-1">{releasedBy}</div>
+      <div className="space-y-1 rounded border border-slate-800 bg-slate-950 p-3 text-xs">
+        <div className="font-bold uppercase text-slate-500">
+          Release attestation
         </div>
-
-        <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-          <span className="text-[10px] text-slate-500 font-bold uppercase">Release Timestamp</span>
-          <div className="text-slate-300 mt-1">{new Date(releasedAt).toLocaleString()}</div>
-        </div>
-
-        <div className="p-3 bg-slate-950 border border-slate-800 rounded">
-          <span className="text-[10px] text-slate-500 font-bold uppercase">Items Cleared</span>
-          <div className="text-sm font-bold text-emerald-400 mt-1">{itemsClearedCount} / {itemsClearedCount}</div>
-        </div>
+        <p className="text-slate-300">{attestation}</p>
       </div>
-
-      <div className="p-3 bg-slate-950 border border-slate-800 rounded text-xs space-y-1">
-        <div className="text-[10px] text-slate-500 font-bold uppercase">Verification Status</div>
-        <p className="text-slate-400">
-          The content hash matches the primary screenplay revision manifest in the immutable PostgreSQL ledger.
-        </p>
-      </div>
-    </div>
+      <p className="text-xs text-slate-400">
+        ClearCut provides sourced findings for qualified human review. It does
+        not provide legal advice or final legal clearance.
+      </p>
+    </section>
   );
 }
 
