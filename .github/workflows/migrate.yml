@@ -1,17 +1,70 @@
-name: Alembic Migrations
+name: Run protected Alembic migration
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment for migration"
+        description: "Protected GitHub environment to migrate"
         required: true
-        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      api_image_digest:
+        description: "Immutable clearcut-api image reference ending in @sha256:<64 hex>"
+        required: true
+        type: string
+      confirmation:
+        description: "Type MIGRATE to authorize the one-shot migration job"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      MIGRATION_JOB: clearcut-migrate
+      API_IMAGE: ${{ inputs.api_image_digest }}
     steps:
       - uses: actions/checkout@v4
-      - name: Run Alembic Upgrade
-        run: echo "Running alembic upgrade head in separate Cloud Run migration job..."
+
+      - name: Authenticate to GCP with Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_MIGRATION_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate migration authorization and image digest
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = "MIGRATE"
+          test -n "$GCP_PROJECT_ID"
+          test -n "$GCP_REGION"
+          [[ "$API_IMAGE" =~ /clearcut-api@sha256:[a-f0-9]{64}$ ]]
+
+      - name: Run digest-pinned Alembic migration job
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run jobs update "$MIGRATION_JOB" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --image "$API_IMAGE" \
+            --command alembic \
+            --args upgrade,head
+          gcloud run jobs execute "$MIGRATION_JOB" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --wait

@@ -1,5 +1,20 @@
 version: "3.8"
 
+x-clearcut-runtime: &clearcut-runtime
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: clearcut-local:latest
+  environment: &clearcut-environment
+    DATABASE_URL: postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
+    PORT: 8080
+    PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
+    GCP_PROJECT: ${GCP_PROJECT:-clearcut-workspace}
+    VERTEX_LOCATION: ${VERTEX_LOCATION:-global}
+    CLEARCUT_SEED_DEMO: ${CLEARCUT_SEED_DEMO:-false}
+    CLEARCUT_JOB_DISPATCH_MODE: ${CLEARCUT_JOB_DISPATCH_MODE:-local}
+    CLEARCUT_API_WORKERS: ${CLEARCUT_API_WORKERS:-1}
+
 services:
   db:
     image: postgres:17-alpine
@@ -19,27 +34,35 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    <<: *clearcut-runtime
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  seed:
+    <<: *clearcut-runtime
+    restart: "no"
+    command: ["python", "scripts/seed_db.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *clearcut-runtime
     container_name: clearcut-app
     restart: unless-stopped
     ports:
       - "8000:8080"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
-      PORT: 8080
-      PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
-      GCP_PROJECT: ${GCP_PROJECT:-clearcut-workspace}
-      VERTEX_LOCATION: ${VERTEX_LOCATION:-global}
     depends_on:
       db:
         condition: service_healthy
-    command: >
-      sh -c "alembic upgrade head &&
-             python scripts/seed_db.py &&
-             uvicorn clearcut.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 60"
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
 
 volumes:
   clearcut_pgdata:

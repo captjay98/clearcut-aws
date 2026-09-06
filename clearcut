@@ -1,32 +1,31 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# ClearCut — Unified CLI Control Tool
-# ==============================================================================
-set -e
+# ClearCut local control tool. Cloud deployment remains fail-closed until the
+# external release gates in docs/submission/manifest.yaml are satisfied.
+set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 cd "$DIR"
 
-# ANSI Colors
 BOLD='\033[1m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
 show_help() {
-  echo -e "${CYAN}${BOLD}ClearCut — Screenplay Pre-Clearance & Evidence Workspace${NC}"
+  echo -e "${CYAN}${BOLD}ClearCut — Screenplay Pre-Clearance Evidence Workspace${NC}"
   echo -e "Usage: ${BOLD}./clearcut <command>${NC}\n"
   echo -e "${BOLD}Commands:${NC}"
-  echo -e "  ${GREEN}start${NC} / ${GREEN}up${NC}      Launch the local ClearCut studio with PostgreSQL 17 (Docker)"
-  echo -e "  ${YELLOW}stop${NC} / ${YELLOW}down${NC}     Stop all local ClearCut containers"
-  echo -e "  ${BLUE}deploy${NC}           Deploy ClearCut to Google Cloud Run (interactive wizard)"
-  echo -e "  ${CYAN}logs${NC}             View real-time logs from local containers"
-  echo -e "  ${CYAN}config${NC} / ${CYAN}keys${NC}      Configure Parallel API and Gemini/Vertex AI keys"
-  echo -e "  ${CYAN}cost${NC}             Show detailed minimum cost breakdown for local vs GCP"
-  echo -e "  ${CYAN}smoke${NC}            Run automated 7-step smoke verification tests"
-  echo -e "  ${CYAN}status${NC}           Check status of local and cloud deployments"
+  echo -e "  ${GREEN}start${NC} / ${GREEN}up${NC}      Launch the local Docker workspace"
+  echo -e "  ${YELLOW}stop${NC} / ${YELLOW}down${NC}     Stop local ClearCut containers"
+  echo -e "  ${RED}deploy${NC}           Report the deployment NO-GO gate; does not deploy"
+  echo -e "  ${CYAN}logs${NC}             View local container logs"
+  echo -e "  ${CYAN}config${NC} / ${CYAN}keys${NC}      Report local provider configuration status"
+  echo -e "  ${CYAN}cost${NC}             Show the cloud-cost safety boundary"
+  echo -e "  ${CYAN}smoke${NC}            Run the local/explicit-URL smoke verification"
+  echo -e "  ${CYAN}status${NC}           Show local containers and submission readiness"
   echo -e "  ${CYAN}help${NC}             Show this help screen\n"
 }
 
@@ -39,105 +38,55 @@ case "$CMD" in
   stop|down)
     echo -e "${YELLOW}Stopping ClearCut local containers...${NC}"
     docker compose down
-    echo -e "${GREEN}✓ ClearCut stopped.${NC}"
+    echo -e "${GREEN}ClearCut stopped.${NC}"
     ;;
   deploy|gcp)
-    exec "$DIR/scripts/deploy_gcp.sh" "${@:2}"
+    echo -e "${RED}${BOLD}Deployment is blocked while submission readiness is NO-GO.${NC}" >&2
+    echo "Review docs/submission/manifest.yaml and infra/gcp/README.md." >&2
+    echo "This command does not authenticate, provision resources, deploy, or incur cloud charges." >&2
+    exit 1
     ;;
   logs)
-    docker compose logs -f
+    exec docker compose logs -f
     ;;
   cost|pricing)
-    echo -e "\n${GREEN}${BOLD}================================================================${NC}"
-    echo -e "${GREEN}${BOLD}  💰 ClearCut Minimum Cost Breakdown Matrix                     ${NC}"
-    echo -e "${GREEN}${BOLD}================================================================${NC}"
-    echo -e "  ClearCut is designed to run at the ${BOLD}absolute minimum cost tier${NC}:\n"
-    echo -e "  🏠 ${BOLD}Local Studio (Docker Compose):${NC}"
-    echo -e "     • Monthly Cost:  ${GREEN}${BOLD}\$0.00 / month${NC}"
-    echo -e "     • Resources:     PostgreSQL 17 + Local Web/API Container\n"
-    echo -e "  ☁️  ${BOLD}Google Cloud Run (Serverless Scale-to-Zero - Recommended):${NC}"
-    echo -e "     • App & API:     ${GREEN}${BOLD}\$0.00 / month${NC} (2M requests & 360k GB-sec in Free Tier)"
-    echo -e "     • Cloud Build:   ${GREEN}${BOLD}\$0.00 / month${NC} (120 build-minutes/day Free Tier)"
-    echo -e "     • Storage:       ${GREEN}${BOLD}<\$0.02 / month${NC} (~150MB container image)"
-    echo -e "     • Database:      ${GREEN}${BOLD}\$0.00 / month${NC} (In-container self-healing storage)"
-    echo -e "     • ${BOLD}Total Cloud:${NC}   ${GREEN}${BOLD}\$0.00 / month (Zero Idle Cost)${NC}\n"
-    echo -e "  🏢 ${BOLD}Google Cloud SQL PostgreSQL 17 (Enterprise Option):${NC}"
-    echo -e "     • Dedicated DB:  ${YELLOW}~\$7.67 - \$25.00 / month${NC} (24/7 dedicated instance)"
-    echo -e "${GREEN}${BOLD}================================================================${NC}\n"
+    echo -e "${YELLOW}${BOLD}No production cost estimate is verified.${NC}"
+    echo "Cloud usage can incur charges for builds, images, compute, databases, storage, networking, providers, and logs."
+    echo "Review an authorized provider estimate, budget, and alert policy before any deployment."
     ;;
   config|keys|env)
-    echo -e "\n${CYAN}${BOLD}=== ClearCut AI & Search Engine Configuration ===${NC}\n"
-    echo -e "Current Environment Status:"
-    touch .env
-    CURR_PARALLEL="$(grep '^PARALLEL_API_KEY=' .env | cut -d '=' -f2- || echo "")"
-    
-    if [ -n "$CURR_PARALLEL" ]; then
-      echo -e "  • ${BOLD}Parallel API Key (Search & Extract):${NC} ${GREEN}configured${NC} (${CURR_PARALLEL:0:6}...)"
+    if [ -n "${PARALLEL_API_KEY:-}" ]; then
+      echo "Parallel API credential: present in the current process (value not displayed)."
     else
-      echo -e "  • ${BOLD}Parallel API Key (Search & Extract):${NC} ${YELLOW}not configured (demo mode active)${NC}"
+      echo "Parallel API credential: not configured. Research remains unresolved; no fallback evidence is created."
     fi
-
-    echo -e "  • ${BOLD}AI Model Engine:${NC}                   ${GREEN}${BOLD}Google Cloud Vertex AI${NC} (Zero API keys required / Native IAM)\n"
-
-    read -r -p "Enter Parallel API Key [press Enter to keep current]: " NEW_PARALLEL
-
-    if [ -n "$NEW_PARALLEL" ]; then
-      if grep -q '^PARALLEL_API_KEY=' .env; then
-        sed -i.bak "s|^PARALLEL_API_KEY=.*|PARALLEL_API_KEY=${NEW_PARALLEL}|" .env && rm -f .env.bak
-      else
-        echo "PARALLEL_API_KEY=${NEW_PARALLEL}" >> .env
-      fi
-      echo -e "${GREEN}✓ Updated PARALLEL_API_KEY in local .env${NC}"
+    if [ -n "${GCP_PROJECT:-}" ]; then
+      echo "GCP project variable: present in the current process (not verified or contacted)."
+    else
+      echo "GCP project variable: not configured."
     fi
-
-    # Check GCP Secret Manager sync
-    if command -v gcloud >/dev/null 2>&1; then
-      CURRENT_PROJ="$(gcloud config get-value project 2>/dev/null || echo "")"
-      if [ -n "$CURRENT_PROJ" ]; then
-        read -r -p "Would you like to sync PARALLEL_API_KEY to Secret Manager on '$CURRENT_PROJ'? [Y/n] " sync_gcp
-        sync_gcp=${sync_gcp:-Y}
-        if [[ "$sync_gcp" =~ ^[Yy]$ ]]; then
-          if [ -n "${NEW_PARALLEL:-$CURR_PARALLEL}" ]; then
-            KEY_VAL="${NEW_PARALLEL:-$CURR_PARALLEL}"
-            echo -n "$KEY_VAL" | gcloud secrets create PARALLEL_API_KEY --data-file=- --project="$CURRENT_PROJ" 2>/dev/null || \
-            echo -n "$KEY_VAL" | gcloud secrets versions add PARALLEL_API_KEY --data-file=- --project="$CURRENT_PROJ"
-            echo -e "${GREEN}✓ Synced PARALLEL_API_KEY to Secret Manager on ${CURRENT_PROJ}${NC}"
-          fi
-        fi
-      fi
-    fi
-    echo -e "\n${GREEN}${BOLD}Configuration updated successfully!${NC}\n"
+    echo "Configure secrets through an approved local or deployment secret mechanism; this command does not transmit them."
     ;;
   smoke|test)
-    if [ -n "${2:-}" ]; then
-      TARGET_URL="$2"
-    else
-      TARGET_URL="http://localhost:8000"
-    fi
+    TARGET_URL="${2:-http://localhost:8000}"
     exec python3 "$DIR/scripts/deployment_smoke.py" --url "$TARGET_URL"
     ;;
   status)
     echo -e "${BOLD}=== Local Docker Status ===${NC}"
     if command -v docker >/dev/null 2>&1; then
-      docker compose ps || echo "No local containers running."
+      docker compose ps || true
     else
       echo "Docker is not installed or not in PATH."
     fi
-    echo -e "\n${BOLD}=== Live GCP Service Status ===${NC}"
-    if command -v gcloud >/dev/null 2>&1; then
-      CURRENT_PROJ="$(gcloud config get-value project 2>/dev/null || echo "")"
-      if [ -n "$CURRENT_PROJ" ]; then
-        echo "Active GCP Project: $CURRENT_PROJ"
-        gcloud run services describe clearcut --region us-central1 --project "$CURRENT_PROJ" --format="table(metadata.name,status.url,status.conditions[0].status)" 2>/dev/null || echo "Service not deployed on $CURRENT_PROJ"
-      fi
-    fi
+    echo -e "\n${BOLD}=== Submission Readiness ===${NC}"
+    echo "NO-GO — see docs/submission/manifest.yaml for explicit external blockers."
     ;;
   help|--help|-h)
     show_help
     ;;
   *)
-    echo -e "${YELLOW}Unknown command: $CMD${NC}\n"
-    show_help
+    echo -e "${YELLOW}Unknown command: $CMD${NC}\n" >&2
+    show_help >&2
     exit 1
     ;;
 esac

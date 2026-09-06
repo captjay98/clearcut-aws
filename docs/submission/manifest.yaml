@@ -3,15 +3,103 @@ submission:
   track: "Parallel Track - Agentic Cinema"
   license: "MIT"
   repository_url: "https://github.com/captjay98/clearcut"
-  git_sha: "HEAD"
+  verdict: "NO-GO"
+  legal_boundary: >-
+    ClearCut is a screenplay pre-clearance evidence workspace. It does not
+    provide legal advice or final legal clearance.
+
+  revision:
+    git_sha: "not-recorded-dirty-worktree"
+    clean_tree: false
+    remote_parity: "not-verified"
+
+  image_digests:
+    site: "not-built"
+    web: "not-built"
+    api: "not-built"
+
   hosted_services:
-    site: "https://clearcut.app"
-    web: "https://app.clearcut.app"
-    api: "https://api.clearcut.app"
+    site: null
+    web: null
+    api: null
+
+  runtime_proof:
+    gemini_trace_id: "not-available"
+    parallel_search_id: "not-available"
+    parallel_extract_id: "not-available"
+    parallel_monitor_id: "not-enabled"
+
   production_adapters:
-    model_runtime: "GeminiAdkRuntime"
-    search_adapter: "ParallelSearchAdapter"
-    extract_adapter: "ParallelExtractAdapter"
-    monitor_adapter: "ParallelMonitorAdapter"
-  verified_categories_count: 10
-  judge_rubric_dimensions_count: 10
+    model_runtime: "not-verified"
+    search_adapter: "not-verified"
+    extract_adapter: "not-verified"
+    monitor_adapter: "not-enabled"
+    monitor_decision: "NO-GO"
+
+  local_artifacts:
+    deterministic_report_format: "HTML"
+    deterministic_pdf: "not-implemented"
+    cloud_storage_delivery: "not-verified"
+    cloud_tasks_dispatch: "not-verified"
+
+  video:
+    status: "not-recorded"
+    url: null
+    duration_seconds: null
+    visibility: "not-verified"
+    subtitles: "not-verified"
+
+  devpost:
+    status: "not-submitted"
+    submission_url: null
+
+  compliance_correspondence:
+    status: "pending"
+    reference: "not-available"
+
+  external_blockers:
+    - id: "revision-provenance"
+      status: "blocked"
+      evidence_required: >-
+        A clean candidate commit, exact 40-character SHA, and verified target
+        remote parity. The current worktree intentionally contains preserved
+        uncommitted work.
+    - id: "immutable-images-and-hosting"
+      status: "blocked"
+      evidence_required: >-
+        Authorized GCP project, billing, IAM, Workload Identity Federation,
+        three built image digests, deployed revisions, and verified hosted URLs.
+    - id: "live-provider-runtime"
+      status: "blocked"
+      evidence_required: >-
+        Authorized live Gemini and Parallel Search/Extract calls with trace or
+        request identifiers tied to the exact deployed candidate.
+    - id: "parallel-monitor"
+      status: "not-enabled"
+      evidence_required: >-
+        A recorded GO decision plus deployed signed-webhook and re-verification
+        proof before Parallel Monitor may be enabled or claimed.
+    - id: "operations-and-recovery"
+      status: "blocked"
+      evidence_required: >-
+        Hosted backup/PITR restore, secret rotation, rollback, budget/alert,
+        observability, redaction, and production access-control drill evidence.
+    - id: "cloud-artifact-delivery"
+      status: "blocked"
+      evidence_required: >-
+        Production Cloud Storage and Cloud Tasks proof. Local deterministic HTML
+        exists; deterministic PDF and cloud artifact delivery are not claimed.
+    - id: "public-video"
+      status: "blocked"
+      evidence_required: >-
+        A public video URL, verified duration of at most three minutes,
+        visibility, and English narration or subtitles.
+    - id: "devpost-submission"
+      status: "blocked"
+      evidence_required: >-
+        Completed Devpost entry, selected Parallel track, and retained
+        submission confirmation.
+    - id: "organizer-correspondence"
+      status: "blocked"
+      evidence_required: >-
+        Written organizer clarification about development-assistant eligibility.

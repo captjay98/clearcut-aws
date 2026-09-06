@@ -102,7 +102,7 @@ setup_env() {
 # ClearCut Local Environment Configuration
 PORT=8080
 DATABASE_URL=postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
-# Parallel API key for live search & extraction (leave blank to run in demo registry mode)
+# Parallel API key for live search & extraction (leave blank; research remains unresolved and no fallback evidence is created)
 PARALLEL_API_KEY=
 # Google Cloud Vertex AI settings
 GCP_PROJECT=clearcut-workspace
@@ -138,7 +138,11 @@ launch_containers() {
     echo -e "  🎬 ${BOLD}Web Workspace:${NC}      ${CYAN}http://localhost:8000${NC}"
     echo -e "  📚 ${BOLD}API Docs (Swagger):${NC} ${CYAN}http://localhost:8000/docs${NC}"
     echo -e "  🗄️  ${BOLD}Database Engine:${NC}    ${BOLD}PostgreSQL 17${NC} (port 5432)"
-    echo -e "  📋 ${BOLD}Sample Screenplay:${NC}  ${BOLD}Borrowed Light${NC} (7 scenes, 10 items seeded)"
+    if [[ "${CLEARCUT_SEED_DEMO:-false}" =~ ^(1|true|yes|on)$ ]]; then
+      echo -e "  📋 ${BOLD}Synthetic Demo:${NC}      ${BOLD}Borrowed Light${NC} (labelled local seed; not provider evidence)"
+    else
+      echo -e "  🔎 ${BOLD}Research Boundary:${NC}   Missing provider credentials leave research unresolved; no fallback evidence is created."
+    fi
     echo -e "${GREEN}${BOLD}================================================================${NC}\n"
     
     echo -e "${BLUE}Opening workspace in your default browser...${NC}"

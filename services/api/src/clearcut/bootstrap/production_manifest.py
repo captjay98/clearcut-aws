@@ -6,10 +6,10 @@ class DisallowedProviderError(Exception):
 
 
 class ContestProfileValidator:
-    APPROVED_MODELS = {"GeminiAdkRuntime", "VertexGeminiAdapter"}
+    APPROVED_MODELS = {"GeminiAdkRuntime"}
     APPROVED_SEARCH = {"ParallelSearchAdapter"}
     APPROVED_EXTRACT = {"ParallelExtractAdapter"}
-    APPROVED_MONITOR = {"ParallelMonitorAdapter", None}
+    APPROVED_MONITOR = {"ParallelMonitorAdapter", "not-enabled"}
 
     def validate_production_profile(self, config: dict[str, Any]) -> bool:
         runtime = config.get("model_runtime")
@@ -35,5 +35,18 @@ class ContestProfileValidator:
             raise DisallowedProviderError(
                 f"Unapproved monitor adapter '{monitor}'. Expected one of {self.APPROVED_MONITOR}."
             )
+
+        if monitor == "ParallelMonitorAdapter":
+            decision = config.get("monitor_decision")
+            webhook_proof = config.get("monitor_webhook_proof")
+            has_deployed_proof = (
+                isinstance(webhook_proof, str)
+                and bool(webhook_proof.strip())
+                and webhook_proof != "not-available"
+            )
+            if decision != "GO" or not has_deployed_proof:
+                raise DisallowedProviderError(
+                    "Monitor requires a recorded GO decision and deployed signed-webhook proof."
+                )
 
         return True

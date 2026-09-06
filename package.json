@@ -16,8 +16,9 @@
     "agents:build": "bun .agents/scripts/build.mjs",
     "agents:lint": "bun .agents/scripts/lint.mjs",
     "agents:verify": "bun .agents/scripts/verify.mjs",
+    "verify:submission": "bun scripts/verify-submission.mjs && uv run pytest tests/submission -q",
     "test:python": "uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v",
-    "verify": "node scripts/check-package-managers.mjs && node scripts/check-feature-coverage.mjs && node scripts/check-no-legacy-runtime.mjs && bun scripts/check-contract-drift.mjs && uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v"
+    "verify": "node scripts/check-package-managers.mjs && node scripts/check-feature-coverage.mjs && node scripts/check-no-legacy-runtime.mjs && bun scripts/check-contract-drift.mjs && uv run pytest tests/foundation tests/contracts services/api/tests/architecture -v && pnpm verify:submission"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

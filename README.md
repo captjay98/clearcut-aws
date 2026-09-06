@@ -1,95 +1,111 @@
-# ClearCut 🎬
-> **Screenplay pre-clearance research desk and source evidence workspace with an immutable audit paper trail.**
+# ClearCut
 
-ClearCut parses screenplays, detects clearance risks across ten protected categories, retrieves authoritative source evidence, coordinates team approvals, and compiles reproducible clearance dossiers.
+ClearCut is a screenplay pre-clearance research desk and source-evidence workspace. It parses scripts, tracks potential issues across ten protected categories, coordinates accountable human review, and produces immutable version-bound clearance reports.
 
----
+> Current readiness: **NO-GO**. No hosted deployment is currently verified. The repository has a working local implementation and local test evidence, but it does not contain the external cloud, provider, recovery, video, or compliance proof required for a production or contest release. See `docs/submission/manifest.yaml`.
 
-## 🌐 Live Cloud Deployment
+ClearCut does not provide legal advice or final legal clearance. It presents sourced findings, uncertainty, and unresolved risk for qualified human review.
 
-| Service | Endpoint |
-|---|---|
-| **Live Web Workspace** | **[https://clearcut-gvnistvvoq-uc.a.run.app](https://clearcut-gvnistvvoq-uc.a.run.app)** |
-| **Interactive API Documentation** | **[https://clearcut-gvnistvvoq-uc.a.run.app/docs](https://clearcut-gvnistvvoq-uc.a.run.app/docs)** |
-| **OpenAPI 3.1 Spec** | **[https://clearcut-gvnistvvoq-uc.a.run.app/openapi.json](https://clearcut-gvnistvvoq-uc.a.run.app/openapi.json)** |
-| **System Health Probe** | **[https://clearcut-gvnistvvoq-uc.a.run.app/api/v1/healthz](https://clearcut-gvnistvvoq-uc.a.run.app/api/v1/healthz)** |
+## Implemented locally
 
----
+- FastAPI modular monolith with organization and project scope enforcement.
+- Vite/React/TanStack Router workspace and Astro public site.
+- PostgreSQL-compatible SQLAlchemy/Alembic persistence and a PostgreSQL 17 local Compose service.
+- Evidence claims bound to cited source snapshots; zero evidence remains unresolved.
+- Human-governed decisions, collaboration, referrals, rewrite review, and immutable audit events.
+- Deterministic HTML clearance-report generation, separate human release, and authorized download.
+- OpenAPI contract generation plus unit, API, contract, and four-viewport browser coverage.
 
-## 💰 Minimum Cost Architecture ($0.00 / Month)
+The current root `Dockerfile` is a combined **local validation runtime**. It is not evidence of the planned three-image production architecture (`clearcut-site`, `clearcut-web`, and `clearcut-api`).
 
-ClearCut is engineered to operate on Google Cloud's **minimum cost tier** (zero idle cost, 100% eligible for GCP Free Tier):
+## Provider and deployment status
 
-| Component | Configuration | Free Tier / Pricing | Monthly Cost |
-|---|---|---|---|
-| **Google Cloud Run** | Scale-to-Zero (`min: 0`, `max: 2`, `512MB RAM`) | 2M requests & 360,000 GB-sec free | **$0.00** |
-| **Cloud Build** | Multi-stage auto-build | 120 build-min / day free | **$0.00** |
-| **Artifact Registry** | Container image storage (~150MB) | 0.5 GB free storage | **<$0.02** |
-| **Database (Default)** | Serverless In-Container Embedded Storage | Scales to zero with Cloud Run | **$0.00** |
-| **Database (Optional)** | Cloud SQL PostgreSQL 17 (`clearcut-pg17`) | Dedicated 24/7 instance | ~$7.67 – $25.00 |
-| **Total (Minimum Tier)**| | | **$0.00 / mo** |
+Gemini and Parallel are behind provider boundaries. Live Gemini and Parallel Search/Extract calls require authorized credentials and quota. Missing credentials or provider failures create visible unresolved review work; ClearCut does not invent fallback evidence. Parallel Monitor is **not enabled** without a recorded human GO decision and deployed signed-webhook proof.
 
-To check estimated costs anytime from your terminal:
+The files under `infra/gcp/` and `.github/workflows/` are unapplied deployment controls. They do not prove that cloud resources, hosted URLs, backups, alerts, or image digests exist. Cloud usage can incur charges; no zero-cost guarantee is made.
+
+## Prerequisites
+
+For repository development:
+
+- Python 3.12 and [uv](https://docs.astral.sh/uv/)
+- Node.js 20+ with Corepack
+- pnpm 9.15.0
+- Bun for the repository verification scripts
+
+For the one-command local container runtime, install Docker Desktop or another Docker Engine with Compose. Provider credentials are optional for local UI/API development and are required only for real provider calls.
+
+## Clean-clone install and verification
+
 ```bash
-./clearcut cost
+git clone https://github.com/captjay98/clearcut.git
+cd clearcut
+corepack enable
+corepack prepare pnpm@9.15.0 --activate
+pnpm install --frozen-lockfile
+uv sync --all-packages --dev
+pnpm verify
+uv run pytest services/api/tests -q
+pnpm --filter clearcut-web test
+pnpm build
+bun scripts/verify-submission.mjs
 ```
 
----
+Browser tests additionally require Playwright browsers:
 
-## 🚀 Quickstart for Non-Technical Users
-
-ClearCut includes an interactive, self-diagnosing CLI assistant that requires **zero technical setup**.
-
-### Option 1: Run Locally (Free Studio)
-Run one command (or double-click `start.sh`):
 ```bash
-./start.sh
-# or
+pnpm exec playwright install
+pnpm --filter clearcut-web test:e2e -- --workers=1
+```
+
+These commands validate a checkout; they do not establish remote-SHA parity, deployed-image provenance, or live-provider proof.
+
+## Run locally with Docker
+
+```bash
 ./clearcut start
 ```
-* **Checks Docker**: If not installed or closed, guides you in plain English.
-* **Provisions PostgreSQL 17**: Boots database and seeds the *Borrowed Light* demo screenplay.
-* **Auto-Launch**: Automatically opens `http://localhost:8000` in your web browser.
 
----
+This starts PostgreSQL, runs the explicit one-shot migration service, runs the opt-in seed service (which is a no-op by default), and then starts the combined local web/API runtime at `http://localhost:8000`.
 
-### Option 2: Deploy to Google Cloud
-Deploy your own live instance with the interactive cloud wizard:
-```bash
-./clearcut deploy
-```
-* **Interactive Sign-in**: 1-click Google account login.
-* **Project Selection**: Select or create a GCP project from a numbered menu.
-* **Cost Advisory**: Displays minimum cost breakdown and options before deployment.
-* **Zero-Touch Config**: Enables APIs, provisions storage, runs 7-step smoke tests, and opens your live URL.
-
----
-
-## 🧰 CLI Command Reference
+To load the clearly synthetic local demo dataset:
 
 ```bash
-./clearcut <command>
+CLEARCUT_SEED_DEMO=true ./clearcut start
 ```
 
-| Command | Description |
-|---|---|
-| `./clearcut start` | Launch the local studio with PostgreSQL 17 (Docker) |
-| `./clearcut stop` | Stop all local ClearCut containers |
-| `./clearcut deploy` | Deploy to Google Cloud Run (guided interactive wizard) |
-| `./clearcut cost` | Display detailed monthly cost breakdown matrix |
-| `./clearcut smoke` | Execute the 7-step automated verification smoke gate |
-| `./clearcut logs` | Stream live container logs |
-| `./clearcut status` | Inspect local Docker and live Cloud Run service status |
+The demo seed is not provider evidence and must not be presented as a Gemini or Parallel receipt. Stop the environment with `./clearcut stop`.
 
----
+## Manual development
 
-## 🔒 Security & Provenance Boundaries
-- **Strict Provenance**: Evidence claims require verifiable snapshots with publisher classification and source timestamps.
-- **Transactional Governance**: Approvals, referrals, and dispositions require human triggers recorded to immutable audit receipts.
-- **Tenancy Isolation**: Multi-tenant data scoped strictly by `org_id` and project path.
-- **Legal Pre-Clearance Boundary**: ClearCut facilitates evidence collection and workflow risk detection, not final legal advice.
+Run migrations explicitly before starting the API; application startup never migrates:
 
----
+```bash
+uv run alembic upgrade head
+uv run uvicorn clearcut.main:app --app-dir services/api/src --reload --port 8000
+```
 
-## 📄 License
-Apache-2.0. Open-source with zero vendor lock-in.
+In another terminal:
+
+```bash
+pnpm --filter clearcut-web dev -- --host 127.0.0.1
+```
+
+## Security and provenance boundaries
+
+- Evidence claims require an attributable source snapshot, retrieval time, excerpt, authority classification, stance, research identity, and provenance.
+- Governed decisions and report generation/release require authorized human actions and authoritative audit events.
+- Organization records use authenticated organization scope; project records additionally require project scope.
+- Provider ports return typed results or typed errors. Failures are visible and never become silent evidence.
+- Protected policy, permissions, category, authority, retention, privacy, and legal-boundary rules are human-only.
+
+## Submission evidence
+
+- Truthful readiness ledger: `docs/submission/manifest.yaml`
+- Known boundaries: `docs/submission/limitations.md`
+- Conditional demo runbook: `demo/runbook.md`
+- Draft submission copy: `docs/submission/devpost-copy.md`
+
+## License
+
+Released under the [MIT License](LICENSE).

@@ -1,21 +1,120 @@
-name: Deploy Cloud Run
+name: Deploy Cloud Run candidates
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target deployment environment"
+        description: "Protected GitHub environment to deploy"
         required: true
-        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      site_image_digest:
+        description: "Immutable clearcut-site image reference ending in @sha256:<64 hex>"
+        required: true
+        type: string
+      web_image_digest:
+        description: "Immutable clearcut-web image reference ending in @sha256:<64 hex>"
+        required: true
+        type: string
+      api_image_digest:
+        description: "Immutable clearcut-api image reference ending in @sha256:<64 hex>"
+        required: true
+        type: string
+      migration_run_id:
+        description: "Successful protected migration workflow run ID for this API digest"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
     steps:
       - uses: actions/checkout@v4
-      - name: Authenticate to GCP
+
+      - name: Authenticate to GCP with Workload Identity Federation
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-      - name: Deploy Image Digests
-        run: echo "Deploying immutable image digests to ${{ github.event.inputs.environment }}..."
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate immutable release inputs
+        shell: bash
+        env:
+          SITE_IMAGE: ${{ inputs.site_image_digest }}
+          WEB_IMAGE: ${{ inputs.web_image_digest }}
+          API_IMAGE: ${{ inputs.api_image_digest }}
+          MIGRATION_RUN_ID: ${{ inputs.migration_run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$GCP_PROJECT_ID"
+          test -n "$GCP_REGION"
+          test -n "$MIGRATION_RUN_ID"
+          [[ "$SITE_IMAGE" =~ /clearcut-site@sha256:[a-f0-9]{64}$ ]]
+          [[ "$WEB_IMAGE" =~ /clearcut-web@sha256:[a-f0-9]{64}$ ]]
+          [[ "$API_IMAGE" =~ /clearcut-api@sha256:[a-f0-9]{64}$ ]]
+
+      - name: Deploy candidates without traffic
+        shell: bash
+        env:
+          SITE_IMAGE: ${{ inputs.site_image_digest }}
+          WEB_IMAGE: ${{ inputs.web_image_digest }}
+          API_IMAGE: ${{ inputs.api_image_digest }}
+        run: |
+          set -euo pipefail
+          TAG="candidate-${GITHUB_SHA::7}"
+          declare -A IMAGES=(
+            [clearcut-site]="$SITE_IMAGE"
+            [clearcut-web]="$WEB_IMAGE"
+            [clearcut-api]="$API_IMAGE"
+          )
+          for service in clearcut-site clearcut-web clearcut-api; do
+            gcloud run deploy "$service" \
+              --project "$GCP_PROJECT_ID" \
+              --region "$GCP_REGION" \
+              --image "${IMAGES[$service]}" \
+              --no-traffic \
+              --tag "$TAG" \
+              --labels "source-sha=$GITHUB_SHA,environment=${{ inputs.environment }}"
+          done
+
+      - name: Candidate smoke gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="candidate-${GITHUB_SHA::7}"
+          candidate_url() {
+            gcloud run services describe "$1" \
+              --project "$GCP_PROJECT_ID" \
+              --region "$GCP_REGION" \
+              --format="value(status.traffic[?tag='$TAG'].url)"
+          }
+          SITE_URL="$(candidate_url clearcut-site)"
+          WEB_URL="$(candidate_url clearcut-web)"
+          API_URL="$(candidate_url clearcut-api)"
+          test -n "$SITE_URL" && curl --fail --silent --show-error "$SITE_URL/" >/dev/null
+          test -n "$WEB_URL" && curl --fail --silent --show-error "$WEB_URL/" >/dev/null
+          test -n "$API_URL" && curl --fail --silent --show-error "$API_URL/healthz" >/dev/null
+
+      - name: Promote verified candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="candidate-${GITHUB_SHA::7}"
+          for service in clearcut-site clearcut-web clearcut-api; do
+            gcloud run services update-traffic "$service" \
+              --project "$GCP_PROJECT_ID" \
+              --region "$GCP_REGION" \
+              --to-tags "$TAG=100"
+          done

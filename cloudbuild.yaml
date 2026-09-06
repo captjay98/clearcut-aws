@@ -1,79 +1,33 @@
+# Build-only validation for the current combined local runtime image.
+# This file intentionally does not deploy or promote production traffic.
+# Production requires separately built clearcut-site, clearcut-web, and
+# clearcut-api digests passed through the protected GitHub workflows.
 substitutions:
-  _REGION: 'us-central1'
-  _SERVICE_NAME: 'clearcut'
+  _REGISTRY_HOST: "us-central1-docker.pkg.dev"
+  _REPOSITORY: "clearcut-validation"
 
 steps:
-  # 1. Build immutable container image using root Dockerfile
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'build',
-      '--label', 'org.opencontainers.image.revision=$COMMIT_SHA',
-      '-t', 'gcr.io/$PROJECT_ID/$_SERVICE_NAME:sha-$COMMIT_SHA',
-      '.'
-    ]
-
-  # 2. Push container image to registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'push',
-      'gcr.io/$PROJECT_ID/$_SERVICE_NAME:sha-$COMMIT_SHA'
-    ]
-
-  # 3. Resolve exact immutable image digest
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build-combined-validation-image"
     args:
-      - '-ceu'
-      - |
-        IMAGE_TAG="gcr.io/$PROJECT_ID/$_SERVICE_NAME:sha-$COMMIT_SHA"
-        DIGEST="$$(gcloud container images describe "$$IMAGE_TAG" --format='value(image_summary.digest)' 2>/dev/null || gcloud artifacts docker images describe "$$IMAGE_TAG" --format='value(image_summary.digest)' 2>/dev/null)"
-        test -n "$$DIGEST"
-        printf '%s@%s\n' "gcr.io/$PROJECT_ID/$_SERVICE_NAME" "$$DIGEST" > /workspace/release-image.txt
-        cat /workspace/release-image.txt
+      - "build"
+      - "--label"
+      - "org.opencontainers.image.revision=$COMMIT_SHA"
+      - "--tag"
+      - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut-validation:sha-$COMMIT_SHA"
+      - "."
 
-  # 4. Deploy container image to Cloud Run (handles first-time service creation and candidate updates)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  - name: "gcr.io/cloud-builders/docker"
+    id: "verify-revision-label"
+    entrypoint: "bash"
     args:
-      - '-ceu'
+      - "-ceu"
       - |
-        IMAGE="$$(cat /workspace/release-image.txt)"
-        if gcloud run services describe "$_SERVICE_NAME" --region "$_REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
-          TRAFFIC_ARGS="--no-traffic --tag candidate-$SHORT_SHA"
-        else
-          TRAFFIC_ARGS="--tag candidate-$SHORT_SHA"
-        fi
+        IMAGE="${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut-validation:sha-$COMMIT_SHA"
+        test "$$(docker inspect --format='{{ index .Config.Labels \"org.opencontainers.image.revision\" }}' "$$IMAGE")" = "$COMMIT_SHA"
 
-        gcloud run deploy "$_SERVICE_NAME" \
-          --image "$$IMAGE" \
-          --region "$_REGION" \
-          --project "$PROJECT_ID" \
-          --allow-unauthenticated \
-          $$TRAFFIC_ARGS \
-          --min-instances 0 --max-instances 2 --cpu 1 --memory 512Mi --concurrency 80 \
-          --timeout 300 \
-          --labels "source-sha=$COMMIT_SHA,environment=prod" \
-          --set-env-vars "WEB_DIST_PATH=/app/web-dist"
-
-  # 5. Candidate Smoke Gate Test & Promotion
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-ceu'
-      - |
-        # Ensure public invoker role is attached
-        gcloud run services add-iam-policy-binding "$_SERVICE_NAME" \
-          --region "$_REGION" --member="allUsers" --role="roles/run.invoker" --project "$PROJECT_ID" || true
-
-        # Promote traffic to latest revision
-        gcloud run services update-traffic "$_SERVICE_NAME" \
-          --region "$_REGION" --project "$PROJECT_ID" --to-latest
-
-        # Run smoke test on main service URL
-        SERVICE_URL="$$(gcloud run services describe "$_SERVICE_NAME" --region "$_REGION" --project "$PROJECT_ID" --format='value(status.url)')"
-        echo "Service URL: $$SERVICE_URL"
-        python3 /workspace/scripts/deployment_smoke.py --url "$$SERVICE_URL"
-        echo "✅ ClearCut production deployment and smoke verification passed!"
+images:
+  - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut-validation:sha-$COMMIT_SHA"
 
 options:
   logging: CLOUD_LOGGING_ONLY
