@@ -7,9 +7,16 @@ import tempfile
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal, NoReturn, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -17,10 +24,15 @@ from sqlalchemy.exc import ArgumentError
 LOCAL_SQLITE_URL = "sqlite+aiosqlite:////tmp/clearcut.db"
 
 
-def validate_hosted_database_url(database_url: str) -> None:
+def validate_hosted_database_url(database_url: str | SecretStr) -> None:
     """Validate a hosted database URL without exposing credentials in errors."""
+    url_value = (
+        database_url.get_secret_value()
+        if isinstance(database_url, SecretStr)
+        else database_url
+    )
     try:
-        parsed_url = make_url(database_url)
+        parsed_url = make_url(url_value)
         backend_name = parsed_url.get_backend_name()
         driver_name = parsed_url.drivername
         host = parsed_url.host
@@ -82,7 +94,7 @@ class _FrozenModel(BaseModel):
 
 
 class DatabaseSettings(_FrozenModel):
-    url: str = Field(min_length=1)
+    url: SecretStr = Field(min_length=1)
 
 
 class FilesystemStorageSettings(_FrozenModel):
@@ -194,14 +206,30 @@ class ClearcutSettings(BaseSettings):
             data[section] = nested
         return data
 
+    def _raise_redacted_validation_error(self, message: str) -> NoReturn:
+        raise ValidationError.from_exception_data(
+            self.__class__.__name__,
+            [
+                {
+                    "type": "value_error",
+                    "loc": (),
+                    "input": self.model_dump(mode="json"),
+                    "ctx": {"error": ValueError(message)},
+                }
+            ],
+        )
+
     @model_validator(mode="after")
     def _validate_profile_contract(self) -> Self:
         if self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}:
-            validate_hosted_database_url(self.database.url)
+            try:
+                validate_hosted_database_url(self.database.url)
+            except ValueError as error:
+                self._raise_redacted_validation_error(str(error))
             if self.storage.adapter is StorageAdapter.FILESYSTEM and (
                 self.profile is DeploymentProfile.GCP or self.storage.ephemeral
             ):
-                raise ValueError(
+                self._raise_redacted_validation_error(
                     "Hosted deployment profiles reject ephemeral filesystem storage."
                 )
 
@@ -232,13 +260,21 @@ class ClearcutSettings(BaseSettings):
             DeploymentProfile.GCP: SecretBackend.SECRET_MANAGER,
         }
         if self.storage.adapter not in allowed_storage[self.profile]:
-            raise ValueError("Storage adapter contradicts the selected profile.")
+            self._raise_redacted_validation_error(
+                "Storage adapter contradicts the selected profile."
+            )
         if self.dispatch.adapter is not required_dispatch[self.profile]:
-            raise ValueError("Dispatch adapter contradicts the selected profile.")
+            self._raise_redacted_validation_error(
+                "Dispatch adapter contradicts the selected profile."
+            )
         if self.authentication.adapter not in allowed_authentication[self.profile]:
-            raise ValueError("Authentication adapter contradicts the selected profile.")
+            self._raise_redacted_validation_error(
+                "Authentication adapter contradicts the selected profile."
+            )
         if self.secrets.backend is not required_secrets[self.profile]:
-            raise ValueError("Secret backend contradicts the selected profile.")
+            self._raise_redacted_validation_error(
+                "Secret backend contradicts the selected profile."
+            )
 
         cloud_tasks_fields = (
             self.dispatch.project_id,
@@ -252,26 +288,28 @@ class ClearcutSettings(BaseSettings):
             self.dispatch.adapter is not DispatchAdapter.CLOUD_TASKS
             and any(cloud_tasks_fields)
         ):
-            raise ValueError(
+            self._raise_redacted_validation_error(
                 f"{self.dispatch.adapter.value} dispatch does not accept Cloud Tasks fields."
             )
         if self.dispatch.adapter is DispatchAdapter.CLOUD_TASKS and not all(
             cloud_tasks_fields
         ):
-            raise ValueError(
+            self._raise_redacted_validation_error(
                 "Cloud Tasks dispatch requires project_id, location, queue, target_url, "
                 "audience, and service_account_email."
             )
         if self.authentication.adapter is AuthenticationAdapter.BUILTIN and any(
             (self.authentication.project_id, self.authentication.audience)
         ):
-            raise ValueError(
+            self._raise_redacted_validation_error(
                 "Built-in authentication does not accept Firebase configuration."
             )
         if self.authentication.adapter is AuthenticationAdapter.FIREBASE and not all(
             (self.authentication.project_id, self.authentication.audience)
         ):
-            raise ValueError("Firebase authentication requires project_id and audience.")
+            self._raise_redacted_validation_error(
+                "Firebase authentication requires project_id and audience."
+            )
         return self
 
     @classmethod

@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from clearcut.bootstrap.container import build_application
@@ -281,7 +282,7 @@ async def handle_unexpected_exception(
 def create_app(settings: ClearcutSettings) -> FastAPI:
     """Compose a FastAPI application from validated deployment settings."""
     application_container = build_application(settings)
-    if settings.database.url != CONFIGURED_DATABASE_URL:
+    if settings.database.url != SecretStr(CONFIGURED_DATABASE_URL):
         raise RuntimeError(
             "Configured database URL does not match the process database engine."
         )

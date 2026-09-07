@@ -26,7 +26,7 @@ def build_application(settings: ClearcutSettings) -> ApplicationContainer:
     """Build immutable application metadata without importing the HTTP shell."""
     summary = RedactedDeploymentSummary(
         profile=settings.profile.value,
-        database_configured=bool(settings.database.url.strip()),
+        database_configured=bool(settings.database.url),
         storage_adapter=settings.storage.adapter.value,
         dispatch_adapter=settings.dispatch.adapter.value,
         authentication_adapter=settings.authentication.adapter.value,

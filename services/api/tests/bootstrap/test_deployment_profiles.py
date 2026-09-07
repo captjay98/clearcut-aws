@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from clearcut.bootstrap.settings import (
     ClearcutSettings,
     StorageAdapter,
 )
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 LOCAL_DATABASE_URL = "sqlite+aiosqlite:////tmp/clearcut-test.db"
 POSTGRES_DATABASE_URL = "postgresql+asyncpg://clearcut@database/clearcut"
@@ -333,6 +334,54 @@ def test_contradictory_profile_overrides_are_rejected(
         ClearcutSettings.model_validate(config)
 
 
+def test_settings_diagnostics_redact_database_credentials_and_round_trip() -> None:
+    sentinel_password = "sentinel-database-password"
+    database_url = (
+        "postgresql+asyncpg://clearcut:"
+        f"{sentinel_password}@database/clearcut"
+    )
+    config = valid_settings("portable")
+    config["database"] = {"url": database_url}
+
+    settings = ClearcutSettings.model_validate(config)
+    dumped = settings.model_dump()
+    diagnostics = (
+        repr(settings),
+        str(settings),
+        repr(settings.database),
+        repr(dumped),
+        repr(settings.model_dump(mode="json")),
+        settings.model_dump_json(),
+    )
+
+    assert all(sentinel_password not in diagnostic for diagnostic in diagnostics)
+    assert ClearcutSettings.model_validate(dumped) == settings
+
+
+def test_settings_validation_error_diagnostics_redact_database_credentials() -> None:
+    sentinel_password = "sentinel-invalid-database-password"
+    database_url = (
+        "postgresql+asyncpg://clearcut:"
+        f"{sentinel_password}@database:0/clearcut"
+    )
+    config = valid_settings("portable")
+    config["database"] = {"url": database_url}
+
+    with pytest.raises(ValidationError) as exc_info:
+        ClearcutSettings.model_validate(config)
+
+    error = exc_info.value
+    diagnostics = (
+        str(error),
+        repr(error),
+        repr(error.errors()),
+        error.json(),
+    )
+    assert all(sentinel_password not in diagnostic for diagnostic in diagnostics)
+    assert all(database_url not in diagnostic for diagnostic in diagnostics)
+    assert error.errors()[0]["input"]["database"]["url"] == "**********"
+
+
 def test_settings_validation_is_frozen_and_does_not_create_storage_directory(
     tmp_path: Path,
 ) -> None:
@@ -347,15 +396,19 @@ def test_settings_validation_is_frozen_and_does_not_create_storage_directory(
         settings.storage.path = tmp_path / "other"
 
 
-
 def test_local_environment_constructor_selects_sqlite_explicitly_without_side_effects(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    storage_path = tmp_path / "clearcut-storage"
+
     settings = ClearcutSettings.from_environment({})
 
-    assert settings.database.url == LOCAL_SQLITE_URL
+    assert settings.database.url == SecretStr(LOCAL_SQLITE_URL)
     assert settings.profile == "local"
-    assert not (tmp_path / "clearcut-storage").exists()
+    assert settings.storage.path == storage_path
+    assert not storage_path.exists()
 
 
 def test_hosted_environment_does_not_inherit_local_sqlite_fallback() -> None:
@@ -409,6 +462,43 @@ assert app.state.settings.profile == 'local'
 
     assert result.returncode == 0, result.stderr
 
+
+def test_app_and_container_diagnostics_redact_database_credentials(
+    tmp_path: Path,
+) -> None:
+    sentinel_password = "sentinel-app-database-password"
+    database_url = (
+        "postgresql+asyncpg://clearcut:"
+        f"{sentinel_password}@database/clearcut"
+    )
+    environment = os.environ.copy()
+    environment["CLEARCUT_DEPLOYMENT_PROFILE"] = "local"
+    environment["CLEARCUT_STORAGE_PATH"] = str(tmp_path / "storage")
+    environment["DATABASE_URL"] = database_url
+    script = f"""
+from clearcut.main import app
+
+representations = (
+    repr(app),
+    repr(app.state),
+    repr(vars(app.state)),
+    repr(app.state.settings),
+    repr(app.state.application_container),
+    repr(app.state.deployment_summary),
+)
+assert all({sentinel_password!r} not in value for value in representations)
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_database_url_cannot_be_blank() -> None:
