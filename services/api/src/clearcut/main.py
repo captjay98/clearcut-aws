@@ -15,11 +15,13 @@ from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from clearcut.bootstrap.container import build_application
+from clearcut.bootstrap.paid_providers import build_paid_provider_gate
+from clearcut.bootstrap.secrets import build_secret_resolver
 from clearcut.bootstrap.settings import (
     ClearcutSettings,
     DispatchAdapter,
-    StorageAdapter,
 )
+from clearcut.bootstrap.storage import build_object_storage
 from clearcut.collaboration.delivery.http import router as collaboration_router
 from clearcut.database import DATABASE_URL as CONFIGURED_DATABASE_URL
 from clearcut.decisions.delivery.http import router as decisions_router
@@ -83,7 +85,6 @@ from clearcut.research.runtime_provider import (
     get_research_planner,
     get_research_runtime,
 )
-from clearcut.scripts.adapters.filesystem_storage import FilesystemObjectStorage
 from clearcut.scripts.adapters.sql_import_repository import SqlImportRepository
 from clearcut.scripts.application.import_script import ImportScriptService
 from clearcut.scripts.delivery.http import router as scripts_router
@@ -300,12 +301,6 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
         raise RuntimeError(
             f"Dispatch adapter {settings.dispatch.adapter.value!r} is not implemented yet."
         )
-    if settings.storage.adapter is not StorageAdapter.FILESYSTEM:
-        raise RuntimeError(
-            f"Storage adapter {settings.storage.adapter.value!r} is not implemented yet."
-        )
-    if settings.storage.path is None:
-        raise RuntimeError("Filesystem storage requires a configured path.")
 
     app = FastAPI(
         title="ClearCut API",
@@ -343,7 +338,13 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     org_service = OrganizationBootstrapService(repository=org_repo)
     project_repo = DatabaseProjectRepository()
     project_service = ProjectService(repository=project_repo)
-    storage = FilesystemObjectStorage(settings.storage.path)
+    storage = build_object_storage(settings.storage)
+    secret_resolver = build_secret_resolver(
+        settings.secrets,
+        project_id=getattr(settings.storage, "project_id", None)
+        or getattr(settings.dispatch, "project_id", None),
+    )
+    paid_provider_gate = build_paid_provider_gate(settings)
     import_repository = SqlImportRepository()
     import_script_service = ImportScriptService(
         repository=import_repository,
@@ -431,6 +432,8 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.state.project_repo = project_repo
     app.state.project_service = project_service
     app.state.storage = storage
+    app.state.secret_resolver = secret_resolver
+    app.state.paid_provider_gate = paid_provider_gate
     app.state.import_repository = import_repository
     app.state.import_script_service = import_script_service
     app.state.job_repository = job_repository
