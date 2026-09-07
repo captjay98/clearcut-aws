@@ -51,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
 
 WORKDIR /app/api
 ENTRYPOINT ["tini", "--"]
-CMD ["sh", "-c", "uvicorn clearcut.main:app --host 0.0.0.0 --port \"${PORT:-8080}\" --workers \"${CLEARCUT_API_WORKERS:-${WEB_CONCURRENCY:-2}}\" --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 60"]
+CMD ["sh", "-c", "uvicorn clearcut.main:app --host 0.0.0.0 --port \"${PORT:-8080}\" --workers \"${CLEARCUT_API_WORKERS:-${WEB_CONCURRENCY:-1}}\" --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 60"]

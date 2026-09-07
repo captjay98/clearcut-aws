@@ -590,7 +590,7 @@ def test_container_worker_command_uses_dispatch_worker_configuration() -> None:
     dockerfile = (Path(__file__).resolve().parents[4] / "Dockerfile").read_text()
 
     assert "--workers" in dockerfile
-    assert "${CLEARCUT_API_WORKERS:-${WEB_CONCURRENCY:-2}}" in dockerfile
+    assert "${CLEARCUT_API_WORKERS:-${WEB_CONCURRENCY:-1}}" in dockerfile
 
 
 @pytest.mark.asyncio
