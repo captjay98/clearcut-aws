@@ -21,6 +21,7 @@ def test_root_image_builds_and_copies_both_frontends() -> None:
         assert re.search(
             rf"COPY --from=frontend-build /app/apps/{app}/dist /app/{app}-dist", source
         )
+    assert "CLEARCUT_STATIC_DELIVERY_ENABLED=true" in source
     assert "CLEARCUT_SITE_DIST_PATH=/app/site-dist" in source
     assert "CLEARCUT_WORKSPACE_DIST_PATH=/app/web-dist" in source
     assert "WEB_DIST_PATH=" not in source
