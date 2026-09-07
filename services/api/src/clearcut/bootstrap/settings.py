@@ -11,8 +11,41 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 LOCAL_SQLITE_URL = "sqlite+aiosqlite:////tmp/clearcut.db"
+
+
+def validate_hosted_database_url(database_url: str) -> None:
+    """Validate a hosted database URL without exposing credentials in errors."""
+    try:
+        parsed_url = make_url(database_url)
+        backend_name = parsed_url.get_backend_name()
+        driver_name = parsed_url.drivername
+        host = parsed_url.host
+        database = parsed_url.database
+        _ = parsed_url.port
+    except (ArgumentError, ValueError):
+        raise ValueError(
+            "Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL "
+            "with host and database."
+        ) from None
+
+    if backend_name != "postgresql":
+        raise ValueError(
+            "Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL."
+        )
+    if driver_name != "postgresql+asyncpg":
+        raise ValueError(
+            "Hosted deployment profiles require the supported PostgreSQL async "
+            "driver (asyncpg)."
+        )
+    if not host or not database:
+        raise ValueError(
+            "Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL "
+            "with host and database."
+        )
 
 
 class DeploymentProfile(StrEnum):
@@ -55,12 +88,38 @@ class DatabaseSettings(_FrozenModel):
 class StorageSettings(_FrozenModel):
     adapter: StorageAdapter
     path: Path | None = None
-    ephemeral: bool = True
+    ephemeral: bool = False
     bucket: str | None = None
     project_id: str | None = None
     endpoint_url: str | None = None
     access_key_id: SecretStr | None = None
     secret_access_key: SecretStr | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_ephemeral_for_adapter(cls, value: Any) -> Any:
+        if not isinstance(value, Mapping):
+            return value
+        data = dict(value)
+        try:
+            adapter = StorageAdapter(data.get("adapter"))
+        except (TypeError, ValueError):
+            return data
+        if adapter in {StorageAdapter.S3, StorageAdapter.GCS}:
+            if "ephemeral" in data:
+                raise ValueError(
+                    f"{adapter.value.upper()} storage does not accept the filesystem-only "
+                    "ephemeral setting."
+                )
+            if "path" in data:
+                raise ValueError(
+                    f"{adapter.value.upper()} storage does not accept the filesystem-only "
+                    "path setting."
+                )
+            data["ephemeral"] = False
+        else:
+            data.setdefault("ephemeral", True)
+        return data
 
 
 class DispatchSettings(_FrozenModel):
@@ -108,7 +167,11 @@ _PROFILE_DEFAULTS: dict[DeploymentProfile, dict[str, StrEnum]] = {
 class ClearcutSettings(BaseSettings):
     """Immutable settings selected from one explicit deployment profile."""
 
-    model_config = SettingsConfigDict(extra="forbid", frozen=True)
+    model_config = SettingsConfigDict(
+        extra="forbid",
+        frozen=True,
+        hide_input_in_errors=True,
+    )
 
     profile: DeploymentProfile
     database: DatabaseSettings
@@ -143,10 +206,8 @@ class ClearcutSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_profile_contract(self) -> Self:
-        database_url = self.database.url.casefold()
         if self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}:
-            if not database_url.startswith(("postgresql://", "postgresql+")):
-                raise ValueError("Hosted deployment profiles require PostgreSQL.")
+            validate_hosted_database_url(self.database.url)
             if self.storage.adapter is StorageAdapter.FILESYSTEM and (
                 self.profile is DeploymentProfile.GCP or self.storage.ephemeral
             ):

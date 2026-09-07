@@ -4,7 +4,11 @@ import sys
 from pathlib import Path
 
 import pytest
-from clearcut.bootstrap.settings import LOCAL_SQLITE_URL, ClearcutSettings
+from clearcut.bootstrap.settings import (
+    LOCAL_SQLITE_URL,
+    ClearcutSettings,
+    StorageSettings,
+)
 from pydantic import ValidationError
 
 LOCAL_DATABASE_URL = "sqlite+aiosqlite:////tmp/clearcut-test.db"
@@ -43,11 +47,11 @@ def valid_settings(profile: str) -> dict[str, object]:
 
 
 @pytest.mark.parametrize(
-    ("profile", "storage", "dispatch", "auth", "secrets"),
+    ("profile", "storage", "dispatch", "auth", "secrets", "ephemeral"),
     [
-        ("local", "filesystem", "local", "builtin", "environment"),
-        ("portable", "s3", "postgres", "builtin", "host"),
-        ("gcp", "gcs", "cloud_tasks", "builtin", "secret_manager"),
+        ("local", "filesystem", "local", "builtin", "environment", True),
+        ("portable", "s3", "postgres", "builtin", "host", False),
+        ("gcp", "gcs", "cloud_tasks", "builtin", "secret_manager", False),
     ],
 )
 def test_profile_defaults(
@@ -56,10 +60,13 @@ def test_profile_defaults(
     dispatch: str,
     auth: str,
     secrets: str,
+    ephemeral: bool,
 ) -> None:
     settings = ClearcutSettings.model_validate(valid_settings(profile))
 
     assert settings.storage.adapter == storage
+    assert settings.storage.path is None or storage == "filesystem"
+    assert settings.storage.ephemeral is ephemeral
     assert settings.dispatch.adapter == dispatch
     assert settings.authentication.adapter == auth
     assert settings.secrets.backend == secrets
@@ -72,6 +79,39 @@ def test_hosted_profiles_require_postgresql(profile: str) -> None:
 
     with pytest.raises(ValidationError, match="PostgreSQL"):
         ClearcutSettings.model_validate(config)
+
+
+@pytest.mark.parametrize("profile", ["portable", "gcp"])
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        "postgresql+not-a-url",
+        "postgresql+asyncpg:///clearcut",
+        "postgresql+asyncpg://database",
+        "postgresql+asyncpg://database:not-a-port/clearcut",
+    ],
+)
+def test_hosted_profiles_reject_malformed_postgresql_urls(
+    profile: str,
+    database_url: str,
+) -> None:
+    config = valid_settings(profile)
+    config["database"] = {"url": database_url}
+
+    with pytest.raises(ValidationError, match="valid PostgreSQL SQLAlchemy URL"):
+        ClearcutSettings.model_validate(config)
+
+
+@pytest.mark.parametrize("profile", ["portable", "gcp"])
+def test_hosted_profiles_reject_unsupported_postgresql_driver(profile: str) -> None:
+    database_url = "postgresql+psycopg://clearcut:super-secret@database/clearcut"
+    config = valid_settings(profile)
+    config["database"] = {"url": database_url}
+
+    with pytest.raises(ValidationError, match="supported PostgreSQL async driver") as exc_info:
+        ClearcutSettings.model_validate(config)
+
+    assert "super-secret" not in str(exc_info.value)
 
 
 @pytest.mark.parametrize("profile", ["local", "portable", "gcp"])
@@ -92,6 +132,67 @@ def test_hosted_profiles_reject_ephemeral_filesystem_storage() -> None:
 
     with pytest.raises(ValidationError, match="filesystem"):
         ClearcutSettings.model_validate(config)
+
+
+@pytest.mark.parametrize(
+    ("profile", "storage"),
+    [
+        (
+            "portable",
+            {"adapter": "s3", "bucket": "clearcut-artifacts", "ephemeral": True},
+        ),
+        (
+            "portable",
+            {"adapter": "s3", "bucket": "clearcut-artifacts", "ephemeral": False},
+        ),
+        (
+            "gcp",
+            {
+                "adapter": "gcs",
+                "project_id": "clearcut-project",
+                "bucket": "clearcut-artifacts",
+                "ephemeral": True,
+            },
+        ),
+        (
+            "gcp",
+            {
+                "adapter": "gcs",
+                "project_id": "clearcut-project",
+                "bucket": "clearcut-artifacts",
+                "ephemeral": False,
+            },
+        ),
+    ],
+)
+def test_hosted_storage_rejects_explicit_filesystem_ephemeral_setting(
+    profile: str,
+    storage: dict[str, object],
+) -> None:
+    config = valid_settings(profile)
+    config["storage"] = storage
+
+    with pytest.raises(ValidationError, match="ephemeral"):
+        ClearcutSettings.model_validate(config)
+
+
+@pytest.mark.parametrize("adapter", ["s3", "gcs"])
+@pytest.mark.parametrize("path", [None, "/tmp/contradictory"])
+def test_hosted_storage_rejects_explicit_filesystem_path_at_adapter_boundary(
+    adapter: str,
+    path: str | None,
+) -> None:
+    storage: dict[str, object] = {"adapter": adapter, "path": path}
+    if adapter == "s3":
+        storage["bucket"] = "clearcut-artifacts"
+    else:
+        storage.update({
+            "project_id": "clearcut-project",
+            "bucket": "clearcut-artifacts",
+        })
+
+    with pytest.raises(ValidationError, match="filesystem.*path"):
+        StorageSettings.model_validate(storage)
 
 
 @pytest.mark.parametrize(
@@ -250,6 +351,16 @@ def test_database_url_cannot_be_blank() -> None:
             },
         ),
         (
+            "gcp",
+            "storage",
+            {
+                "adapter": "gcs",
+                "project_id": "clearcut-project",
+                "bucket": "clearcut-artifacts",
+                "path": "/tmp/contradictory",
+            },
+        ),
+        (
             "portable",
             "dispatch",
             {"adapter": "postgres", "queue": "contradictory-cloud-queue"},
@@ -294,6 +405,40 @@ def test_database_module_rejects_hosted_sqlite_url(
 
     assert result.returncode != 0
     assert "PostgreSQL" in result.stderr
+
+
+def test_database_module_rejects_invalid_hosted_url_before_engine_construction(
+    tmp_path: Path,
+) -> None:
+    database_url = "postgresql+not-a-url"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = database_url
+    environment["CLEARCUT_DEPLOYMENT_PROFILE"] = "portable"
+    script = """
+import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
+
+
+def fail_if_called(*args, **kwargs):
+    raise AssertionError("engine construction attempted")
+
+
+sqlalchemy_asyncio.create_async_engine = fail_if_called
+import clearcut.database
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "valid PostgreSQL SQLAlchemy URL" in result.stderr
+    assert "engine construction attempted" not in result.stderr
+    assert database_url not in result.stderr
 
 
 def test_create_app_rejects_database_settings_that_differ_from_bound_engine(
