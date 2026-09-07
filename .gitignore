@@ -78,5 +78,17 @@ playwright/.cache/
 *.sublime-workspace
 *.sublime-project
 
+# Terraform local data and generated artifacts
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
 # Misc Prototype / Reference Directory
 misc/

@@ -1,15 +1,12 @@
-# Production environment Terraform entry point.
-# This file currently configures only provider requirements and explicit inputs;
-# it does not provision ClearCut resources.
-terraform {
-  required_version = ">= 1.5.0"
-
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
-    }
-  }
+locals {
+  allowed_project_services = toset([
+    "artifactregistry.googleapis.com",
+    "compute.googleapis.com",
+    "iamcredentials.googleapis.com",
+    "run.googleapis.com",
+    "servicenetworking.googleapis.com",
+    "sts.googleapis.com",
+  ])
 }
 
 provider "google" {
@@ -17,18 +14,39 @@ provider "google" {
   region  = var.region
 }
 
-variable "project_id" {
-  type        = string
-  description = "Explicit authorized GCP project ID; production project selection must be explicit."
+module "project_services" {
+  source = "../../modules/project-services"
 
-  validation {
-    condition     = length(trimspace(var.project_id)) > 0
-    error_message = "project_id must name an explicitly authorized GCP project."
-  }
+  allowed_services   = local.allowed_project_services
+  enabled            = var.manage_project_services
+  project_id         = var.project_id
+  requested_services = var.requested_services
 }
 
-variable "region" {
-  type        = string
-  description = "GCP region selected for the reviewed deployment."
-  default     = "us-central1"
+module "artifact_registry" {
+  source = "../../modules/artifact-registry"
+
+  depends_on = [module.project_services]
+
+  enabled      = var.manage_artifact_registry
+  environment  = var.artifact_registry_environment
+  location     = var.region
+  project_id   = var.project_id
+  repositories = var.artifact_repositories
+}
+
+module "network_foundation" {
+  source = "../../modules/network-foundation"
+
+  depends_on = [module.project_services]
+
+  api_routing_mode           = var.api_routing_mode
+  enabled                    = var.manage_network_foundation
+  network_name               = var.network_name
+  private_service_cidr       = var.private_service_cidr
+  private_service_range_name = var.private_service_range_name
+  project_id                 = var.project_id
+  region                     = var.region
+  subnet_cidr                = var.subnet_cidr
+  subnet_name                = var.subnet_name
 }
