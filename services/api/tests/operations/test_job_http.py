@@ -303,6 +303,16 @@ async def test_health_discloses_local_dispatch_is_not_durable() -> None:
             "mode": "local",
             "durable": False,
         }
+        assert response.json()["deployment"] == {
+            "profile": "local",
+            "databaseConfigured": True,
+            "storageAdapter": "filesystem",
+            "dispatchAdapter": "local",
+            "dispatchEnabled": True,
+            "authenticationAdapter": "builtin",
+            "secretBackend": "environment",
+            "paidProvidersEnabled": [],
+        }
     finally:
         app.state.job_dispatcher = original_dispatcher
 

@@ -178,7 +178,9 @@ jobs:
           set -euo pipefail
           gcloud run jobs update "$MIGRATION_JOB" \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
-            --image "$IMAGE" --command alembic --args upgrade,head --quiet
+            --image "$IMAGE" --command sh \
+            --args=-c,"python -m clearcut.bootstrap.preflight --expected-profile gcp && alembic upgrade head" \
+            --quiet
           gcloud run jobs execute "$MIGRATION_JOB" \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --wait --format=json > migration-execution.json
@@ -205,8 +207,12 @@ jobs:
               raise SystemExit('Missing migration execution identity')
           if len(containers) != 1 or containers[0].get('image') != os.environ['IMAGE']:
               raise SystemExit('Executed migration image did not match the release digest')
-          if containers[0].get('command') != ['alembic'] or containers[0].get('args') != ['upgrade', 'head']:
-              raise SystemExit('Executed migration command did not match Alembic upgrade head')
+          expected_command = [
+              '-c',
+              'python -m clearcut.bootstrap.preflight --expected-profile gcp && alembic upgrade head',
+          ]
+          if containers[0].get('command') != ['sh'] or containers[0].get('args') != expected_command:
+              raise SystemExit('Executed migration command did not match the GCP preflight and Alembic upgrade')
           if len(completed) != 1 or completed[0].get('status') != 'True':
               raise SystemExit('Migration execution did not complete successfully')
           receipt = {

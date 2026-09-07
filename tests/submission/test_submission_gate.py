@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 VERIFY_SCRIPT = REPOSITORY_ROOT / "scripts" / "verify-submission.mjs"

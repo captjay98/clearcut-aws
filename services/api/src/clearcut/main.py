@@ -485,6 +485,18 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
                 "status": "ok",
                 "timestamp": datetime.now(UTC).isoformat(),
                 "version": "0.1.0",
+                "deployment": {
+                    "profile": app.state.deployment_summary.profile,
+                    "databaseConfigured": app.state.deployment_summary.database_configured,
+                    "storageAdapter": app.state.deployment_summary.storage_adapter,
+                    "dispatchAdapter": app.state.deployment_summary.dispatch_adapter,
+                    "dispatchEnabled": app.state.deployment_summary.dispatch_enabled,
+                    "authenticationAdapter": (app.state.deployment_summary.authentication_adapter),
+                    "secretBackend": app.state.deployment_summary.secret_backend,
+                    "paidProvidersEnabled": list(
+                        app.state.deployment_summary.paid_providers_enabled
+                    ),
+                },
                 "jobDispatch": {
                     "mode": app.state.job_dispatcher.mode,
                     "durable": app.state.job_dispatcher.durable,

@@ -6,6 +6,7 @@ import copy
 import json
 import os
 import re
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -80,6 +81,26 @@ def test_build_publishes_one_image_and_immutable_receipt_after_checks():
     assert upload["with"]["if-no-files-found"] == "error"
 
 
+def test_build_publication_requires_complete_provider_free_verification() -> None:
+    verify = workflow("build")["jobs"]["verify"]
+    source = "\n".join(step.get("run", "") for step in verify["steps"])
+    actions = {step.get("uses", "") for step in verify["steps"]}
+
+    assert any(action.startswith("astral-sh/setup-uv@") for action in actions)
+    assert any(action.startswith("pnpm/action-setup@") for action in actions)
+    assert any(action.startswith("oven-sh/setup-bun@") for action in actions)
+    for command in (
+        "pnpm install --frozen-lockfile",
+        "pnpm verify",
+        "uv run ruff check",
+        "uv run pyright",
+        "uv run pytest services/api/tests -q",
+        "pnpm --filter clearcut-web test",
+        "pnpm build",
+    ):
+        assert command in source
+
+
 @pytest.mark.parametrize("name,upstream", [("migrate", "build"), ("deploy", "migrate")])
 def test_evidence_is_verified_before_cloud_auth_and_bound_to_exact_run_attempt(name, upstream):
     release = job(name)
@@ -110,12 +131,61 @@ def test_migration_records_success_only_after_waited_execution_of_same_digest():
     assert execution.count("gcloud run jobs execute") == 1
     assert '--image "$IMAGE"' in execution
     assert "--wait" in execution
-    assert "--command alembic" in execution
-    assert "--args upgrade,head" in execution
+    assert "--command sh" in execution
+    assert "python -m clearcut.bootstrap.preflight --expected-profile gcp" in execution
+    assert "&& alembic upgrade head" in execution
     ids = [s.get("id") for s in release["steps"]]
     assert ids.index("execute") < ids.index("record_evidence") < ids.index("upload_evidence")
     assert step("migrate", "upload_evidence")["with"]["if-no-files-found"] == "error"
     assert "NO-GO" in (WORKFLOWS / "migrate.yml").read_text()
+
+
+def test_migration_and_candidate_require_gcp_profile_preflight() -> None:
+    migration = step("migrate", "execute")["run"]
+    smoke = step("deploy", "smoke")["run"]
+
+    assert "python -m clearcut.bootstrap.preflight --expected-profile gcp" in migration
+    assert (
+        'python3 scripts/deployment_smoke.py --url "$CANDIDATE_URL" '
+        "--expected-profile gcp"
+    ) in smoke
+
+
+def test_smoke_requires_exact_redacted_gcp_runtime_attestation() -> None:
+    smoke_module = runpy.run_path(str(ROOT / "scripts/deployment_smoke.py"))
+    validate_deployment_health = smoke_module.get("validate_deployment_health")
+    assert callable(validate_deployment_health), "Deployment smoke must validate runtime profile"
+
+    local_health = {
+        "status": "ok",
+        "deployment": {
+            "profile": "local",
+            "databaseConfigured": True,
+            "storageAdapter": "filesystem",
+            "dispatchAdapter": "local",
+            "dispatchEnabled": True,
+            "authenticationAdapter": "builtin",
+            "secretBackend": "environment",
+        },
+        "jobDispatch": {"mode": "local", "durable": False},
+    }
+    with pytest.raises(AssertionError, match="GCP deployment profile"):
+        validate_deployment_health(local_health, expected_profile="gcp")
+
+    gcp_health = {
+        "status": "ok",
+        "deployment": {
+            "profile": "gcp",
+            "databaseConfigured": True,
+            "storageAdapter": "gcs",
+            "dispatchAdapter": "cloud_tasks",
+            "dispatchEnabled": True,
+            "authenticationAdapter": "builtin",
+            "secretBackend": "secret_manager",
+        },
+        "jobDispatch": {"mode": "cloud_tasks", "durable": True},
+    }
+    validate_deployment_health(gcp_health, expected_profile="gcp")
 
 
 def test_one_candidate_smoked_at_unified_origin_before_exact_revision_promotion():
@@ -129,7 +199,10 @@ def test_one_candidate_smoked_at_unified_origin_before_exact_revision_promotion(
     assert "--revision-suffix" in step("deploy", "candidate")["run"]
     assert '--image "$IMAGE"' in step("deploy", "candidate")["run"]
     smoke = step("deploy", "smoke")["run"]
-    assert 'python3 scripts/deployment_smoke.py --url "$CANDIDATE_URL"' in smoke
+    assert (
+        'python3 scripts/deployment_smoke.py --url "$CANDIDATE_URL" '
+        "--expected-profile gcp"
+    ) in smoke
     assert "--to-revisions" in step("deploy", "promote")["run"]
     assert "--to-latest" not in source and "--to-tags" not in source
     ids = [s.get("id") for s in release["steps"]]
@@ -213,3 +286,26 @@ def test_terraform_remains_explicitly_no_go_without_saved_plan_approval():
     sources = "\n".join((WORKFLOWS / f"{name}.yml").read_text() for name in ("build", "migrate", "deploy"))
     assert "Terraform plan/apply: NO-GO" in sources
     assert not re.search(r"terraform\s+(?:plan|apply)\b", sources)
+
+
+
+def test_health_contract_requires_redacted_deployment_attestation() -> None:
+    contract = yaml.safe_load((ROOT / "packages/contracts/openapi.yaml").read_text())
+    schemas = contract["components"]["schemas"]
+    health = schemas["HealthResponse"]
+    deployment = schemas["DeploymentMetadata"]
+
+    assert "deployment" in health["required"]
+    assert health["properties"]["deployment"] == {
+        "$ref": "#/components/schemas/DeploymentMetadata"
+    }
+    assert set(deployment["required"]) == {
+        "profile",
+        "databaseConfigured",
+        "storageAdapter",
+        "dispatchAdapter",
+        "dispatchEnabled",
+        "authenticationAdapter",
+        "secretBackend",
+        "paidProvidersEnabled",
+    }

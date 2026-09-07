@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -509,6 +510,63 @@ def test_local_environment_constructor_selects_sqlite_explicitly_without_side_ef
 def test_hosted_environment_does_not_inherit_local_sqlite_fallback() -> None:
     with pytest.raises(ValidationError, match="database"):
         ClearcutSettings.from_environment({"CLEARCUT_DEPLOYMENT_PROFILE": "portable"})
+
+
+def test_gcp_release_preflight_is_side_effect_free_and_redacted(tmp_path: Path) -> None:
+    sentinel_password = "preflight-database-password"
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "CLEARCUT_DEPLOYMENT_PROFILE": "gcp",
+            "DATABASE_URL": (
+                "postgresql+asyncpg://clearcut:"
+                f"{sentinel_password}@database/clearcut"
+            ),
+            "CLEARCUT_STORAGE_BUCKET": "clearcut-artifacts",
+            "CLEARCUT_STORAGE_PROJECT_ID": "clearcut-project",
+            "CLEARCUT_CLOUD_TASKS_PROJECT_ID": "clearcut-project",
+            "CLEARCUT_CLOUD_TASKS_LOCATION": "us-central1",
+            "CLEARCUT_CLOUD_TASKS_QUEUE": "clearcut-jobs",
+            "CLEARCUT_CLOUD_TASKS_TARGET_URL": (
+                "https://clearcut.example/api/internal/jobs:execute"
+            ),
+            "CLEARCUT_CLOUD_TASKS_AUDIENCE": "https://clearcut.example",
+            "CLEARCUT_CLOUD_TASKS_SERVICE_ACCOUNT_EMAIL": (
+                "tasks@clearcut-project.iam.gserviceaccount.com"
+            ),
+            "CLEARCUT_STATIC_DELIVERY_ENABLED": "true",
+            "CLEARCUT_SITE_DIST_PATH": "/app/site-dist",
+            "CLEARCUT_WORKSPACE_DIST_PATH": "/app/web-dist",
+        }
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "clearcut.bootstrap.preflight",
+            "--expected-profile",
+            "gcp",
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert sentinel_password not in result.stdout + result.stderr
+    assert json.loads(result.stdout) == {
+        "authentication_adapter": "builtin",
+        "database_configured": True,
+        "dispatch_adapter": "cloud_tasks",
+        "dispatch_enabled": True,
+        "paid_providers_enabled": [],
+        "profile": "gcp",
+        "secret_backend": "secret_manager",
+        "storage_adapter": "gcs",
+    }
 
 
 def test_database_module_rejects_missing_hosted_database_url(tmp_path: Path) -> None:

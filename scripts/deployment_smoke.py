@@ -42,12 +42,45 @@ def test_endpoint(url: str, expected_status: int = 200, retries: int = 2) -> dic
     raise AssertionError("unreachable")
 
 
+def validate_deployment_health(health: dict[str, Any], *, expected_profile: str | None) -> None:
+    """Fail closed when a hosted candidate reports local or non-durable adapters."""
+    assert health.get("status") == "ok", "Invalid healthz response"
+    if expected_profile is None:
+        return
+
+    deployment = health.get("deployment")
+    assert isinstance(deployment, dict), "Missing redacted deployment attestation"
+    assert deployment.get("profile") == expected_profile, "Expected GCP deployment profile"
+    if expected_profile == "gcp":
+        assert deployment.get("databaseConfigured") is True, "GCP database is not configured"
+        assert deployment.get("storageAdapter") in {"gcs", "s3"}, (
+            "GCP storage must be hosted and non-ephemeral"
+        )
+        assert deployment.get("dispatchAdapter") == "cloud_tasks", (
+            "GCP dispatch must use Cloud Tasks"
+        )
+        assert deployment.get("dispatchEnabled") is True, "GCP dispatch must remain enabled"
+        assert deployment.get("secretBackend") == "secret_manager", (
+            "GCP secrets must use Secret Manager"
+        )
+        dispatch = health.get("jobDispatch")
+        assert dispatch == {"mode": "cloud_tasks", "durable": True}, (
+            "GCP job dispatch must be durable"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ClearCut Deployment Smoke Gate")
     parser.add_argument(
         "--url",
         default="http://127.0.0.1:8000",
         help="Base URL of candidate service",
+    )
+    parser.add_argument(
+        "--expected-profile",
+        choices=("gcp",),
+        default=None,
+        help="Require a redacted hosted runtime attestation before promotion",
     )
     args = parser.parse_args()
     base_url = args.url.rstrip("/")
@@ -63,7 +96,7 @@ def main() -> None:
     assert "<html" in workspace.get("raw", "").lower(), "Invalid workspace response"
 
     health = test_endpoint(f"{base_url}/api/v1/healthz")
-    assert health.get("status") == "ok", "Invalid healthz response"
+    validate_deployment_health(health, expected_profile=args.expected_profile)
 
     openapi = test_endpoint(f"{base_url}/api/openapi.json")
     assert "paths" in openapi, "Invalid OpenAPI schema"

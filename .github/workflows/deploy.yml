@@ -227,7 +227,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$CANDIDATE_URL"
-          python3 scripts/deployment_smoke.py --url "$CANDIDATE_URL"
+          python3 scripts/deployment_smoke.py --url "$CANDIDATE_URL" --expected-profile gcp
 
       - name: Promote verified candidate
         id: promote

@@ -3386,12 +3386,50 @@ components:
         durable:
           type: boolean
 
+    DeploymentMetadata:
+      type: object
+      required:
+        - profile
+        - databaseConfigured
+        - storageAdapter
+        - dispatchAdapter
+        - dispatchEnabled
+        - authenticationAdapter
+        - secretBackend
+        - paidProvidersEnabled
+      properties:
+        profile:
+          type: string
+          enum: [local, portable, gcp]
+        databaseConfigured:
+          type: boolean
+        storageAdapter:
+          type: string
+          enum: [filesystem, s3, gcs]
+        dispatchAdapter:
+          type: string
+          enum: [local, postgres, cloud_tasks]
+        dispatchEnabled:
+          type: boolean
+        authenticationAdapter:
+          type: string
+          enum: [builtin, firebase]
+        secretBackend:
+          type: string
+          enum: [environment, host, secret_manager]
+        paidProvidersEnabled:
+          type: array
+          items:
+            type: string
+            enum: [gemini, parallel]
+
     HealthResponse:
       type: object
       required:
         - status
         - timestamp
         - version
+        - deployment
         - jobDispatch
       properties:
         status:
@@ -3402,6 +3440,8 @@ components:
         version:
           type: string
           example: "0.1.0"
+        deployment:
+          $ref: '#/components/schemas/DeploymentMetadata'
         jobDispatch:
           $ref: '#/components/schemas/JobDispatchMetadata'
 
