@@ -79,13 +79,14 @@ def test_deploy_workflow_is_keyless_digest_pinned_and_smoke_gated() -> None:
     assert "id-token: write" in workflow
     assert "workload_identity_provider:" in workflow
     assert "service_account:" in workflow
-    assert "site_image_digest:" in workflow
-    assert "web_image_digest:" in workflow
-    assert "api_image_digest:" in workflow
+    assert "image_digest:" in workflow
+    assert "site_image_digest:" not in workflow
+    assert "web_image_digest:" not in workflow
+    assert "api_image_digest:" not in workflow
     assert "environment: ${{ inputs.environment }}" in workflow
     assert "@sha256:" in workflow
     assert "--no-traffic" in workflow
-    assert workflow.index("Candidate smoke gate") < workflow.index("Promote verified candidates")
+    assert workflow.index("Candidate smoke gate") < workflow.index("Promote verified candidate")
 
 
 def test_migration_workflow_executes_protected_digest_pinned_job() -> None:
@@ -95,7 +96,8 @@ def test_migration_workflow_executes_protected_digest_pinned_job() -> None:
     assert "id-token: write" in workflow
     assert "workload_identity_provider:" in workflow
     assert "service_account:" in workflow
-    assert "api_image_digest:" in workflow
+    assert "image_digest:" in workflow
+    assert "api_image_digest:" not in workflow
     assert "environment: ${{ inputs.environment }}" in workflow
     assert "gcloud run jobs update" in workflow
     assert "gcloud run jobs execute" in workflow

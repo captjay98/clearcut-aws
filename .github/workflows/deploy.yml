@@ -1,120 +1,243 @@
-name: Deploy Cloud Run candidates
+name: Deploy one verified ClearCut candidate
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Protected GitHub environment to deploy"
+        description: Protected GitHub environment with required human reviewers
         required: true
         type: choice
-        options:
-          - staging
-          - production
-      site_image_digest:
-        description: "Immutable clearcut-site image reference ending in @sha256:<64 hex>"
-        required: true
-        type: string
-      web_image_digest:
-        description: "Immutable clearcut-web image reference ending in @sha256:<64 hex>"
-        required: true
-        type: string
-      api_image_digest:
-        description: "Immutable clearcut-api image reference ending in @sha256:<64 hex>"
+        options: [staging, production]
+      image_digest:
+        description: Immutable configured repository/clearcut@sha256 digest from the build receipt
         required: true
         type: string
       migration_run_id:
-        description: "Successful protected migration workflow run ID for this API digest"
+        description: Successful migration workflow run ID for the same digest and source SHA
+        required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY to authorize this protected operation
         required: true
         type: string
 
 permissions:
   contents: read
-  id-token: write
 
+# Both mutation workflows serialize by environment, including migration job updates.
+concurrency:
+  group: clearcut-release-${{ inputs.environment }}
+  cancel-in-progress: false
+
+# Terraform plan/apply: NO-GO until exact saved-plan human approval is established.
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     env:
+      RELEASE_ENVIRONMENT: ${{ inputs.environment }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+      IMAGE: ${{ inputs.image_digest }}
+      EVIDENCE_RUN_ID: ${{ inputs.migration_run_id }}
+      EVIDENCE_KIND: migration
+      EVIDENCE_FILE: release-evidence/migration-evidence.json
+      CONFIRMATION: ${{ inputs.confirmation }}
+      EXPECTED_CONFIRMATION: DEPLOY
+      SERVICE: clearcut
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Authenticate to GCP with Workload Identity Federation
+      - name: Validate release inputs before authentication
+        id: validate_inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          require(os.environ['RELEASE_ENVIRONMENT'] in ('staging', 'production'), 'Invalid environment')
+          require(re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', os.environ['GCP_PROJECT_ID']), 'Invalid project')
+          require(re.fullmatch(r'[a-z]+-[a-z]+[0-9]', os.environ['GCP_REGION']), 'Invalid region')
+          require(re.fullmatch(r'[a-z][a-z0-9-]{0,62}', os.environ['ARTIFACT_REPOSITORY']), 'Invalid artifact repository')
+          registry = os.environ['GCP_REGION'] + '-docker.pkg.dev'
+          repository = '/'.join((registry, os.environ['GCP_PROJECT_ID'], os.environ['ARTIFACT_REPOSITORY'], 'clearcut'))
+          image = os.environ.get('IMAGE')
+          if image is not None:
+              require(re.fullmatch(re.escape(repository) + r'@sha256:[a-f0-9]{64}', image), 'Expected one clearcut@sha256 digest in the configured repository')
+              require(re.fullmatch(r'[1-9][0-9]*', os.environ['EVIDENCE_RUN_ID']), 'Invalid evidence run ID')
+              require(os.environ['CONFIRMATION'] == os.environ['EXPECTED_CONFIRMATION'], 'Missing release authorization')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.write(f'registry={registry}\nimage_repository={repository}\n')
+              output.write(f"image_tag={repository}:run-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}\n")
+          PY
+
+      - name: Verify successful upstream workflow provenance
+        id: verify_run
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_WORKFLOW: .github/workflows/migrate.yml
+        with:
+          script: |
+            const runId = process.env.EVIDENCE_RUN_ID;
+            if (!/^[1-9][0-9]*$/.test(runId) || !Number.isSafeInteger(Number(runId))) {
+              throw new Error('Invalid evidence run ID');
+            }
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: Number(runId)
+            });
+            if (String(run.id) !== runId || run.status !== 'completed' ||
+                run.conclusion !== 'success' || run.event !== 'workflow_dispatch' ||
+                run.path !== process.env.EXPECTED_WORKFLOW ||
+                run.head_sha !== context.sha || run.head_branch !== 'main' ||
+                run.repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
+              throw new Error('Upstream evidence must come from a successful same-repository main workflow at this exact source SHA');
+            }
+            core.setOutput('attempt', String(run.run_attempt));
+
+      - name: Download exact upstream run attempt evidence
+        id: download_evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: clearcut-migration-${{ env.EVIDENCE_RUN_ID }}-${{ steps.verify_run.outputs.attempt }}
+          path: release-evidence
+          run-id: ${{ env.EVIDENCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Validate digest-bound upstream evidence
+        id: verify_evidence
+        shell: bash
+        env:
+          EVIDENCE_RUN_ATTEMPT: ${{ steps.verify_run.outputs.attempt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          receipt = json.loads(Path(os.environ['EVIDENCE_FILE']).read_text())
+          expected = {
+              'schema_version': 1,
+              'kind': os.environ['EVIDENCE_KIND'],
+              'result': 'success',
+              'image': os.environ['IMAGE'],
+              'environment': os.environ['RELEASE_ENVIRONMENT'],
+              'project': os.environ['GCP_PROJECT_ID'],
+              'region': os.environ['GCP_REGION'],
+              'source_sha': os.environ['GITHUB_SHA'],
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'run_id': os.environ['EVIDENCE_RUN_ID'],
+              'run_attempt': os.environ['EVIDENCE_RUN_ATTEMPT'],
+          }
+          for key, value in expected.items():
+              if receipt.get(key) != value or type(receipt.get(key)) is not type(value):
+                  raise SystemExit(f'Evidence mismatch: {key}')
+          if expected['kind'] == 'migration':
+              if not re.fullmatch(r'clearcut-migrate-[a-z0-9-]+', receipt.get('execution', '')):
+                  raise SystemExit('Missing successful migration execution')
+              for key in ('build_run_id', 'build_run_attempt'):
+                  if not re.fullmatch(r'[1-9][0-9]*', receipt.get(key, '')):
+                      raise SystemExit(f'Missing build provenance: {key}')
+          PY
+
+      - name: Authenticate with keyless Workload Identity Federation
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          create_credentials_file: false
+          token_format: access_token
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Validate immutable release inputs
+      - name: Deploy one candidate without traffic
+        id: candidate
         shell: bash
         env:
-          SITE_IMAGE: ${{ inputs.site_image_digest }}
-          WEB_IMAGE: ${{ inputs.web_image_digest }}
-          API_IMAGE: ${{ inputs.api_image_digest }}
-          MIGRATION_RUN_ID: ${{ inputs.migration_run_id }}
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
         run: |
           set -euo pipefail
-          test -n "$GCP_PROJECT_ID"
-          test -n "$GCP_REGION"
-          test -n "$MIGRATION_RUN_ID"
-          [[ "$SITE_IMAGE" =~ /clearcut-site@sha256:[a-f0-9]{64}$ ]]
-          [[ "$WEB_IMAGE" =~ /clearcut-web@sha256:[a-f0-9]{64}$ ]]
-          [[ "$API_IMAGE" =~ /clearcut-api@sha256:[a-f0-9]{64}$ ]]
+          SUFFIX="r${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          TAG="candidate-${SUFFIX}"
+          REVISION="${SERVICE}-${SUFFIX}"
+          gcloud run deploy "$SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --image "$IMAGE" --no-traffic --tag "$TAG" --revision-suffix "$SUFFIX" \
+            --labels "source-sha=$GITHUB_SHA,environment=$RELEASE_ENVIRONMENT" --quiet
+          gcloud run services describe "$SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format=json > candidate-service.json
+          gcloud run revisions describe "$REVISION" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format=json > candidate-revision.json
+          export TAG REVISION
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.parse import urlparse
 
-      - name: Deploy candidates without traffic
-        shell: bash
-        env:
-          SITE_IMAGE: ${{ inputs.site_image_digest }}
-          WEB_IMAGE: ${{ inputs.web_image_digest }}
-          API_IMAGE: ${{ inputs.api_image_digest }}
-        run: |
-          set -euo pipefail
-          TAG="candidate-${GITHUB_SHA::7}"
-          declare -A IMAGES=(
-            [clearcut-site]="$SITE_IMAGE"
-            [clearcut-web]="$WEB_IMAGE"
-            [clearcut-api]="$API_IMAGE"
-          )
-          for service in clearcut-site clearcut-web clearcut-api; do
-            gcloud run deploy "$service" \
-              --project "$GCP_PROJECT_ID" \
-              --region "$GCP_REGION" \
-              --image "${IMAGES[$service]}" \
-              --no-traffic \
-              --tag "$TAG" \
-              --labels "source-sha=$GITHUB_SHA,environment=${{ inputs.environment }}"
-          done
+          service = json.loads(Path('candidate-service.json').read_text())
+          revision = json.loads(Path('candidate-revision.json').read_text())
+          revision_name = os.environ['REVISION']
+          if revision.get('metadata', {}).get('name') != revision_name:
+              raise SystemExit('Candidate revision identity mismatch')
+          containers = revision.get('spec', {}).get('containers', [])
+          if len(containers) != 1 or containers[0].get('image') != os.environ['IMAGE']:
+              raise SystemExit('Candidate revision image mismatch')
+          ready = [c for c in revision.get('status', {}).get('conditions', []) if c.get('type') == 'Ready']
+          if len(ready) != 1 or ready[0].get('status') != 'True':
+              raise SystemExit('Candidate revision is not ready')
+          traffic = service.get('status', {}).get('traffic', [])
+          matches = [t for t in traffic if t.get('tag') == os.environ['TAG'] and t.get('revisionName') == revision_name]
+          if len(matches) != 1 or any(t.get('percent', 0) for t in traffic if t.get('revisionName') == revision_name):
+              raise SystemExit('Candidate must have an exact tag and zero traffic')
+          url = matches[0].get('url', '')
+          parsed = urlparse(url)
+          if parsed.scheme != 'https' or not parsed.hostname or not parsed.hostname.endswith('.run.app') or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('', '/'):
+              raise SystemExit('Invalid candidate URL')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.write(f'url={url}\nrevision={revision_name}\n')
+          PY
 
       - name: Candidate smoke gate
+        id: smoke
         shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.candidate.outputs.url }}
         run: |
           set -euo pipefail
-          TAG="candidate-${GITHUB_SHA::7}"
-          candidate_url() {
-            gcloud run services describe "$1" \
-              --project "$GCP_PROJECT_ID" \
-              --region "$GCP_REGION" \
-              --format="value(status.traffic[?tag='$TAG'].url)"
-          }
-          SITE_URL="$(candidate_url clearcut-site)"
-          WEB_URL="$(candidate_url clearcut-web)"
-          API_URL="$(candidate_url clearcut-api)"
-          test -n "$SITE_URL" && curl --fail --silent --show-error "$SITE_URL/" >/dev/null
-          test -n "$WEB_URL" && curl --fail --silent --show-error "$WEB_URL/" >/dev/null
-          test -n "$API_URL" && curl --fail --silent --show-error "$API_URL/healthz" >/dev/null
+          test -n "$CANDIDATE_URL"
+          python3 scripts/deployment_smoke.py --url "$CANDIDATE_URL"
 
-      - name: Promote verified candidates
+      - name: Promote verified candidate
+        id: promote
         shell: bash
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          REVISION: ${{ steps.candidate.outputs.revision }}
         run: |
           set -euo pipefail
-          TAG="candidate-${GITHUB_SHA::7}"
-          for service in clearcut-site clearcut-web clearcut-api; do
-            gcloud run services update-traffic "$service" \
-              --project "$GCP_PROJECT_ID" \
-              --region "$GCP_REGION" \
-              --to-tags "$TAG=100"
-          done
+          test -n "$REVISION"
+          gcloud run services update-traffic "$SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --to-revisions "$REVISION=100" --quiet

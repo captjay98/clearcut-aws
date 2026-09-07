@@ -1,32 +1,157 @@
-name: Build & Verify
+name: Build and verify one ClearCut release image
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub environment with required human reviewers
+        required: true
+        type: choice
+        options: [staging, production]
 
+permissions:
+  contents: read
+
+# Terraform plan/apply: NO-GO. Exact saved-plan approval and remote state
+# safeguards must be established separately; these workflows do not provision.
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-      - name: Run Python Checks
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install source-contract test dependencies
+        run: python -m pip install pytest pyyaml
+      - name: Verify release source contracts without providers or Terraform
+        run: >-
+          python -m pytest -q tests/foundation/test_release_workflows.py
+          tests/foundation/test_deployment_boundaries.py
+          -k 'release_workflows or deploy_workflow or migration_workflow'
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+    steps:
+      - name: Validate release inputs before authentication
+        id: validate_inputs
+        shell: bash
         run: |
-          uv run ruff check .
-          uv run pyright
-          uv run pytest -v
-      - name: Run Frontend Checks
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          require(os.environ['RELEASE_ENVIRONMENT'] in ('staging', 'production'), 'Invalid environment')
+          require(re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', os.environ['GCP_PROJECT_ID']), 'Invalid project')
+          require(re.fullmatch(r'[a-z]+-[a-z]+[0-9]', os.environ['GCP_REGION']), 'Invalid region')
+          require(re.fullmatch(r'[a-z][a-z0-9-]{0,62}', os.environ['ARTIFACT_REPOSITORY']), 'Invalid artifact repository')
+          registry = os.environ['GCP_REGION'] + '-docker.pkg.dev'
+          repository = '/'.join((registry, os.environ['GCP_PROJECT_ID'], os.environ['ARTIFACT_REPOSITORY'], 'clearcut'))
+          image = os.environ.get('IMAGE')
+          if image is not None:
+              require(re.fullmatch(re.escape(repository) + r'@sha256:[a-f0-9]{64}', image), 'Expected one clearcut@sha256 digest in the configured repository')
+              require(re.fullmatch(r'[1-9][0-9]*', os.environ['EVIDENCE_RUN_ID']), 'Invalid evidence run ID')
+              require(os.environ['CONFIRMATION'] == os.environ['EXPECTED_CONFIRMATION'], 'Missing release authorization')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.write(f'registry={registry}\nimage_repository={repository}\n')
+              output.write(f"image_tag={repository}:run-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}\n")
+          PY
+      - name: Authenticate with keyless Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_BUILD_SERVICE_ACCOUNT }}
+          create_credentials_file: false
+          token_format: access_token
+
+      - name: Authenticate Docker using the short-lived federated token
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.validate_inputs.outputs.registry }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the single unified runtime
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.validate_inputs.outputs.image_tag }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Record digest-bound build evidence
+        id: record_evidence
+        shell: bash
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.validate_inputs.outputs.image_repository }}
         run: |
-          node scripts/check-no-legacy-runtime.mjs
-          bun test apps/site/tests/ packages/design-system/tests/
-          bun scripts/check-contract-drift.mjs
-          bun scripts/check-feature-coverage.mjs
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          digest = os.environ['DIGEST']
+          if not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
+              raise SystemExit('Build did not produce an immutable digest')
+          receipt = {
+              'schema_version': 1,
+              'kind': 'build',
+              'result': 'success',
+              'image': os.environ['IMAGE_REPOSITORY'] + '@' + digest,
+              'environment': os.environ['RELEASE_ENVIRONMENT'],
+              'project': os.environ['GCP_PROJECT_ID'],
+              'region': os.environ['GCP_REGION'],
+              'source_sha': os.environ['GITHUB_SHA'],
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'recorded_at': datetime.now(UTC).isoformat(),
+          }
+          Path('build-evidence.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as summary:
+              summary.write(f"Built `{receipt['image']}` from `{receipt['source_sha']}`.\n")
+          PY
+
+      - name: Preserve immutable build evidence
+        id: upload_evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: clearcut-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-evidence.json
+          if-no-files-found: error
+          retention-days: 30
