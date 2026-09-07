@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,7 +25,7 @@ def validate_hosted_database_url(database_url: str) -> None:
         driver_name = parsed_url.drivername
         host = parsed_url.host
         database = parsed_url.database
-        _ = parsed_url.port
+        port = parsed_url.port
     except (ArgumentError, ValueError):
         raise ValueError(
             "Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL "
@@ -41,10 +41,10 @@ def validate_hosted_database_url(database_url: str) -> None:
             "Hosted deployment profiles require the supported PostgreSQL async "
             "driver (asyncpg)."
         )
-    if not host or not database:
+    if not host or not database or (port is not None and not 1 <= port <= 65_535):
         raise ValueError(
             "Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL "
-            "with host and database."
+            "with host, database, and a port between 1 and 65535."
         )
 
 
@@ -85,41 +85,31 @@ class DatabaseSettings(_FrozenModel):
     url: str = Field(min_length=1)
 
 
-class StorageSettings(_FrozenModel):
-    adapter: StorageAdapter
-    path: Path | None = None
-    ephemeral: bool = False
-    bucket: str | None = None
-    project_id: str | None = None
+class FilesystemStorageSettings(_FrozenModel):
+    adapter: Literal[StorageAdapter.FILESYSTEM] = StorageAdapter.FILESYSTEM
+    path: Path
+    ephemeral: bool = True
+
+
+class S3StorageSettings(_FrozenModel):
+    adapter: Literal[StorageAdapter.S3] = StorageAdapter.S3
+    bucket: str = Field(min_length=1)
     endpoint_url: str | None = None
+    region: str | None = None
     access_key_id: SecretStr | None = None
     secret_access_key: SecretStr | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_ephemeral_for_adapter(cls, value: Any) -> Any:
-        if not isinstance(value, Mapping):
-            return value
-        data = dict(value)
-        try:
-            adapter = StorageAdapter(data.get("adapter"))
-        except (TypeError, ValueError):
-            return data
-        if adapter in {StorageAdapter.S3, StorageAdapter.GCS}:
-            if "ephemeral" in data:
-                raise ValueError(
-                    f"{adapter.value.upper()} storage does not accept the filesystem-only "
-                    "ephemeral setting."
-                )
-            if "path" in data:
-                raise ValueError(
-                    f"{adapter.value.upper()} storage does not accept the filesystem-only "
-                    "path setting."
-                )
-            data["ephemeral"] = False
-        else:
-            data.setdefault("ephemeral", True)
-        return data
+
+class GCSStorageSettings(_FrozenModel):
+    adapter: Literal[StorageAdapter.GCS] = StorageAdapter.GCS
+    bucket: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+
+
+StorageSettings = Annotated[
+    FilesystemStorageSettings | S3StorageSettings | GCSStorageSettings,
+    Field(discriminator="adapter"),
+]
 
 
 class DispatchSettings(_FrozenModel):
@@ -250,37 +240,6 @@ class ClearcutSettings(BaseSettings):
         if self.secrets.backend is not required_secrets[self.profile]:
             raise ValueError("Secret backend contradicts the selected profile.")
 
-        if self.storage.adapter is StorageAdapter.FILESYSTEM and self.storage.path is None:
-            raise ValueError("Filesystem storage requires a path.")
-        if self.storage.adapter is StorageAdapter.FILESYSTEM and any(
-            (
-                self.storage.bucket,
-                self.storage.project_id,
-                self.storage.endpoint_url,
-                self.storage.access_key_id,
-                self.storage.secret_access_key,
-            )
-        ):
-            raise ValueError("Filesystem storage does not accept hosted storage fields.")
-        if self.storage.adapter is StorageAdapter.S3 and self.storage.path is not None:
-            raise ValueError("S3 storage does not accept a filesystem path.")
-        if self.storage.adapter is StorageAdapter.S3 and self.storage.project_id is not None:
-            raise ValueError("S3 storage does not accept a GCS project_id.")
-        if self.storage.adapter is StorageAdapter.GCS and any(
-            (
-                self.storage.path,
-                self.storage.endpoint_url,
-                self.storage.access_key_id,
-                self.storage.secret_access_key,
-            )
-        ):
-            raise ValueError("GCS storage does not accept filesystem or S3 fields.")
-        if self.storage.adapter is StorageAdapter.S3 and not self.storage.bucket:
-            raise ValueError("S3 storage requires a bucket.")
-        if self.storage.adapter is StorageAdapter.GCS and not all(
-            (self.storage.project_id, self.storage.bucket)
-        ):
-            raise ValueError("GCS storage requires project_id and bucket.")
         cloud_tasks_fields = (
             self.dispatch.project_id,
             self.dispatch.location,
@@ -338,6 +297,7 @@ class ClearcutSettings(BaseSettings):
                     "bucket": "CLEARCUT_STORAGE_BUCKET",
                     "project_id": "CLEARCUT_STORAGE_PROJECT_ID",
                     "endpoint_url": "CLEARCUT_STORAGE_ENDPOINT_URL",
+                    "region": "CLEARCUT_STORAGE_REGION",
                     "access_key_id": "CLEARCUT_STORAGE_ACCESS_KEY_ID",
                     "secret_access_key": "CLEARCUT_STORAGE_SECRET_ACCESS_KEY",
                 },
