@@ -19,10 +19,13 @@ def _write_distributions(tmp_path: Path) -> tuple[Path, Path]:
 
     (site_dist / "features").mkdir(parents=True)
     (site_dist / "docs").mkdir()
+    (site_dist / "api").mkdir()
     (site_dist / "_astro").mkdir()
     (site_dist / "index.html").write_text(SITE_INDEX, encoding="utf-8")
     (site_dist / "features" / "index.html").write_text("<html>features</html>", encoding="utf-8")
     (site_dist / "docs" / "index.html").write_text("<html>public-docs</html>", encoding="utf-8")
+    (site_dist / "api" / "private").write_text("reserved-api-file", encoding="utf-8")
+    (site_dist / "healthz").write_text("reserved-health-file", encoding="utf-8")
     (site_dist / "robots.txt").write_text("User-agent: *", encoding="utf-8")
     (site_dist / "_astro" / "site.js").write_text("site-asset", encoding="utf-8")
     (site_dist / "private.txt").write_text("site-private", encoding="utf-8")
@@ -87,6 +90,32 @@ def test_api_and_health_routes_never_receive_html_fallback(tmp_path: Path) -> No
         assert SITE_INDEX not in response.text
         assert WORKSPACE_INDEX not in response.text
     assert client.get("/api/not-found").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_status"),
+    [
+        ("/api/private", 404),
+        ("/%2561pi/private", 404),
+        ("/%252561pi/private", 404),
+        ("/%2568ealthz", 200),
+        ("/%252568ealthz", 404),
+    ],
+)
+def test_encoded_reserved_namespaces_never_serve_public_files(
+    tmp_path: Path,
+    path: str,
+    expected_status: int,
+) -> None:
+    site_dist, workspace_dist = _write_distributions(tmp_path)
+    response = TestClient(_minimal_app(site_dist, workspace_dist)).get(path)
+
+    assert response.status_code == expected_status
+    assert response.headers["content-type"].startswith("application/json")
+    assert "reserved-api-file" not in response.text
+    assert "reserved-health-file" not in response.text
+    assert SITE_INDEX not in response.text
+    assert WORKSPACE_INDEX not in response.text
 
 
 def test_fastapi_docs_and_openapi_use_api_namespace(tmp_path: Path) -> None:

@@ -22,37 +22,32 @@ def _validated_distribution(path: Path, *, label: str) -> tuple[Path, Path]:
     return root, index
 
 
-def _decoded_relative_path(value: str) -> Path:
-    decoded = value
-    for _ in range(4):
-        next_value = unquote(decoded)
-        if next_value == decoded:
-            break
-        decoded = next_value
-
-    if "\\" in decoded or "\x00" in decoded:
+def _canonical_relative_path(value: str) -> PurePosixPath:
+    decoded = unquote(value)
+    if "%" in decoded or "\\" in decoded or "\x00" in decoded:
         raise _not_found()
+
     relative = PurePosixPath(decoded)
     if relative.is_absolute() or any(part in {".", ".."} for part in relative.parts):
         raise _not_found()
-    return Path(*relative.parts)
+    return relative
 
 
-def _resolved_candidate(root: Path, requested_path: str) -> Path:
-    candidate = (root / _decoded_relative_path(requested_path)).resolve()
+def _resolved_candidate(root: Path, requested_path: PurePosixPath) -> Path:
+    candidate = root.joinpath(*requested_path.parts).resolve()
     if not candidate.is_relative_to(root):
         raise _not_found()
     return candidate
 
 
-def _exact_file(root: Path, requested_path: str) -> FileResponse:
+def _exact_file(root: Path, requested_path: PurePosixPath) -> FileResponse:
     candidate = _resolved_candidate(root, requested_path)
     if not candidate.is_file():
         raise _not_found()
     return FileResponse(candidate)
 
 
-def _public_file(site_root: Path, requested_path: str) -> FileResponse:
+def _public_file(site_root: Path, requested_path: PurePosixPath) -> FileResponse:
     candidate = _resolved_candidate(site_root, requested_path)
     if candidate.is_file():
         return FileResponse(candidate)
@@ -83,16 +78,17 @@ def install_same_origin_routes(
     workspace_assets = workspace_root / "assets"
 
     async def serve_astro_asset(asset_path: str) -> FileResponse:
-        return _exact_file(astro_assets, asset_path)
+        return _exact_file(astro_assets, _canonical_relative_path(asset_path))
 
     async def serve_workspace_asset(asset_path: str) -> FileResponse:
-        return _exact_file(workspace_assets, asset_path)
+        return _exact_file(workspace_assets, _canonical_relative_path(asset_path))
 
     async def serve_workspace_root() -> FileResponse:
         return FileResponse(workspace_index)
 
     async def serve_workspace_path(workspace_path: str) -> FileResponse:
-        candidate = _resolved_candidate(workspace_root, workspace_path)
+        requested_path = _canonical_relative_path(workspace_path)
+        candidate = _resolved_candidate(workspace_root, requested_path)
         if candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(workspace_index)
@@ -101,11 +97,12 @@ def install_same_origin_routes(
         return FileResponse(site_index)
 
     async def serve_public_path(public_path: str) -> FileResponse:
-        if public_path == "api" or public_path.startswith("api/"):
+        requested_path = _canonical_relative_path(public_path)
+        if requested_path.parts and requested_path.parts[0] == "api":
             raise _not_found()
-        if public_path == "healthz":
+        if requested_path == PurePosixPath("healthz"):
             raise _not_found()
-        return _public_file(site_root, public_path)
+        return _public_file(site_root, requested_path)
 
     app.add_api_route(
         "/_astro/{asset_path:path}",
