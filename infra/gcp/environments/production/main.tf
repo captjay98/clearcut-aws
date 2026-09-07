@@ -28,11 +28,11 @@ module "artifact_registry" {
 
   depends_on = [module.project_services]
 
-  enabled      = var.manage_artifact_registry
-  environment  = var.artifact_registry_environment
-  location     = var.region
-  project_id   = var.project_id
-  repositories = var.artifact_repositories
+  enabled     = var.manage_artifact_registry
+  environment = var.artifact_registry_environment
+  location    = var.region
+  project_id  = var.project_id
+  repository  = var.artifact_repository
 }
 
 module "network_foundation" {

@@ -190,21 +190,37 @@ def test_artifact_repositories_have_destroy_and_cleanup_guards() -> None:
 
 
 def test_artifact_repository_contract_requires_nonempty_descriptions() -> None:
-    root_repositories = terraform_variable_block(
-        PRODUCTION_ROOT / "variables.tf", "artifact_repositories"
+    root_repository = terraform_variable_block(
+        PRODUCTION_ROOT / "variables.tf", "artifact_repository"
     )
-    module_repositories = terraform_variable_block(
-        MODULES_ROOT / "artifact-registry/variables.tf", "repositories"
+    module_repository = terraform_variable_block(
+        MODULES_ROOT / "artifact-registry/variables.tf", "repository"
     )
     resource = (MODULES_ROOT / "artifact-registry/main.tf").read_text(encoding="utf-8")
 
-    for repositories in (root_repositories, module_repositories):
-        assert re.search(r"\bdescription\s*=\s*string\b", repositories)
+    for repository in (root_repository, module_repository):
+        assert re.search(r"\bdescription\s*=\s*string\b", repository)
         assert re.search(
-            r"length\(trimspace\(repository\.description\)\)\s*>\s*0",
-            repositories,
+            r"length\(trimspace\(var\.(?:artifact_)?repository\.description\)\)\s*>\s*0",
+            repository,
         )
-    assert re.search(r"\bdescription\s*=\s*each\.value\.description\b", resource)
+    assert re.search(r"\bdescription\s*=\s*var\.repository\.description\b", resource)
+
+
+def test_artifact_repository_contract_is_singular() -> None:
+    module_source = terraform_source_under(MODULES_ROOT / "artifact-registry")
+    root_source = terraform_source_under(PRODUCTION_ROOT)
+
+    for source, prefix in ((module_source, ""), (root_source, "artifact_")):
+        assert f'output "{prefix}repository_id"' in source
+        assert f'output "{prefix}repository_name"' in source
+        assert f'output "{prefix}repository_ids"' not in source
+        assert f'output "{prefix}repository_names"' not in source
+        assert re.search(r'\brepository_id\s*==\s*"clearcut"', source)
+        assert re.search(r'\b(?:moved|import)\s*\{', source) is None
+    assert "var.artifact_repository" in root_source
+    assert "var.artifact_repositories" not in root_source
+    assert "var.repositories" not in module_source
 
 
 def test_disabling_managed_state_bucket_is_blocked_by_prevent_destroy(

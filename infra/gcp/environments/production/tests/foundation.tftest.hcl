@@ -1,4 +1,12 @@
-mock_provider "google" {}
+mock_provider "google" {
+  mock_resource "google_artifact_registry_repository" {
+    override_during = plan
+    defaults = {
+      id   = "projects/clearcut-test/locations/us-central1/repositories/clearcut"
+      name = "clearcut"
+    }
+  }
+}
 
 run "production_is_disabled_by_default" {
   command = plan
@@ -14,8 +22,10 @@ run "production_is_disabled_by_default" {
 
   assert {
     condition = (
-      module.artifact_registry.repository_ids == {} &&
-      module.artifact_registry.repository_names == {} &&
+      output.artifact_repository_id == null &&
+      output.artifact_repository_name == null &&
+      module.artifact_registry.repository_id == null &&
+      module.artifact_registry.repository_name == null &&
       module.network_foundation.network_id == null &&
       module.network_foundation.network_name == null &&
       module.network_foundation.subnet_id == null &&
@@ -33,25 +43,11 @@ run "production_forwards_root_region_to_regional_modules" {
 
   variables {
     artifact_registry_environment = "production"
-    artifact_repositories = {
-      site = {
-        description   = "ClearCut production site deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-site"
-      }
-      web = {
-        description   = "ClearCut production web deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-web"
-      }
-      api = {
-        description   = "ClearCut production api deployment images"
-        keep_count    = 30
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-api"
-      }
+    artifact_repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
     }
     manage_artifact_registry   = true
     manage_network_foundation  = true
@@ -66,6 +62,8 @@ run "production_forwards_root_region_to_regional_modules" {
 
   assert {
     condition = (
+      output.artifact_repository_id == "projects/clearcut-test/locations/us-central1/repositories/clearcut" &&
+      output.artifact_repository_name == "clearcut" &&
       module.artifact_registry.location == var.region &&
       module.network_foundation.region == var.region
     )
@@ -272,12 +270,12 @@ run "disabled_artifact_registry_manages_no_repositories" {
   }
 
   assert {
-    condition     = output.repository_ids == {} && output.repository_names == {}
-    error_message = "Disabled Artifact Registry management must output empty repository maps."
+    condition     = output.repository_id == null && output.repository_name == null
+    error_message = "Disabled Artifact Registry management must output null repository values."
   }
 }
 
-run "enabled_artifact_registry_manages_exact_protected_repositories" {
+run "enabled_artifact_registry_manages_one_protected_repository" {
   command = plan
 
   module {
@@ -289,62 +287,48 @@ run "enabled_artifact_registry_manages_exact_protected_repositories" {
     environment = "production"
     location    = "us-central1"
     project_id  = "clearcut-test"
-    repositories = {
-      site = {
-        description   = "ClearCut production site deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-site"
-      }
-      web = {
-        description   = "ClearCut production web deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-web"
-      }
-      api = {
-        description   = "ClearCut production api deployment images"
-        keep_count    = 30
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-api"
-      }
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
     }
   }
 
   assert {
-    condition     = toset(keys(google_artifact_registry_repository.repository)) == toset(["site", "web", "api"])
-    error_message = "Artifact Registry must manage exactly site, web, and api repositories."
+    condition     = length(google_artifact_registry_repository.repository) == 1
+    error_message = "Artifact Registry must manage exactly one clearcut repository."
   }
 
   assert {
     condition = alltrue([
-      for key, repository in google_artifact_registry_repository.repository :
+      for repository in google_artifact_registry_repository.repository :
       repository.format == "DOCKER" &&
       repository.mode == "STANDARD_REPOSITORY" &&
       repository.location == "us-central1" &&
-      repository.repository_id == "clearcut-production-${key}" &&
-      repository.description == "ClearCut production ${key} deployment images" &&
+      repository.repository_id == "clearcut" &&
+      repository.description == "ClearCut production deployment images" &&
       repository.cleanup_policy_dry_run &&
       repository.labels.environment == "production" &&
       length(repository.cleanup_policies) == 1 &&
       one(repository.cleanup_policies).action == "KEEP" &&
       one(repository.cleanup_policies).id == "keep-most-recent" &&
-      one(one(repository.cleanup_policies).most_recent_versions).keep_count > 0
+      one(one(repository.cleanup_policies).most_recent_versions).keep_count == 20
     ])
-    error_message = "Artifact repositories must be environment-qualified protected STANDARD Docker repositories with one explicit KEEP policy."
+    error_message = "Artifact repositories must be protected STANDARD Docker repositories with one explicit KEEP policy."
   }
 
   assert {
     condition = (
-      toset(keys(output.repository_ids)) == toset(["site", "web", "api"]) &&
-      toset(keys(output.repository_names)) == toset(["site", "web", "api"])
+      output.repository_id == "projects/clearcut-test/locations/us-central1/repositories/clearcut" &&
+      output.repository_name == "clearcut"
     )
-    error_message = "Artifact Registry outputs must expose only repository IDs and names keyed by site, web, and api."
+    error_message = "Artifact Registry must use the exact clearcut repository identity."
   }
 
   assert {
     condition = alltrue(flatten([
-      for repository in values(google_artifact_registry_repository.repository) : [
+      for repository in google_artifact_registry_repository.repository : [
         for policy in repository.cleanup_policies : policy.action != "DELETE"
       ]
     ]))
@@ -381,7 +365,7 @@ run "artifact_registry_rejects_missing_repository_configuration" {
     project_id  = "clearcut-test"
   }
 
-  expect_failures = [var.repositories]
+  expect_failures = [var.repository]
 }
 
 run "artifact_registry_rejects_blank_repository_descriptions" {
@@ -396,32 +380,18 @@ run "artifact_registry_rejects_blank_repository_descriptions" {
     environment = "production"
     location    = "us-central1"
     project_id  = "clearcut-test"
-    repositories = {
-      site = {
-        description   = "ClearCut production site deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-site"
-      }
-      web = {
-        description   = "   "
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-web"
-      }
-      api = {
-        description   = "ClearCut production api deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-api"
-      }
+    repository = {
+      description   = "   "
+      keep_count    = 20
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
     }
   }
 
-  expect_failures = [var.repositories]
+  expect_failures = [var.repository]
 }
 
-run "artifact_registry_rejects_unsafe_repository_keys" {
+run "artifact_registry_rejects_legacy_repository_id" {
   command = plan
 
   module {
@@ -433,20 +403,18 @@ run "artifact_registry_rejects_unsafe_repository_keys" {
     environment = "production"
     location    = "us-central1"
     project_id  = "clearcut-test"
-    repositories = {
-      worker = {
-        description   = "ClearCut production worker deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-worker"
-      }
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut-production-api"
     }
   }
 
-  expect_failures = [var.repositories]
+  expect_failures = [var.repository]
 }
 
-run "artifact_registry_rejects_unqualified_repository_ids" {
+run "artifact_registry_rejects_unrelated_repository_id" {
   command = plan
 
   module {
@@ -458,29 +426,15 @@ run "artifact_registry_rejects_unqualified_repository_ids" {
     environment = "production"
     location    = "us-central1"
     project_id  = "clearcut-test"
-    repositories = {
-      site = {
-        description   = "ClearCut production site deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "site"
-      }
-      web = {
-        description   = "ClearCut production web deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "web"
-      }
-      api = {
-        description   = "ClearCut production api deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "api"
-      }
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "other"
     }
   }
 
-  expect_failures = [var.repositories]
+  expect_failures = [var.repository]
 }
 
 
@@ -774,29 +728,15 @@ run "artifact_registry_rejects_noncanonical_labels" {
     environment = "production"
     location    = "us-central1"
     project_id  = "clearcut-test"
-    repositories = {
-      site = {
-        description   = "ClearCut production site deployment images"
-        keep_count    = 20
-        labels        = { application = "other", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-site"
-      }
-      web = {
-        description   = "ClearCut production web deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "manual" }
-        repository_id = "clearcut-production-web"
-      }
-      api = {
-        description   = "ClearCut production api deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-api"
-      }
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "other", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
     }
   }
 
-  expect_failures = [var.repositories]
+  expect_failures = [var.repository]
 }
 
 run "production_rejects_nonproduction_repository_environment" {
@@ -814,30 +754,16 @@ run "production_rejects_noncanonical_repository_labels" {
   command = plan
 
   variables {
-    artifact_repositories = {
-      site = {
-        description   = "ClearCut production site deployment images"
-        keep_count    = 20
-        labels        = { application = "other", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-site"
-      }
-      web = {
-        description   = "ClearCut production web deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-web"
-      }
-      api = {
-        description   = "ClearCut production api deployment images"
-        keep_count    = 20
-        labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
-        repository_id = "clearcut-production-api"
-      }
+    artifact_repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "other", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
     }
     project_id = "clearcut-test"
   }
 
-  expect_failures = [var.artifact_repositories]
+  expect_failures = [var.artifact_repository]
 }
 
 run "network_foundation_rejects_syntactically_valid_noncanonical_names" {
@@ -985,8 +911,8 @@ run "valid_dispositions_are_documentary_and_do_not_change_resource_counts" {
   assert {
     condition = (
       length(module.project_services.enabled_services) == 0 &&
-      module.artifact_registry.repository_ids == {} &&
-      module.artifact_registry.repository_names == {} &&
+      module.artifact_registry.repository_id == null &&
+      module.artifact_registry.repository_name == null &&
       module.network_foundation.network_id == null &&
       module.network_foundation.subnet_id == null &&
       module.network_foundation.private_service_range_id == null &&
@@ -1092,4 +1018,96 @@ run "resource_dispositions_reject_missing_required_field" {
   }
 
   expect_failures = [var.resource_dispositions]
+}
+
+run "artifact_registry_rejects_zero_keep_count" {
+  command = plan
+
+  module {
+    source = "../../modules/artifact-registry"
+  }
+
+  variables {
+    enabled     = true
+    project_id  = "clearcut-test"
+    location    = "us-central1"
+    environment = "production"
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 0
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
+    }
+  }
+
+  expect_failures = [var.repository]
+}
+
+run "artifact_registry_rejects_negative_keep_count" {
+  command = plan
+
+  module {
+    source = "../../modules/artifact-registry"
+  }
+
+  variables {
+    enabled     = true
+    project_id  = "clearcut-test"
+    location    = "us-central1"
+    environment = "production"
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = -1
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
+    }
+  }
+
+  expect_failures = [var.repository]
+}
+
+run "artifact_registry_rejects_fractional_keep_count" {
+  command = plan
+
+  module {
+    source = "../../modules/artifact-registry"
+  }
+
+  variables {
+    enabled     = true
+    project_id  = "clearcut-test"
+    location    = "us-central1"
+    environment = "production"
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 1.5
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
+    }
+  }
+
+  expect_failures = [var.repository]
+}
+
+run "configured_repository_remains_unmanaged_without_opt_in" {
+  command = plan
+
+  module {
+    source = "../../modules/artifact-registry"
+  }
+
+  variables {
+    project_id = "clearcut-test"
+    repository = {
+      description   = "ClearCut production deployment images"
+      keep_count    = 20
+      labels        = { application = "clearcut", environment = "production", managed_by = "terraform" }
+      repository_id = "clearcut"
+    }
+  }
+
+  assert {
+    condition     = length(google_artifact_registry_repository.repository) == 0 && output.repository_id == null && output.repository_name == null
+    error_message = "Repository configuration alone must not enable management."
+  }
 }

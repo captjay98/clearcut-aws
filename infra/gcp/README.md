@@ -2,6 +2,29 @@
 
 > **Status: NO-GO / unapplied.** Four capability modules are implemented and locally testable, but this Terraform foundation has not provisioned, adopted, or changed any GCP resource. There is no reviewed plan, apply evidence, or deployment evidence.
 
+## Deadline Artifact Registry contract
+
+The deadline contract uses exactly one Docker repository with ID `clearcut`. Environment remains explicit in configuration and labels; the repository ID has no environment or site/web/api suffix. This replaces the earlier three-repository requirement independently of the longer-term service architecture below.
+
+Production accepts the singular nullable `artifact_repository` object and exposes `artifact_repository_id` and `artifact_repository_name`. The module accepts `repository` and exposes `repository_id` and `repository_name`. Both outputs are `null` while management is disabled. Configuration alone creates no resources:
+
+```hcl
+manage_artifact_registry       = false
+artifact_registry_environment = "production"
+artifact_repository = {
+  repository_id = "clearcut"
+  description   = "ClearCut production deployment images"
+  keep_count    = 20
+  labels = {
+    application = "clearcut"
+    environment = "production"
+    managed_by  = "terraform"
+  }
+}
+```
+
+The module retains `prevent_destroy = true`, `cleanup_policy_dry_run = true`, and one KEEP-only policy with an explicit positive integer retention count. Enabled management requires an explicit repository, environment, and location. The resource address is `module.artifact_registry.google_artifact_registry_repository.repository[0]`; there are no imports or state moves. Existing repositories remain unmanaged, and this source contract does not authorize adoption, replacement, or application against existing state.
+
 ## Planned hosted architecture
 
 The target architecture has three separately deployable images/services:
@@ -18,7 +41,7 @@ Four capability modules are implemented:
 
 - `modules/state-bootstrap` defines the protected GCS state bucket capability.
 - `modules/project-services` defines bounded project-service enablement.
-- `modules/artifact-registry` defines guarded image repositories.
+- `modules/artifact-registry` defines the guarded singular `clearcut` image repository.
 - `modules/network-foundation` defines the VPC, subnet, private-service range, and service-networking connection.
 
 `environments/production` composes the three production capabilities at stable addresses: `module.project_services`, `module.artifact_registry`, and `module.network_foundation`. The root modules always remain in the composition; their child resources are gated by explicit `manage_*` inputs that default to `false`. Production therefore manages zero resources by default without changing module addresses. Project API management additionally requires `acknowledge_service_identity_side_effects = true`, which also defaults to `false`. Enabling approved Google APIs may create Google-managed service agents/default identities and role bindings outside explicit Terraform IAM resources and therefore requires IAM/org-policy review. The acknowledgement records awareness of those side effects; it is not apply authorization. This foundation defines no ClearCut-authored explicit Terraform IAM resources, but it does not claim that provider-managed IAM side effects cannot occur. Project API activation remains deferred to identity/IAM review. The root requires an explicit `project_id`, has no default production project, and defines no backend. Its single `region` input is fixed to the approved `us-central1` location for this phase and drives the provider, Artifact Registry, network foundation, and canonical regional subnet name; independent repository-location and network-region inputs are intentionally absent.
@@ -58,7 +81,16 @@ The GitHub workflows reference OIDC/Workload Identity Federation variables rathe
 
 Do not run Terraform mutation commands or incur provider charges solely to satisfy documentation. Missing hosted evidence remains an explicit blocker in `docs/submission/manifest.yaml`.
 
-## Fresh local verification
+## Deadline contract verification (2026-09-07)
+
+- Focused Artifact Registry and default-management foundation tests: **7 passed**.
+- `terraform fmt -check -recursive infra/gcp`: passed.
+- Production with disposable external `TF_DATA_DIR`: `terraform init -backend=false -input=false -no-color`, `terraform validate -no-color`, and `terraform test -no-color` passed; **45 native mock-provider tests passed**.
+- TDD red evidence: the new singular-contract foundation assertions failed against the earlier plural interface before implementation; native tests also rejected the missing singular outputs.
+
+These checks use a mock Google provider with plan-time fixture values. No direct Terraform plan, apply, import, state, or destroy command, backend initialization, or cloud API call is part of this verification. The historical broader checks below were not rerun for this scoped change.
+
+## Prior foundation verification
 
 The following provider-free checks passed in this worktree:
 

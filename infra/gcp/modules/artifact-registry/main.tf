@@ -1,13 +1,13 @@
 resource "google_artifact_registry_repository" "repository" {
-  for_each = var.enabled ? var.repositories : {}
+  count = var.enabled ? 1 : 0
 
   project       = var.project_id
   location      = var.location
-  repository_id = each.value.repository_id
-  description   = each.value.description
+  repository_id = var.repository.repository_id
+  description   = var.repository.description
   format        = "DOCKER"
   mode          = "STANDARD_REPOSITORY"
-  labels        = each.value.labels
+  labels        = var.repository.labels
 
   cleanup_policy_dry_run = true
 
@@ -16,7 +16,7 @@ resource "google_artifact_registry_repository" "repository" {
     action = "KEEP"
 
     most_recent_versions {
-      keep_count = each.value.keep_count
+      keep_count = var.repository.keep_count
     }
   }
 

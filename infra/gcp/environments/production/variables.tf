@@ -49,13 +49,13 @@ variable "requested_services" {
 
 variable "manage_artifact_registry" {
   type        = bool
-  description = "Whether management of the production deployment image repositories is explicitly authorized."
+  description = "Whether management of the single production deployment image repository is explicitly authorized."
   default     = false
 }
 
 variable "artifact_registry_environment" {
   type        = string
-  description = "Environment qualifier embedded in each managed repository ID."
+  description = "Environment qualifier recorded in the managed repository labels."
   default     = null
   nullable    = true
 
@@ -65,29 +65,29 @@ variable "artifact_registry_environment" {
   }
 }
 
-variable "artifact_repositories" {
-  type = map(object({
+variable "artifact_repository" {
+  type = object({
     description   = string
     keep_count    = number
     labels        = map(string)
     repository_id = string
-  }))
-  description = "Complete site, web, and api repository configuration when management is enabled."
-  default     = {}
+  })
+  description = "Single clearcut repository configuration when management is enabled."
+  default     = null
+  nullable    = true
 
   validation {
-    condition = alltrue([
-      for key, repository in var.artifact_repositories :
-      length(trimspace(repository.description)) > 0 &&
-      repository.repository_id == "clearcut-production-${key}" &&
-      try(
-        repository.labels.application == "clearcut" &&
-        repository.labels.environment == "production" &&
-        repository.labels.managed_by == "terraform",
-        false
-      )
-    ])
-    error_message = "Each artifact repository must use its clearcut-production-<key> ID, a nonempty description, and canonical application=clearcut, environment=production, and managed_by=terraform labels."
+    condition = var.artifact_repository == null || try(
+      var.artifact_repository.repository_id == "clearcut" &&
+      length(trimspace(var.artifact_repository.description)) > 0 &&
+      var.artifact_repository.keep_count >= 1 &&
+      var.artifact_repository.keep_count == floor(var.artifact_repository.keep_count) &&
+      var.artifact_repository.labels.application == "clearcut" &&
+      var.artifact_repository.labels.environment == "production" &&
+      var.artifact_repository.labels.managed_by == "terraform",
+      false
+    )
+    error_message = "artifact_repository must use ID clearcut, a nonempty description, a positive integer keep_count, and canonical application=clearcut, environment=production, and managed_by=terraform labels."
   }
 }
 

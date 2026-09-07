@@ -3,14 +3,14 @@ output "enabled_services" {
   value       = module.project_services.enabled_services
 }
 
-output "artifact_repository_ids" {
-  description = "Artifact Registry repository resource IDs keyed by site, web, and api."
-  value       = module.artifact_registry.repository_ids
+output "artifact_repository_id" {
+  description = "Single Artifact Registry repository resource ID, or null while disabled."
+  value       = module.artifact_registry.repository_id
 }
 
-output "artifact_repository_names" {
-  description = "Artifact Registry repository names keyed by site, web, and api."
-  value       = module.artifact_registry.repository_names
+output "artifact_repository_name" {
+  description = "Single Artifact Registry repository name, or null while disabled."
+  value       = module.artifact_registry.repository_name
 }
 
 output "network_id" {

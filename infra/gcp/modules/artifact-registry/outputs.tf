@@ -1,11 +1,11 @@
-output "repository_ids" {
-  description = "Repository resource IDs keyed by deployment image role."
-  value       = { for key, repository in google_artifact_registry_repository.repository : key => repository.id }
+output "repository_id" {
+  description = "Single repository resource ID, or null while disabled."
+  value       = one(google_artifact_registry_repository.repository[*].id)
 }
 
-output "repository_names" {
-  description = "Repository names keyed by deployment image role."
-  value       = { for key, repository in google_artifact_registry_repository.repository : key => repository.name }
+output "repository_name" {
+  description = "Single repository name, or null while disabled."
+  value       = one(google_artifact_registry_repository.repository[*].name)
 }
 
 output "location" {

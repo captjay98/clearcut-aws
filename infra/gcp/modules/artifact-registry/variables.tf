@@ -1,6 +1,6 @@
 variable "enabled" {
   type        = bool
-  description = "Whether management of the three deployment image repositories is explicitly authorized."
+  description = "Whether management of the single clearcut deployment image repository is explicitly authorized."
   default     = false
 }
 
@@ -16,7 +16,7 @@ variable "project_id" {
 
 variable "environment" {
   type        = string
-  description = "Environment qualifier embedded in every repository ID."
+  description = "Environment qualifier recorded in repository labels."
   default     = null
   nullable    = true
 
@@ -42,37 +42,33 @@ variable "location" {
   }
 }
 
-variable "repositories" {
-  type = map(object({
+variable "repository" {
+  type = object({
     description   = string
     keep_count    = number
     labels        = map(string)
     repository_id = string
-  }))
-  description = "Complete site, web, and api Docker repository configuration."
-  default     = {}
+  })
+  description = "Single clearcut Docker repository configuration when management is enabled."
+  default     = null
+  nullable    = true
 
   validation {
-    condition     = !var.enabled || toset(keys(var.repositories)) == toset(["site", "web", "api"])
-    error_message = "repositories must contain exactly the site, web, and api keys when enabled."
+    condition     = !var.enabled || var.repository != null
+    error_message = "repository must be explicitly configured when enabled."
   }
 
   validation {
-    condition = !var.enabled || try(alltrue([
-      for key, repository in var.repositories :
-      repository.repository_id == "clearcut-${var.environment}-${key}" &&
-      can(regex("^[a-z][a-z0-9-]{2,61}[a-z0-9]$", repository.repository_id)) &&
-      length(trimspace(repository.description)) > 0 &&
-      repository.keep_count >= 1 &&
-      repository.keep_count == floor(repository.keep_count) &&
-      alltrue([
-        for required_label in ["application", "environment", "managed_by"] :
-        contains(keys(repository.labels), required_label) && length(trimspace(repository.labels[required_label])) > 0
-      ]) &&
-      repository.labels.application == "clearcut" &&
-      repository.labels.environment == var.environment &&
-      repository.labels.managed_by == "terraform"
-    ]), false)
-    error_message = "Each repository must have its exact environment-qualified ID, a nonempty description, a positive integer keep_count, and canonical application=clearcut, environment=<environment>, and managed_by=terraform labels."
+    condition = var.repository == null || try(
+      var.repository.repository_id == "clearcut" &&
+      length(trimspace(var.repository.description)) > 0 &&
+      var.repository.keep_count >= 1 &&
+      var.repository.keep_count == floor(var.repository.keep_count) &&
+      var.repository.labels.application == "clearcut" &&
+      var.repository.labels.managed_by == "terraform" &&
+      (!var.enabled || var.repository.labels.environment == var.environment),
+      false
+    )
+    error_message = "repository must use ID clearcut, a nonempty description, a positive integer keep_count, and canonical application=clearcut, managed_by=terraform, and environment=<environment> labels when enabled."
   }
 }
