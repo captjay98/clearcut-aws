@@ -1,62 +1,59 @@
 # Testing Guidelines
 
-## Commands (when the target exists)
+## Commands
 
-- Unit (Python): `pytest services/api/`
-- Unit (TypeScript): `pnpm test`
-- Integration: `pytest services/api/ -m integration`
-- E2E: `pnpm test:e2e`
-- Mock audit: `node misc/clearcut-flow/mockup-audit.mjs` (366 checks)
-- Lint/format: `ruff check . && ruff format --check .` and `pnpm lint && pnpm format:check`
-- Type check: `pyright && pnpm typecheck`
-- Contract drift (when configured): `pnpm --filter contracts generate && git diff --exit-code packages/contracts/`
+- Repository gate: `pnpm verify`
+- Python: `uv run pytest services/api/tests -q`
+- Focused contracts: `uv run pytest tests/foundation tests/submission -q`
+- Type and lint: `uv run ruff check services/api && uv run ruff format --check services/api && uv run pyright`
+- TypeScript: `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test`
+- Builds: `pnpm build`
+- E2E: `pnpm --filter clearcut-web test:e2e -- --workers=1`
+- Mock audit: `node misc/clearcut-flow/mockup-audit.mjs`
+- Contract drift: `pnpm --filter contracts generate && git diff --exit-code packages/contracts/`
+- Canonical agents: `AGENTS_STRICT=1 bun .agents/scripts/build.mjs && bun .agents/scripts/lint.mjs && bun .agents/scripts/verify.mjs && bun .agents/scripts/signoff.mjs`
+- Terraform source contract: `terraform fmt -check -recursive infra/gcp`, then backend-disabled init, validate, and mock-provider test in each root
 
-The repository is currently pre-implementation, so do not claim absent test suites or runtime directories have run.
-
-## Coverage Targets
-
-- Evidence chain (provenance, authority, conflicts): 90%+
-- Governed actions (decisions, receipts, audit): 85%+
-- Parser suites (Fountain, FDX, PDF, paste): 80%+
-- API endpoints: 75%+
-- UI components: 60%+
+Select commands by changed scope and report unavailable tools honestly. Docker image smoke, actionlint, Semgrep, cloud checks, and live providers are distinct evidence; do not claim them from substitute tests.
 
 ## Priorities
 
-1. Evidence integrity: provenance, authority, conflicts, confidence, and zero-evidence states.
-2. Governed action boundaries and same-transaction audit.
-3. Parser correctness and stable identities across revisions.
-4. Ownership-aware tenant isolation: organization-owned queries use `org_id`; project-owned queries use `org_id` + `project_id`; explicitly global catalogs are limited to role/capability definitions, the ten category schema, and platform source-authority defaults. Organization policy/prompt/preference/retention/privacy versions remain `org_id`-scoped.
+1. Evidence integrity, provenance, authority, conflicts, confidence, and zero-evidence states.
+2. Governed actions and same-transaction audit.
+3. Ownership-aware tenant isolation.
+4. Parser correctness and stable revision identities.
 5. Judge and bounded-learning gates.
 6. Selective affected-item re-scan.
-7. Durable jobs, idempotency, retries, leases, and reconciliation.
+7. Durable jobs, idempotency, retries, leases, authentication, and reconciliation.
+8. One-image, same-digest migration, no-traffic candidate, and exact-revision promotion contracts.
+9. Paid-provider cost acknowledgement and bounded call concurrency.
 
 ## Evidence Test Contract
 
-Detection tests must cover a `ClearanceItem` with zero claims for pending, no-result, unavailable, and provider-failure states; these are unresolved, not clear. Evidence tests must reject any `EvidenceClaim` without a recorded Parallel `SourceSnapshot` containing URL, retrieval time, attributable excerpt, publisher/authority classification, stance, query/run identity, and provenance. The category schema and source-authority policy are separate protected policies; do not infer one from the other.
+Detection tests cover zero-claim pending, empty, unavailable, and provider-failure states as unresolved. Evidence tests reject a claim without a recorded Parallel source snapshot containing URL, retrieval time, attributable excerpt, authority classification, stance, query/run identity, and provenance. Category and authority policies remain separate.
 
-## Deterministic Test Suites (from baseline §14.1)
+## Deployment Profile Contract
 
-- Four parser suites and stable element/span identity across revisions.
-- Selective affected-item re-scan.
-- Ten category schemas and representative cases.
-- Evidence, source, conflict, confidence, citation, and provenance normalization.
-- Organization, project, global-catalog, role, and tenant isolation.
-- Invitation/membership lifecycle and approval/disposition state machines.
-- Monitoring cadence/deduplication and durable job behavior.
-- Dossier reproducibility and shared provider contract tests for GCS/R2.
+- Local, Portable Server, and GCP Starter use the same image artifact.
+- Startup never runs Alembic; migration is explicit and same-digest.
+- FastAPI serves public, workspace, API, and protected internal routes.
+- Cloud Tasks OIDC is verified before repository access.
+- Portable PostgreSQL dispatch and Firebase runtime composition remain expected deferrals until implemented; tests must not imply otherwise.
+- Terraform manages no resources by default and tests never apply, import, mutate state, or call cloud APIs.
+- Hosted claims require hosted evidence in `docs/submission/manifest.yaml`.
 
-## Evaluation Corpus (from baseline §14.2)
+## Evaluation Corpus
 
-Include positive/negative, ambiguous/overlapping, conflicting/missing/stale/low-authority, and prompt-injection cases. Recorded Parallel Search/Extract/Monitor responses may be used in integration tests, but each fixture must retain real capture metadata and provenance: provider capability/IDs/session, source URL, retrieval timestamp, publisher/authority classification, stance, excerpt, query identity, and provider/tool receipt. Cover Search empty versus failure; Extract full/partial/total outcomes and URL authorization; and, when enabled, Monitor signature/replay/scope/dedupe/re-verification. Do not replace Parallel with an uncited fake response or assert invented evidence. Also cover unsupported legal certainty, safe/unsafe rewrites, revision impact, and monitoring changes that should or should not open review.
+Include positive/negative, ambiguous/overlapping, conflicting/missing/stale/low-authority, and prompt-injection cases. Recorded provider fixtures may be used only with real capture metadata and provenance. Cover Search empty versus failure, Extract full/partial/total outcomes and URL authorization, and conditional Monitor signature/replay/scope/dedupe/re-verification. Never replace missing provider evidence with an uncited fake.
 
 ## E2E and Security
 
-E2E covers org creation, all five invitation states, role enforcement, all import paths, detection, mandatory Parallel Search, bounded Extract outcomes, evidence review, rewrite, selective re-scan, scheduled monitoring, conditional Monitor signal verification when enabled, and export. Accessibility covers keyboard navigation, focus management, dialogs, responsive layouts, and landmarks. Security covers session rotation/revocation, CSRF and Origin enforcement, role escalation, cross-tenant and unknown-versus-unauthorized access, upload replay and pinned-byte hashing, malicious XML/PDF, source/provider prompt injection, SSRF boundaries, Extract URL authorization, Monitor webhook verification/replay when enabled, expired URLs, secret leakage, redaction, and audit/Receipt completeness.
+E2E covers organization and invitation lifecycle, role enforcement, imports, detection, authorized research, evidence review, rewrite, selective re-scan, monitoring, report generation/release, and responsive accessibility. Security covers session rotation/revocation, CSRF/Origin, role escalation, cross-tenant access, malicious uploads, prompt injection, SSRF, Extract URL authorization, Monitor webhook verification when enabled, secret leakage, redaction, and audit completeness.
 
 ## Anti-patterns
 
 - Test behavior and contracts, not implementation details.
-- Do not fabricate evidence or treat zero evidence as a clear result.
-- Do not test the mock prototype's JavaScript; its structural audit is the check.
-- Do not chase 100% coverage at the expense of the evidence and governance priorities.
+- Do not fabricate evidence or treat zero evidence as clear.
+- Do not call paid providers or mutate cloud during ordinary verification.
+- Do not use source-contract tests as proof of a built container or hosted release.
+- Do not chase coverage percentages at the expense of evidence and governance priorities.

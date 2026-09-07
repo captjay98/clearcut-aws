@@ -1,10 +1,12 @@
 # ADR 0003: Terraform for Google Cloud Infrastructure
 
 ## Status
-**Accepted** (2026-08-31)
+
+**Accepted** (2026-08-31). The original deployment-topology premise is superseded by ADR 0004; the Terraform governance decisions below remain accepted.
 
 ## Context
-ClearCut targets Google Cloud with three separately deployable services (`clearcut-site`, `clearcut-web`, and `clearcut-api`) plus Cloud SQL PostgreSQL, Cloud Storage, Cloud Tasks, Cloud Scheduler, Secret Manager, Artifact Registry, Vertex AI, observability, budgets, and alerts.
+
+At the time of this decision, ClearCut targeted Google Cloud with three separately deployable services (`clearcut-site`, `clearcut-web`, and `clearcut-api`) plus Cloud SQL PostgreSQL, Cloud Storage, Cloud Tasks, Cloud Scheduler, Secret Manager, Artifact Registry, Vertex AI, observability, budgets, and alerts. ADR 0004 later replaced only that workload topology with one portable `clearcut` image and service.
 
 The repository now contains an unapplied Terraform foundation with four fail-closed capability modules. The authorized project already contains manually created resources, including a combined Cloud Run service, a Cloud SQL instance, build buckets, an image repository, and a database secret. Those existing resources remain unmanaged; they are not evidence that the target architecture is deployed and must not be adopted, replaced, or destroyed without explicit review.
 
@@ -13,6 +15,7 @@ ClearCut needs an infrastructure toolchain that is well supported on Google Clou
 ## Decisions
 
 ### 1. Canonical infrastructure engine
+
 - Terraform CLI is the canonical infrastructure engine for ClearCut.
 - ClearCut uses the Google provider and portable HCL modules.
 - Terraform Cloud and Terraform Enterprise are not required.
@@ -20,6 +23,7 @@ ClearCut needs an infrastructure toolchain that is well supported on Google Clou
 - Configuration should avoid unnecessary Terraform-proprietary features so a future OpenTofu migration remains feasible through a separately reviewed ADR and state migration.
 
 ### 2. Version and provider control
+
 - The Terraform CLI version is pinned in the repository toolchain configuration.
 - Every root module sets a bounded Terraform version constraint.
 - Provider constraints are reviewed deliberately; major provider upgrades are never automatic.
@@ -27,6 +31,7 @@ ClearCut needs an infrastructure toolchain that is well supported on Google Clou
 - `.terraform/`, local state, plan files, crash logs, and override files are never committed.
 
 ### 3. Repository structure and environment isolation
+
 - Reusable modules live under `infra/gcp/modules/`.
 - Deployable roots live under `infra/gcp/environments/<environment>/`.
 - Production does not share a state object or state prefix with development, staging, bootstrap, or recovery tooling.
@@ -34,6 +39,7 @@ ClearCut needs an infrastructure toolchain that is well supported on Google Clou
 - The current production root composes the implemented foundation capabilities but manages zero resources by default until its complete plan, controls, and import dispositions are reviewed.
 
 ### 4. Remote state bootstrap and protection
+
 - Production state uses a dedicated GCS bucket, not either existing build bucket.
 - The state bucket requires uniform bucket-level access, public access prevention, object versioning, soft-delete or retention controls, audit logging, and least-privileged IAM.
 - Google-managed encryption is acceptable initially. A customer-managed Cloud KMS key may be adopted when its rotation and recovery ownership are approved.
@@ -42,6 +48,7 @@ ClearCut needs an infrastructure toolchain that is well supported on Google Clou
 - Concurrent production applies are prohibited. CI uses a single protected concurrency group in addition to backend locking.
 
 ### 5. Authentication and authorization
+
 - Local inspection and planning use Google Application Default Credentials with service-account impersonation after the least-privileged planning identity exists.
 - GitHub Actions uses Google Workload Identity Federation. Long-lived exported service-account keys are prohibited.
 - Planning, deployment, migration, and runtime identities are separate and least privileged.
@@ -52,6 +59,7 @@ ClearCut needs an infrastructure toolchain that is well supported on Google Clou
 - Terraform automation may not alter protected human-only rules, approval policy, evidence schemas, retention/privacy policy, category definitions, source-authority tiers, or legal-boundary language.
 
 ### 6. Plan and apply workflow
+
 The required workflow is:
 
 1. Run `terraform fmt -check`.
@@ -70,6 +78,7 @@ The required workflow is:
 No local or CI `terraform apply`, import, state mutation, or resource deletion is permitted before the full root modules and first plan are reviewed.
 
 ### 7. Existing-resource adoption
+
 Every existing GCP resource receives one explicit disposition before it appears in managed state:
 
 - **Import and retain:** the resource matches the target design and can be safely adopted.
@@ -81,6 +90,7 @@ Every existing GCP resource receives one explicit disposition before it appears 
 Terraform import blocks or equivalent reviewed import commands must bind exact resource identities. A first plan must show no unintended replacement or deletion. The existing Cloud SQL instance may not be replaced, recreated, or have destructive settings changed until a verified backup and restore path exists.
 
 ### 8. Recovery and operational ownership
+
 Before production GO, ClearCut records owners and rehearsed procedures for:
 
 - GCS state-object version recovery and accidental state-change recovery.
@@ -97,9 +107,11 @@ Before production GO, ClearCut records owners and rehearsed procedures for:
 Recovery actions that mutate production remain accountable human-triggered operations. Documentation or local deterministic tests cannot substitute for hosted drill evidence.
 
 ### 9. Current readiness boundary
+
 Adopting Terraform does not change the submission verdict. The environment remains NO-GO until the reviewed infrastructure exists and the external evidence in `docs/submission/manifest.yaml` is recorded. `terraform validate` proves configuration validity only; it does not prove deployability, security, provider availability, recovery, or hosted operation.
 
 ## Consequences
+
 - ClearCut gains the Google Cloud toolchain with the strongest first-party documentation and examples.
 - Internal Terraform use does not require Terraform Cloud or a HashiCorp subscription.
 - GCP resources and provider calls remain independently billable.
@@ -109,6 +121,7 @@ Adopting Terraform does not change the submission verdict. The environment remai
 - Portable HCL preserves a practical path to OpenTofu if licensing, governance, or toolchain requirements change.
 
 ## Rejected Alternatives
+
 - **OpenTofu now:** technically compatible with the Google provider and GCS backend, but Google documents and manages Terraform as its first-class IaC path. OpenTofu remains a viable future migration option.
 - **Terraform Cloud:** unnecessary for the current project; GitHub Actions, WIF, GCS state, and protected environments provide the required control surface without another hosted control plane.
 - **Infrastructure Manager now:** adds a second deployment control plane before ClearCut has complete modules, state ownership, imports, and recovery procedures.

@@ -1,55 +1,55 @@
-# Tech Stack (Planned Target)
+# Tech Stack
 
-## Current Phase
+## Runtime
 
-ClearCut is pre-implementation. The stack below describes the approved target; the listed application/runtime directories are planned until Plans 01–08 land.
+ClearCut has an implemented one-image runtime. One immutable `clearcut` image packages compiled Astro and TanStack frontends, the FastAPI application, Alembic migrations, and operational scripts. FastAPI is the sole public entry point.
 
 ## Backend
 
-- **Framework**: FastAPI modular monolith
-- **Language**: Python 3.12+
-- **ORM/DB**: SQLAlchemy 2.0 + Alembic migrations on Cloud SQL PostgreSQL
-- **Auth**: local PostgreSQL authentication by default behind a ClearCut identity adapter; optional Firebase Authentication/Identity Platform; one provider per deployment. Both modes issue opaque revocable application sessions, while PostgreSQL owns organizations, roles, memberships, and permissions.
-- **AI/Agent**: Google ADK (`google-adk`) + Gemini (`google-genai`) for detection, search planning, evidence synthesis, rewrite proposals, and judge evaluation
-- **Research**: mandatory Parallel Search plus bounded Extract via `parallel-web`; conditional Monitor `event_stream` after a recorded go/no-go. Task, FindAll, Responses/Chat, Interactions, Deep Research, snapshot Monitor, alternate providers, and silent fallbacks are excluded. `docs/PARALLEL_INTEGRATION.md` is authoritative; source provenance is load-bearing.
-- **Async jobs**: Cloud Tasks for durable execution + Cloud Scheduler for monitoring cadence
-- **Storage**: Cloud Storage for scripts, snapshots, and exports with signed upload/download URLs
-- **Secrets**: Secret Manager
+- **Framework:** FastAPI modular monolith
+- **Language:** Python 3.12+
+- **ORM/DB:** SQLAlchemy 2.0 and Alembic on PostgreSQL
+- **Auth:** built-in identity behind opaque revocable application sessions; Firebase/Identity Platform is validated as an optional boundary but is not wired into runtime composition
+- **AI/Agent:** Google ADK and Gemini behind typed ports, disabled by default
+- **Research:** mandatory Parallel Search plus bounded Extract when authorized; conditional Monitor after a recorded GO
+- **Jobs:** local dispatch or OIDC-authenticated Cloud Tasks; Portable PostgreSQL dispatch remains deferred
+- **Storage:** filesystem, GCS, or S3-compatible object storage behind typed ports
+- **Secrets:** local configuration or Secret Manager references
+
+Paid providers require explicit cost acknowledgement and positive bounded concurrency before client resolution or a paid call. Provider failures remain typed and visible.
 
 ## Frontend
 
-- **Marketing service**: Astro, separately deployable as `clearcut-site`
-- **Workspace service**: TanStack Start authenticated workspace, separately deployable as `clearcut-web`
-- **State**: TanStack Query for server state
-- **Styling**: custom design system derived from `misc/clearcut-flow/`; no external visual component library. One approved headless accessibility library may be used only behind ClearCut-owned adapters for complex interaction behavior.
-- **Themes**: Script (light, cream tones) and Night shoot (dark, amber accents)
+- **Public pages:** Astro, compiled into the unified image
+- **Workspace:** TanStack Start, compiled into the unified image and served under `/app/*`
+- **State:** TanStack Query
+- **Styling:** ClearCut design system derived from `misc/clearcut-flow/`; no external visual component library
+- **Themes:** Script and Night shoot
+- **Responsive range:** 320–1440px; Frontend owns implementation and Mobile reviews parity
 
-## Mobile Web
+## Deployment Profiles
 
-Web-only for the hackathon; no native app. Responsive behavior covers 320–1440px. `frontend-engineer` owns implementation. `mobile-engineer` is the responsive parity reviewer who tests and reports issues, then delegates fixes to Frontend.
+| Profile         | Database                                      | Storage                     | Jobs                                       | Secrets            |
+| --------------- | --------------------------------------------- | --------------------------- | ------------------------------------------ | ------------------ |
+| Local           | Compose or configured PostgreSQL              | Filesystem                  | Local                                      | Environment/local  |
+| Portable Server | Existing PostgreSQL                           | Filesystem or S3-compatible | PostgreSQL dispatcher intended but unwired | Operator injection |
+| GCP Starter     | Existing PostgreSQL or acknowledged Cloud SQL | GCS                         | Cloud Tasks                                | Secret Manager     |
 
-## Deployment Topology
-
-The target is three separately deployable services and container images:
-
-- `clearcut-site`: Astro marketing service.
-- `clearcut-web`: TanStack Start authenticated workspace.
-- `clearcut-api`: FastAPI modular monolith + Google ADK runtime.
-
-All three may run on Cloud Run with independent release, rollback, scaling, and service identities. The public workspace/API boundary is same-origin even though `clearcut-web` and `clearcut-api` are separately deployable. The API connects to Cloud SQL PostgreSQL, Cloud Storage, Gemini/ADK, Parallel, Cloud Tasks, Cloud Scheduler, the configured local or Firebase identity adapter, and Secret Manager. Separate service images are deployment boundaries only; the backend remains a modular monolith.
+GCP Starter has one public Cloud Run `clearcut` service and a separate same-digest migration job. Release automation uses one digest, a no-traffic candidate, GET-only smoke, and exact-revision promotion. Terraform is unapplied and does not provision the complete workload.
 
 ## Key Decisions
 
-- Local PostgreSQL authentication is the default OSS mode; Firebase/Identity Platform is an optional deployment-selected adapter, not the authorization store.
-- Browser authentication uses a same-origin, host-only Secure HttpOnly SameSite cookie carrying an opaque revocable server session; state-changing requests also require CSRF-token and Origin validation.
-- Modular monolith, not backend microservices, for the hackathon.
-- PostgreSQL, not Firestore, for relational evidence/version/audit integrity.
-- Fixed roles: Owner, Admin, Editor, Reviewer, Viewer; no custom permission combinations.
-- OpenAPI-first contracts; generated TypeScript and Python clients checked for drift.
-- Mock is the visual source of truth; production implements its patterns.
-- Every provider port returns typed results or typed errors.
-- Organization-owned, project-owned, and explicitly global resources use distinct authorization scopes; do not add `project_id` to organization/global queries merely to satisfy a blanket rule.
+- One portable image and one public application service, not independent frontend/API workloads.
+- Modular monolith, not backend microservices.
+- PostgreSQL, not Firestore, for relational evidence, version, and audit integrity.
+- Built-in sessions by default; Firebase remains optional and currently unwired.
+- Same-origin opaque session cookies with CSRF and Origin validation.
+- Fixed roles: Owner, Admin, Editor, Reviewer, Viewer.
+- OpenAPI-first contracts with generated-client drift checks.
+- Mock-derived visual implementation.
+- Typed provider results/errors and ownership-aware tenant scope.
+- Cloud/provider evidence is never inferred from local source tests.
 
 ## Agent Configuration Boundary
 
-Kiro personas intentionally use `tools: ["@builtin"]` and `includeMcpJson: true`. Do not narrow that autonomy. Safety and approval enforcement come from user-level `~/.kiro/settings/permissions.yaml`; project `.kiro/settings/` is optional generated configuration and may be absent.
+Kiro personas intentionally use `tools: ["@builtin"]` and `includeMcpJson: true`. Safety and approval enforcement come from user-level `~/.kiro/settings/permissions.yaml`; project `.kiro/settings/` is optional generated configuration.

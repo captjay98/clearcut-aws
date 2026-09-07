@@ -71,3 +71,45 @@ def test_submission_copy_describes_one_unverified_deadline_release() -> None:
         assert "three-image" not in copy
         assert "immutable production image digests" not in copy
         assert "not" in copy and "verified" in copy
+
+
+AUTHORITATIVE_DEPLOYMENT_DOCS = (
+    "README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/EXTENSIONS.md",
+    "docs/SESSION_HANDOFF.md",
+    "docs/plans/active/12-infrastructure-submission.md",
+    "infra/gcp/README.md",
+    ".agents/guide-header.md",
+    ".agents/steering/agents.md",
+    ".agents/steering/product-map.md",
+    ".agents/steering/product.md",
+    ".agents/steering/structure.md",
+    ".agents/steering/tech.md",
+    ".agents/steering/testing-guidelines.md",
+    ".agents/memory/project-memory.md",
+    ".agents/personas/devops-engineer.md",
+    ".agents/includes/shared/delegation-pattern.md",
+    "AGENTS.md",
+)
+
+
+def test_authoritative_docs_describe_one_portable_service_without_overclaiming() -> None:
+    stale_claims = (
+        "currently pre-implementation",
+        "three separately deployable services",
+        "three service images",
+        "three-image",
+    )
+
+    for relative_path in AUTHORITATIVE_DEPLOYMENT_DOCS:
+        copy = read(relative_path).lower()
+        for stale_claim in stale_claims:
+            assert stale_claim not in copy, f"{relative_path} still contains {stale_claim!r}"
+
+    architecture = read("docs/ARCHITECTURE.md")
+    assert "FastAPI is the sole public entry point" in architecture
+    assert "Local, Portable Server, and GCP Starter" in architecture
+    assert "Portable PostgreSQL dispatch is not yet wired" in architecture
+    assert "Firebase runtime composition is not yet wired" in architecture
+    assert "No hosted deployment is currently verified" in architecture

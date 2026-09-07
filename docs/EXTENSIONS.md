@@ -1,37 +1,45 @@
 # ClearCut Extension Policy
 
-ClearCut is open source and adapter-oriented. Extension points exist to keep provider and infrastructure SDKs outside domain logic, make deployments testable, and allow deliberate future integrations.
+ClearCut is open source and adapter-oriented. Extension points keep provider and infrastructure SDKs outside domain logic, make profiles testable, and support deliberate future integrations without changing evidence or governance rules.
 
 ## Submitted runtime profile
 
-The Agentic Cinema release supports exactly one AI provider and one research partner:
+The Agentic Cinema release permits exactly one AI provider and one research partner:
 
 ```text
 AI runtime:           Gemini through Google ADK
-Research discovery:  Parallel Search API (mandatory)
+Research discovery:  Parallel Search API (mandatory when research runs)
 Research enrichment: Parallel Extract API (bounded)
 Research watch:      Parallel Monitor event_stream (conditional go/no-go)
 ```
 
-No other AI model, agent framework, AI API, research provider, or silent fallback belongs in the submitted source, dependency graph, deployment configuration, or demo. Parallel Task, FindAll, Responses/Chat, Interactions, Deep Research, and snapshot Monitor are excluded. Deterministic fakes are test-only and fail startup when selected in a production profile. `docs/PARALLEL_INTEGRATION.md` owns the capability contract and Monitor go/no-go rule.
+Gemini and Parallel are disabled by default. Enabling either requires explicit cost acknowledgement, a positive concurrency limit, credentials, and authorized quota. Parallel Task, FindAll, Responses/Chat, Interactions, Deep Research, snapshot Monitor, alternate research providers, and silent fallback evidence are excluded. Deterministic fakes are test-only and fail startup in a production profile. `docs/PARALLEL_INTEGRATION.md` owns the capability contract and Monitor decision.
 
 ## Public extension surface
 
 Adapters implement core-owned typed ports and register explicitly at the composition root. They do not import another module's storage, modify protected policy, or bypass application services.
 
-Supported initial extension categories are identity, storage, task dispatch, email, report rendering, and telemetry. Model/research interfaces are public for architectural clarity but contest-locked to Gemini/ADK and Parallel until after the submission.
+Implemented extension categories include:
+
+- identity through built-in opaque sessions; Firebase remains an optional but currently unwired runtime boundary;
+- object storage through filesystem, GCS, and S3-compatible adapters;
+- task dispatch through local and Cloud Tasks adapters; Portable PostgreSQL dispatch remains deferred;
+- secret resolution through local configuration and Secret Manager references;
+- email, report rendering, and telemetry ports;
+- typed model and research ports, contest-locked to Gemini/ADK and Parallel.
+
+Local, Portable Server, and GCP Starter select approved adapters through validated configuration while using the same `clearcut` image. Adapter selection cannot change domain semantics.
 
 ## Non-negotiable invariants
 
-An adapter cannot change tenant scope, evidence provenance, authority policy, protected categories, governed-action rules, audit atomicity, retention/privacy, or legal-boundary language. Provider failure is visible and typed; it never creates fallback evidence.
+An adapter cannot change tenant scope, evidence provenance, authority policy, protected categories, governed-action rules, audit atomicity, retention/privacy, or legal-boundary language. Provider failure is visible and typed; it never creates fallback evidence. Paid-provider adapters must acquire their configured runtime gate before client resolution or a paid call.
 
-## Planned contributor artifacts
+## Contributor artifacts
 
-- `services/api/src/clearcut/shared/ports/` — stable protocols and typed results.
-- `services/api/src/clearcut/bootstrap/adapter_registry.py` — explicit registration.
-- `services/api/tests/conformance/` — reusable adapter suites.
-- `docs/contributing/adapters.md` — author guide.
-- `docs/compatibility/adapters.md` — supported contract versions.
-- `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and root license.
+- `services/api/src/clearcut/` — bounded modules, typed ports, adapters, delivery, and composition.
+- `services/api/tests/` — adapter, bootstrap, module, and conformance coverage.
+- `packages/contracts/` — OpenAPI source and generated-client contract.
+- `docs/compatibility/` and contributing guidance — supported boundaries as they are published.
+- `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `LICENSE` — project governance.
 
-The approved architectural rationale is in `docs/plans/2026-08-30-open-source-extension-architecture-design.md`.
+The architectural rationale is in `docs/plans/2026-08-30-open-source-extension-architecture-design.md`; the deployment decision is in ADR 0004.

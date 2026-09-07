@@ -1,45 +1,48 @@
 # Project Structure
 
-## Current State: Pre-implementation
+## Current State
 
-Planning and design are complete; Plan 01 is next. The mock prototype at `misc/clearcut-flow/`, the planning documents, feature ledger, and `.agents/` canonical configuration are present. The product directories shown below are the **planned target structure** and must not be treated as existing runtime code until their plans are implemented.
+The repository contains implemented application, package, infrastructure, demo, documentation, and agent-configuration surfaces. Source implementation is not hosted evidence: Terraform remains unapplied, live paid-provider proof is absent, and the submission verdict is NO-GO.
 
-## Planned Target Structure
+## Repository Layout
 
 ```text
 clearcut/
-├── .agents/                    # canonical agent configuration; renders to .kiro/
-├── .kiro/                     # generated output; optional project settings, never hand-edit
+├── .agents/                    # canonical agent configuration
+├── .kiro/                     # generated agent/client output; optional settings
+├── .github/workflows/         # one-digest build, migration, and deployment contracts
 ├── apps/
-│   ├── site/                   # planned Astro marketing service (clearcut-site)
-│   └── web/                    # planned TanStack Start workspace service (clearcut-web)
+│   ├── site/                   # Astro public pages
+│   └── web/                    # TanStack Start workspace
 ├── services/
-│   └── api/                    # planned FastAPI modular monolith + Google ADK (clearcut-api)
+│   └── api/                    # FastAPI modular monolith and migrations
 ├── packages/
-│   ├── contracts/              # planned OpenAPI source + generated TS/Python clients
-│   ├── design-system/          # planned shared visual primitives
-│   └── config/                 # planned shared build/lint/type configuration
-├── infra/
-│   └── gcp/                    # planned Cloud Run/SQL/Storage/Tasks/Scheduler infrastructure
-├── demo/                       # planned screenplay, fixtures, and expected results
-├── misc/clearcut-flow/         # existing mock UI and 366-check visual baseline
-├── docs/plans/                 # planning documents and ADRs
-├── docs/feature-ledger.md      # existing 47-feature mapping
-├── docs/product-plan.md        # product thesis and capability plan
-├── docs/submission-strategy.md # competition and submission plan
+│   ├── contracts/              # OpenAPI source and generated clients
+│   ├── design-system/          # mock-derived visual primitives
+│   └── config/                 # shared build/lint/type configuration
+├── infra/gcp/                  # fail-closed, unapplied Terraform foundation
+├── demo/                       # screenplay fixtures and conditional runbook
+├── misc/clearcut-flow/         # mock UI and visual baseline
+├── docs/                       # architecture, ADRs, plans, and evidence ledgers
+├── Dockerfile                  # one portable clearcut image
+├── docker-compose.yml          # Local profile orchestration
 └── LICENSE
 ```
 
-The hosted target has three separately deployable services/images: Astro site, TanStack workspace, and FastAPI API. The API is one modular monolith with bounded modules—not a set of independent backend microservices. Separate images/services do not weaken module boundaries or OpenAPI contracts.
+## Deployment Structure
 
-## Planned Backend Module Boundaries
+One immutable `clearcut` image contains compiled Astro and TanStack frontends, FastAPI, migrations, and scripts. FastAPI serves public routes, `/app/*`, `/api/*`, and protected `/api/internal/*`. Local, Portable Server, and GCP Starter use that image. GCP Starter uses one public Cloud Run service and a separate migration job pinned to the same digest.
 
-`services/api/modules/` will contain identity, scripts, detection, research, decisions, collaboration, monitoring, evaluation, and export. Modules communicate through typed events/application services and never read another module's storage directly. External systems use typed provider ports.
+Portable PostgreSQL dispatch and Firebase runtime composition remain deferred. Terraform and release workflows are source contracts, not evidence of provisioned or hosted resources.
+
+## Backend Module Boundaries
+
+`services/api/src/clearcut/` contains bounded identity, organization/project, scripts, detection, research, decisions, collaboration, monitoring, evaluation, export, records, and operations concerns. Modules communicate through typed events and application ports and never read another module's storage directly. External systems remain behind typed provider ports.
 
 ## Scope Conventions
 
-Organization-owned resources use authenticated `org_id`. Project-owned resources require authenticated `org_id` plus `project_id` and project-membership authorization. Explicitly global catalogs are limited to role/capability definitions, the ten category schema, and platform source-authority defaults. Organization policy, prompt, preference, retention, and privacy configurations and versions remain `org_id`-scoped. Global data is never a shortcut around authorization.
+Organization-owned resources use authenticated `org_id`. Project-owned resources require authenticated `org_id`, authorized `project_id`, and project membership. Explicit global catalogs are limited to role/capability definitions, category schema, and platform authority defaults. Global data never bypasses authorization.
 
 ## Source of Truth
 
-`.agents/` is the canonical agent source. `.kiro/` is generated output; project `.kiro/settings/` is optional and is not the security boundary. Kiro personas intentionally use built-in tools and MCP inclusion; safety is enforced by user-level `~/.kiro/settings/permissions.yaml`. Regenerate after canonical changes are ready, then run signoff; defer generation only when the active delegation explicitly reserves it.
+`.agents/` is canonical. `AGENTS.md`, `.kiro/`, and `.agents/render-manifest.json` are generated outputs. Regenerate after canonical changes, then run strict lint, verify, and signoff. Kiro personas intentionally use built-in tools and MCP inclusion; user-level permissions are the security boundary.

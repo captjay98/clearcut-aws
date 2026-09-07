@@ -1,63 +1,69 @@
 # Infrastructure, Hardening, and Submission Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For agents:** Use the executing-plans workflow and stop at every cloud, paid-provider, or release authorization boundary.
 
-**Goal:** Deploy the exact verified ClearCut revision to Google Cloud, prove operational/security behavior and live Gemini/Parallel use, and produce a compliant public submission.
+**Goal:** Prepare and provider-free verify one portable ClearCut release, then—only after explicit authorization—deploy the exact verified revision, collect hosted operational/provider evidence, and assemble a truthful public submission.
 
-**Architecture:** Terraform provisions least-privileged Cloud Run/SQL/Storage/Tasks/Scheduler/Secret Manager/observability. CI builds immutable images once, gates migrations, deploys by digest, runs staging E2E/security/operational proof, then records a frozen submission manifest.
+**Architecture:** One immutable `clearcut` image packages Astro, TanStack Start, FastAPI, Alembic migrations, and scripts. FastAPI is the sole public entry point. GCP Starter uses one public Cloud Run service plus a separate same-digest migration job, GCS, Cloud Tasks, Secret Manager, and an existing PostgreSQL database or separately acknowledged Cloud SQL.
 
-**Tech Stack:** Terraform/OpenTofu decision from ADR, Google Cloud Run/SQL/Storage/Tasks/Scheduler/Secret Manager, Artifact Registry, Cloud Build/GitHub Actions, OpenTelemetry, Semgrep/dependency/SBOM scans.
+**Tech Stack:** Terraform CLI and Google provider, Cloud Run/SQL/Storage/Tasks/Secret Manager, singular Artifact Registry, GitHub Actions with Workload Identity Federation, OpenTelemetry, Semgrep/dependency/SBOM scans.
+
+**Current boundary:** source implementation and provider-free controls exist; infrastructure remains unapplied and the submission verdict remains NO-GO.
 
 ---
 
-**Depends on:** Plan 01 for foundation; all plans for final R9  
+**Depends on:** implemented product foundation and all product plans for final R9
+
 **Checkpoint:** R9
 
-### Task 1: Provision isolated environments and identities
+### Task 1: Complete fail-closed infrastructure definitions
 
-Create Terraform modules/state policy, separate service identities, private task handlers, Cloud SQL/Storage/Tasks/Scheduler/secrets, budgets/alerts/log sinks. Test plan in CI; apply requires explicit approval. No exported service-account keys.
+Keep all resource management opt-in. Add only reviewed workload, identity, data, queue, secret, observability, budget, and recovery capabilities. Existing resources require an explicit retain/import/migrate/replace/unmanaged/retire disposition. No exported service-account keys.
 
-### Task 2: Implement build/migration/deploy pipeline
+### Task 2: Maintain the one-digest release pipeline
 
-Build site/web/api images once with SBOM/provenance, scan, push by digest, run pre-migration compatibility and separate Alembic job, deploy staged traffic, smoke, promote, and retain rollback. App startup never migrates.
+Build one `clearcut` image with SBOM/provenance, scan it, and pass one immutable digest through the protected migration workflow and deployment workflow. Run Alembic as a separate same-digest job. Create one no-traffic candidate, run GET-only smoke checks against that exact revision, promote only that revision, and retain rollback evidence. Application startup never migrates.
 
-### Task 3: Add operational and recovery proof
+### Task 3: Prove operational and recovery behavior
 
-Verify task auth, leases/retries/reconciliation, provider failure visibility, scheduler dedupe, database backup/PITR restore drill, object/artifact access, secret rotation, session revocation, deletion job, telemetry correlation, redaction canaries, cost/budget alerts.
+After separate cloud authorization, verify task OIDC, leases/retries/reconciliation, provider failure visibility, scheduler dedupe, database backup/PITR restore, object access, secret rotation, session revocation, deletion, telemetry correlation, redaction canaries, and budget alerts. Provider-free tests do not satisfy hosted drills.
 
-The production composition manifest registers `GeminiAdkRuntime`, `ParallelSearchAdapter`, and `ParallelExtractAdapter`; it registers `ParallelMonitorAdapter` only when the recorded go/no-go is GO and deployed webhook proof passes. Dependency/SBOM/startup validation requires Search and rejects another AI model, agent framework, research provider/fallback, test fake, or excluded Parallel agent API in the production profile.
+The production profile registers Gemini/ADK and Parallel Search/Extract only when each provider is explicitly enabled with cost acknowledgement, credentials, quota, and a positive concurrency cap. Parallel Monitor is registered only after the recorded GO and signed-webhook proof. Startup and dependency checks reject alternate model/research providers, test fakes, silent fallbacks, and excluded Parallel APIs.
 
-### Task 4: Run full release gate
+### Task 4: Run the full release gate
 
 ```text
 clean candidate tree
--> recorded SHA
--> HEAD equals target remote SHA
+-> recorded SHA equals authorized target SHA
 -> all quality/contract/security/UI gates
--> deploy exact image digests from that SHA
+-> one image digest from that SHA
+-> same-digest migration
+-> exact no-traffic candidate
 -> authenticated golden path + role/tenant negative paths
--> live Gemini/ADK and Parallel traces
--> operational/recovery checks
--> GO/NO-GO verdict
+-> authorized live Gemini/ADK and Parallel traces
+-> operational/recovery evidence
+-> accountable GO/NO-GO verdict
 ```
 
-Moving candidates, uncommitted changes, failed hard gates, missing runtime proof, or money/security/evidence ambiguity block GO.
+Moving candidates, uncommitted changes, failed hard gates, missing runtime proof, or cost/security/evidence ambiguity block GO.
 
-### Task 5: Build original demo and three-minute video
+### Task 5: Build the original demo and three-minute video
 
-Use an entrant-owned screenplay and disclose demo/sample data. Show import, real agent/detection, a mandatory live Parallel Search trace, bounded Extract outcome, evidence/conflict, governed rewrite by another reviewer, selective re-scan, and snapshot/release. Show a previously delivered Monitor signal only when it is part of the exact deployed candidate and label it as re-verified. Keep under three minutes, public, English/subtitled.
+Use an entrant-owned screenplay and disclose synthetic/sample data. Show import, authorized live detection/research, mandatory Parallel Search, bounded Extract, evidence/conflict, governed rewrite, selective re-scan, and report generation/release. Show Monitor only when it belongs to the exact deployed candidate and label the previously delivered signal as re-verified. Keep the video public, English or subtitled, and under three minutes.
 
-### Task 6: Assemble public repository and Devpost submission
+### Task 6: Assemble the public repository and Devpost submission
 
-Verify license/About visibility, run instructions from clean clone, architecture/data/authority/limitations docs, all source/assets, hosted URL, repo URL, video URL/duration/visibility, feature/technology/data/learnings copy, Parallel track selection, and exact package/runtime calls.
+Verify clean-clone installation, license and repository visibility, architecture/data/authority/limitations docs, hosted URL, repository URL, video URL/duration/visibility, feature and technology copy, Parallel track selection, and exact runtime calls.
 
 ```yaml
 submission:
   gitSha: "<exact-sha>"
-  imageDigests: ["clearcut-site@sha256:...", "clearcut-web@sha256:...", "clearcut-api@sha256:..."]
+  imageDigest: "clearcut@sha256:<digest>"
+  migrationImageDigest: "clearcut@sha256:<same-digest>"
+  deployedRevision: "<exact-candidate-revision>"
   runtimeProof:
-    geminiTraceId: "..."
-    parallelSearchId: "..."
+    geminiTraceId: "...|not-verified"
+    parallelSearchId: "...|not-verified"
     parallelExtractId: "...|not-enabled"
     parallelMonitorId: "...|not-enabled"
   verdict: "GO|NO-GO"
@@ -65,23 +71,28 @@ submission:
 
 ### Task 7: Resolve compliance correspondence
 
-Obtain and retain written organizer clarification about development-assistant eligibility before asserting compliance. Do not alter history or misstate how code was produced. Record remaining risk in the submission manifest.
+Retain written organizer clarification about development-assistant eligibility before asserting compliance. Do not alter history or misstate how code was produced. Record remaining risk in the submission manifest.
+
+### Provider-free checks
 
 ```bash
 pnpm verify
-uv run pytest services/api -q
-pnpm --filter @clearcut/web test:e2e
-terraform -chdir=infra/gcp plan -detailed-exitcode
+uv run pytest services/api/tests -q
+pnpm --filter clearcut-web test:e2e -- --workers=1
+terraform fmt -check -recursive infra/gcp
+terraform -chdir=infra/gcp/environments/production init -backend=false -input=false
+terraform -chdir=infra/gcp/environments/production validate
+terraform -chdir=infra/gcp/environments/production test
 ```
 
-Expected: quality commands exit 0; Terraform returns 0 for no changes or reviewed 2 for an intentional plan; the evidence pack records which.
+These checks must not call paid providers, initialize a real backend, plan/apply/import state, or mutate cloud resources.
 
 ### Exit criteria
 
-- Local/remote/deployed revision and image digests match exactly.
+- Local, remote, and deployed revision plus one image digest match exactly.
 - Clean-clone install/test/run succeeds.
-- Authenticated golden path and tenant/role/security negatives pass on hosted target.
-- Runtime Gemini/ADK and Parallel traces match video behavior.
-- Recovery/observability/redaction/budget checks pass.
-- Public repo/license/video/hosted URL/Devpost fields are verified.
-- R9 gives a concise GO/NO-GO with explicit limitations; no plan prose substitutes for evidence.
+- Authenticated golden path and tenant/role/security negatives pass on the hosted target.
+- Authorized runtime Gemini/ADK and Parallel traces match video behavior.
+- Recovery, observability, redaction, and budget checks pass.
+- Public repository, license, video, hosted URL, and Devpost fields are verified.
+- R9 records a concise GO/NO-GO with explicit limitations; plan prose never substitutes for evidence.

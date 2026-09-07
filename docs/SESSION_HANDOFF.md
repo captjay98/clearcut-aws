@@ -1,49 +1,43 @@
 # ClearCut Session Handoff
 
-**Current phase:** pre-implementation  
-**Next allowed action:** implementation packet 01a only, after explicit owner authorization  
-**Do not start:** product implementation, infrastructure mutation, deployment, credentials, mock correction, or Git commit from this planning task
+**Current phase:** portable single-service implementation and provider-free release verification
+
+**Current verdict:** NO-GO for hosted or contest release
+
+**Next allowed action:** complete provider-free verification and review; perform cloud mutation or paid-provider calls only after explicit owner authorization
 
 ## Start here
 
-1. Read `docs/README.md` and `docs/IMPLEMENTATION_PLAN.md`.
-2. Read `docs/plans/implementation/README.md`, `docs/plans/active/FEATURE_COVERAGE.md`, and `docs/DELIVERY_PLAN.md`.
-3. Read `docs/DECISION_GAPS.md`; resolve each item before its named contract/task boundary.
-4. Read `docs/PARALLEL_INTEGRATION.md` before touching detection/research/provider contracts. Search is mandatory; Extract is bounded; Monitor is conditional; excluded Parallel APIs are release failures.
-5. Re-run `node misc/clearcut-flow/mockup-audit.mjs`; the current planning baseline observed 418/418 on 2026-08-30.
-6. Review `docs/reviews/2026-08-30-ui-plan-to-mock-audit.md`; do not interpret 418/418 as full UI-plan closure.
-7. If implementation is explicitly authorized, execute `docs/plans/implementation/01a-workspace-open-source.md` only.
+1. Read `README.md`, `docs/ARCHITECTURE.md`, ADR 0004, and `docs/plans/2026-08-31-portable-single-service-deployment.md`.
+2. Read `docs/submission/manifest.yaml` before making any hosted, provider, production, or contest claim.
+3. Read `docs/PARALLEL_INTEGRATION.md` before changing detection, research, or provider contracts. Search is mandatory when research runs; Extract is bounded; Monitor is conditional.
+4. Run the provider-free verification appropriate to the changed scope. Do not substitute local source-contract checks for hosted evidence.
+5. Preserve unrelated work and protected local artifacts. Do not reset, clean, or overwrite user-owned files.
 
-## Known open decisions before or during foundation packets
+## Accepted deployment contract
 
-- Confirm the exact Google agent platform/runtime wording required by the official contest page versus the package-level repository requirements.
-- Obtain written organizer clarification on whether non-Google development assistants affect eligibility; the official rules' project-runtime restriction and the organizer-briefing interpretation recorded in the repo are not fully reconciled.
-- Select exactly one headless accessibility library only after the required proof; no candidate is pre-approved.
-- Packet 01a freezes exact tool versions; packet 01b decides the OpenAPI generator while preserving the already accepted checked-in generated-client paths.
-- Decide the initial email mode for local/demo deployment (`none`, SMTP, Resend, or ZeptoMail) without changing the port contract.
-- Do not decide Parallel Monitor now. Packet 09a requires a recorded owner go/no-go only after the mandatory 05a–05c R3 evidence slice passes; a Monitor no-go leaves scheduled Search/Extract monitoring intact.
+- One immutable `clearcut` image contains Astro, TanStack Start, FastAPI, migrations, and operational scripts.
+- FastAPI is the sole public entry point for public pages, `/app/*`, `/api/*`, and protected `/api/internal/*` delivery.
+- Local, Portable Server, and GCP Starter use the same image and select adapters through validated configuration.
+- GCP Starter uses one public Cloud Run service and a separate migration job pinned to the same digest.
+- Built-in opaque sessions are the default; Firebase runtime composition is not yet wired.
+- Paid providers are disabled by default and require explicit cost acknowledgement plus bounded concurrency.
 
-## Frozen Parallel handoff
+## Explicit deferrals
 
-```text
-05a  mandatory Parallel Search + provenance
-05b  bounded Extract of at most 3 Search-authorized URLs
-05c  claim/conflict/authority/confidence admission
-09a  scheduled Search/Extract watch + conditional Monitor event-stream ingestion
-09b  verified materiality + governed review
-09c  notification backend
-09d  Watch and Notifications UI
-```
+- Portable PostgreSQL dispatch is designed but not composed into the runtime.
+- Firebase/Identity Platform settings validation does not constitute runtime integration.
+- Terraform does not provision the complete workload and has not been planned or applied against GCP.
+- No hosted image, URL, candidate revision, backup/restore drill, provider trace, video, or cost evidence exists.
+- Docker and actionlint checks may be unavailable on a given workstation; report them rather than claiming them.
 
-Task, FindAll, Responses/Chat, Interactions, Deep Research, snapshot Monitor, alternate research providers, and silent fallbacks are outside the submitted runtime. Implementation must stop if an SDK/API change makes the frozen request/response assumptions invalid; update the contract/packet through review instead of improvising.
+## Current provider-free evidence
 
-## Current evidence
+- The one-image, Cloud Tasks, storage/secret, paid-provider governance, Artifact Registry, submission, and release-workflow source contracts have focused passing tests.
+- Frontend production builds have passed in the integration worktree.
+- Terraform formatting, backend-disabled initialization, validation, and mock-provider tests have passed without cloud mutation.
+- The container startup contract enables bundled static delivery, but no local Docker engine was available for an image build or smoke test.
 
-- Structural mock audit: 418/418 passed.
-- Fresh browser spot sweep: all 20 canonical routes rendered one main heading with no horizontal page overflow at 1440x1000 and 320x844; Night shoot also had no horizontal page overflow at 320x844; no page errors were reported.
-- Known audit limitation: the browser sweep was not a fresh axe, VoiceOver/NVDA, Safari, Firefox, print, or full interaction regression.
-- Repository is dirty with extensive user-owned `.agents`, `.kiro`, and planning changes. Preserve them.
+## Release boundary
 
-## First checkpoint
-
-Packets 01a–01c end at R1. They must not claim product behavior. Evidence must name exact commands, output, revision, dirty-tree status, and explicit non-claims.
+A future release must bind one repository SHA and one image digest through build, migration, candidate deployment, smoke, and promotion. It must retain exact workflow-run evidence, hosted authorization checks, runtime Gemini/Parallel traces when enabled, recovery evidence, and an accountable GO decision. Until those artifacts are recorded, `docs/submission/manifest.yaml` remains NO-GO.
