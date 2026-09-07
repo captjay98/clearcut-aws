@@ -12,9 +12,33 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from clearcut.bootstrap.settings import (
+    LOCAL_SQLITE_URL,
+    DeploymentProfile,
+)
+
+deployment_profile_value = os.getenv(
+    "CLEARCUT_DEPLOYMENT_PROFILE",
+    DeploymentProfile.LOCAL.value,
+)
+try:
+    deployment_profile = DeploymentProfile(deployment_profile_value.strip().lower())
+except ValueError as error:
+    raise RuntimeError(
+        f"Unsupported CLEARCUT_DEPLOYMENT_PROFILE: {deployment_profile_value!r}."
+    ) from error
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    DATABASE_URL = "sqlite+aiosqlite:////tmp/clearcut.db"
+    if deployment_profile is not DeploymentProfile.LOCAL:
+        raise RuntimeError("DATABASE_URL is required for hosted deployment profiles.")
+    DATABASE_URL = LOCAL_SQLITE_URL
+
+if (
+    deployment_profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}
+    and not DATABASE_URL.casefold().startswith(("postgresql://", "postgresql+"))
+):
+    raise RuntimeError("Hosted deployment profiles require PostgreSQL DATABASE_URL.")
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
 

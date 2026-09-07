@@ -15,7 +15,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from clearcut.bootstrap.container import build_application
+from clearcut.bootstrap.settings import ClearcutSettings, StorageAdapter
 from clearcut.collaboration.delivery.http import router as collaboration_router
+from clearcut.database import DATABASE_URL as CONFIGURED_DATABASE_URL
 from clearcut.decisions.delivery.http import router as decisions_router
 from clearcut.delivery_errors import error_response
 from clearcut.detection.adapters.sql_candidate_repository import SqlCandidateRepository
@@ -36,7 +39,10 @@ from clearcut.identity.delivery.http import router as identity_router
 from clearcut.items.delivery.http import router as items_router
 from clearcut.monitoring.delivery.http import router as monitoring_router
 from clearcut.operations.adapters.sql_job_repository import SqlJobRepository
-from clearcut.operations.application.local_dispatcher import LocalJobDispatcher
+from clearcut.operations.application.local_dispatcher import (
+    LocalDispatchConfigurationError,
+    LocalJobDispatcher,
+)
 from clearcut.operations.application.run_job import RunJobService
 from clearcut.operations.delivery.http import router as operations_router
 from clearcut.organizations.adapters.sql_repository import DatabaseOrganizationRepository
@@ -70,6 +76,25 @@ from clearcut.scripts.delivery.http import router as scripts_router
 from clearcut.scripts.domain.elements import ScriptElement
 
 logger = logging.getLogger(__name__)
+
+
+def _configured_api_worker_count() -> int:
+    configured_workers: dict[str, int] = {}
+    for variable in ("CLEARCUT_API_WORKERS", "WEB_CONCURRENCY"):
+        value = os.getenv(variable)
+        if value is None or not value.strip():
+            continue
+        try:
+            configured_workers[variable] = int(value)
+        except ValueError as error:
+            raise LocalDispatchConfigurationError(
+                f"{variable} must be an integer."
+            ) from error
+    if len(set(configured_workers.values())) > 1:
+        raise LocalDispatchConfigurationError(
+            "CLEARCUT_API_WORKERS and WEB_CONCURRENCY must match when both are set."
+        )
+    return next(iter(configured_workers.values()), 1)
 
 
 class _ConfiguredDetectionRuntime(ModelRuntimePort):
@@ -191,15 +216,6 @@ async def lifespan(_app: FastAPI):
                 await recovery_task
 
 
-app = FastAPI(
-    title="ClearCut API",
-    version="0.1.0",
-    description="Screenplay pre-clearance research desk and evidence workspace API",
-    lifespan=lifespan,
-)
-
-
-@app.exception_handler(StarletteHTTPException)
 async def handle_http_exception(
     _request: Request,
     error: StarletteHTTPException,
@@ -229,7 +245,6 @@ async def handle_http_exception(
     )
 
 
-@app.exception_handler(RequestValidationError)
 async def handle_request_validation_error(
     _request: Request,
     _error: RequestValidationError,
@@ -242,7 +257,6 @@ async def handle_request_validation_error(
     )
 
 
-@app.exception_handler(Exception)
 async def handle_unexpected_exception(
     request: Request,
     error: Exception,
@@ -264,148 +278,180 @@ async def handle_unexpected_exception(
     return response
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def create_app(settings: ClearcutSettings) -> FastAPI:
+    """Compose a FastAPI application from validated deployment settings."""
+    application_container = build_application(settings)
+    if settings.database.url != CONFIGURED_DATABASE_URL:
+        raise RuntimeError(
+            "Configured database URL does not match the process database engine."
+        )
+    if settings.storage.adapter is not StorageAdapter.FILESYSTEM:
+        raise RuntimeError(
+            f"Storage adapter {settings.storage.adapter.value!r} is not implemented yet."
+        )
+    if settings.storage.path is None:
+        raise RuntimeError("Filesystem storage requires a configured path.")
 
-# Compose production SQL-backed repositories
-identity_repo = DatabaseIdentityRepository()
-identity_provider = Argon2idIdentityProvider()
-session_service = SessionService(
-    repository=identity_repo,
-    identity_provider=identity_provider,
-)
-
-org_repo = DatabaseOrganizationRepository()
-org_service = OrganizationBootstrapService(repository=org_repo)
-
-project_repo = DatabaseProjectRepository()
-project_service = ProjectService(repository=project_repo)
-
-storage = FilesystemObjectStorage(os.getenv("CLEARCUT_STORAGE_PATH", ".clearcut/storage"))
-import_repository = SqlImportRepository()
-import_script_service = ImportScriptService(
-    repository=import_repository,
-    storage=storage,
-)
-
-job_repository = SqlJobRepository()
-candidate_repository = SqlCandidateRepository()
-evaluation_repository = SqlEvaluationRepository()
-detection_runtime = _ConfiguredDetectionRuntime()
-judge_runtime = _ConfiguredJudgeRuntime()
-evaluation_service = EvaluationService(
-    judge=judge_runtime,
-    repository=evaluation_repository,
-)
-run_detection_job = RunDetectionJobService(
-    repository=candidate_repository,
-    job_repository=job_repository,
-    runtime=detection_runtime,
-    evaluation=evaluation_service,
-)
-research_repository = SqlResearchRepository()
-research_planner = _ConfiguredResearchPlanner()
-research_runtime = _ConfiguredResearchRuntime()
-run_research_job = RunResearchJobService(
-    repository=research_repository,
-    planner=research_planner,
-    search=research_runtime,
-    extract=research_runtime,
-    evaluation=evaluation_service,
-)
-job_runner = RunJobService(
-    repository=job_repository,
-    processors={
-        "detection": run_detection_job,
-        "research": run_research_job,
-    },
-    lease_owner=f"local:{socket.gethostname()}:{os.getpid()}",
-)
-job_dispatcher = LocalJobDispatcher.from_environment(runner=job_runner)
-
-app.state.identity_repo = identity_repo
-app.state.identity_provider = identity_provider
-app.state.session_service = session_service
-app.state.org_repo = org_repo
-app.state.org_service = org_service
-app.state.project_repo = project_repo
-app.state.project_service = project_service
-app.state.storage = storage
-app.state.import_repository = import_repository
-app.state.import_script_service = import_script_service
-app.state.job_repository = job_repository
-app.state.candidate_repository = candidate_repository
-app.state.evaluation_repository = evaluation_repository
-app.state.run_detection_job = run_detection_job
-app.state.research_repository = research_repository
-app.state.research_planner = research_planner
-app.state.research_runtime = research_runtime
-app.state.run_research_job = run_research_job
-app.state.job_runner = job_runner
-app.state.job_dispatcher = job_dispatcher
-app.state.local_job_recovery_interval_seconds = float(
-    os.getenv("CLEARCUT_LOCAL_JOB_RECOVERY_INTERVAL_SECONDS", "30")
-)
-
-app.include_router(identity_router)
-app.include_router(organization_router)
-app.include_router(scripts_router)
-app.include_router(items_router)
-app.include_router(decisions_router)
-app.include_router(collaboration_router)
-app.include_router(detection_router)
-app.include_router(research_router)
-app.include_router(operations_router)
-app.include_router(monitoring_router)
-app.include_router(records_router)
-app.include_router(evaluation_router)
-app.include_router(export_router)
-
-
-@app.get("/healthz")
-@app.get("/api/v1/healthz")
-async def healthz() -> JSONResponse:
-    return JSONResponse(
-        content={
-            "status": "ok",
-            "timestamp": datetime.now(UTC).isoformat(),
-            "version": "0.1.0",
-            "jobDispatch": {
-                "mode": app.state.job_dispatcher.mode,
-                "durable": app.state.job_dispatcher.durable,
-            },
-        }
+    app = FastAPI(
+        title="ClearCut API",
+        version="0.1.0",
+        description="Screenplay pre-clearance research desk and evidence workspace API",
+        lifespan=lifespan,
+    )
+    app.add_exception_handler(StarletteHTTPException, handle_http_exception)
+    app.add_exception_handler(RequestValidationError, handle_request_validation_error)
+    app.add_exception_handler(Exception, handle_unexpected_exception)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
+    identity_repo = DatabaseIdentityRepository()
+    identity_provider = Argon2idIdentityProvider()
+    session_service = SessionService(
+        repository=identity_repo,
+        identity_provider=identity_provider,
+    )
+    org_repo = DatabaseOrganizationRepository()
+    org_service = OrganizationBootstrapService(repository=org_repo)
+    project_repo = DatabaseProjectRepository()
+    project_service = ProjectService(repository=project_repo)
+    storage = FilesystemObjectStorage(settings.storage.path)
+    import_repository = SqlImportRepository()
+    import_script_service = ImportScriptService(
+        repository=import_repository,
+        storage=storage,
+    )
 
-# Optional Unified SPA Serving (for single-container self-hosted & Cloud Run deployment)
-web_dist_env = os.getenv("WEB_DIST_PATH")
-if web_dist_env and Path(web_dist_env).is_dir():
-    web_dist_dir = Path(web_dist_env)
-    assets_dir = web_dist_dir / "assets"
-    if assets_dir.is_dir():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    job_repository = SqlJobRepository()
+    candidate_repository = SqlCandidateRepository()
+    evaluation_repository = SqlEvaluationRepository()
+    detection_runtime = _ConfiguredDetectionRuntime()
+    judge_runtime = _ConfiguredJudgeRuntime()
+    evaluation_service = EvaluationService(
+        judge=judge_runtime,
+        repository=evaluation_repository,
+    )
+    run_detection_job = RunDetectionJobService(
+        repository=candidate_repository,
+        job_repository=job_repository,
+        runtime=detection_runtime,
+        evaluation=evaluation_service,
+    )
+    research_repository = SqlResearchRepository()
+    research_planner = _ConfiguredResearchPlanner()
+    research_runtime = _ConfiguredResearchRuntime()
+    run_research_job = RunResearchJobService(
+        repository=research_repository,
+        planner=research_planner,
+        search=research_runtime,
+        extract=research_runtime,
+        evaluation=evaluation_service,
+    )
+    job_runner = RunJobService(
+        repository=job_repository,
+        processors={
+            "detection": run_detection_job,
+            "research": run_research_job,
+        },
+        lease_owner=f"local:{socket.gethostname()}:{os.getpid()}",
+    )
+    job_dispatcher = LocalJobDispatcher(
+        runner=job_runner,
+        mode=settings.dispatch.adapter.value,
+        worker_count=_configured_api_worker_count(),
+    )
 
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        # Don't intercept API routes or system endpoints
-        if (
-            full_path.startswith("api/")
-            or full_path.startswith("docs")
-            or full_path.startswith("openapi.json")
-            or full_path.startswith("healthz")
-            or full_path == "healthz"
-        ):
-            return JSONResponse({"detail": "Not Found"}, status_code=404)
-        target = web_dist_dir / full_path
-        if target.is_file():
-            return FileResponse(target)
-        index_path = web_dist_dir / "index.html"
-        if index_path.is_file():
-            return FileResponse(index_path)
-        return JSONResponse({"detail": "SPA index.html not found"}, status_code=404)
+    app.state.settings = settings
+    app.state.deployment_summary = application_container.summary
+    app.state.application_container = application_container
+    app.state.identity_repo = identity_repo
+    app.state.identity_provider = identity_provider
+    app.state.session_service = session_service
+    app.state.org_repo = org_repo
+    app.state.org_service = org_service
+    app.state.project_repo = project_repo
+    app.state.project_service = project_service
+    app.state.storage = storage
+    app.state.import_repository = import_repository
+    app.state.import_script_service = import_script_service
+    app.state.job_repository = job_repository
+    app.state.candidate_repository = candidate_repository
+    app.state.evaluation_repository = evaluation_repository
+    app.state.run_detection_job = run_detection_job
+    app.state.research_repository = research_repository
+    app.state.research_planner = research_planner
+    app.state.research_runtime = research_runtime
+    app.state.run_research_job = run_research_job
+    app.state.job_runner = job_runner
+    app.state.job_dispatcher = job_dispatcher
+    app.state.local_job_recovery_interval_seconds = float(
+        os.getenv("CLEARCUT_LOCAL_JOB_RECOVERY_INTERVAL_SECONDS", "30")
+    )
+
+    app.include_router(identity_router)
+    app.include_router(organization_router)
+    app.include_router(scripts_router)
+    app.include_router(items_router)
+    app.include_router(decisions_router)
+    app.include_router(collaboration_router)
+    app.include_router(detection_router)
+    app.include_router(research_router)
+    app.include_router(operations_router)
+    app.include_router(monitoring_router)
+    app.include_router(records_router)
+    app.include_router(evaluation_router)
+    app.include_router(export_router)
+
+    async def healthz() -> JSONResponse:
+        return JSONResponse(
+            content={
+                "status": "ok",
+                "timestamp": datetime.now(UTC).isoformat(),
+                "version": "0.1.0",
+                "jobDispatch": {
+                    "mode": app.state.job_dispatcher.mode,
+                    "durable": app.state.job_dispatcher.durable,
+                },
+            }
+        )
+
+    app.add_api_route("/healthz", healthz, methods=["GET"])
+    app.add_api_route("/api/v1/healthz", healthz, methods=["GET"])
+
+    web_dist_env = os.getenv("WEB_DIST_PATH")
+    if web_dist_env and Path(web_dist_env).is_dir():
+        web_dist_dir = Path(web_dist_env)
+        assets_dir = web_dist_dir / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        async def serve_spa(full_path: str):
+            if (
+                full_path.startswith("api/")
+                or full_path.startswith("docs")
+                or full_path.startswith("openapi.json")
+                or full_path.startswith("healthz")
+                or full_path == "healthz"
+            ):
+                return JSONResponse({"detail": "Not Found"}, status_code=404)
+            target = web_dist_dir / full_path
+            if target.is_file():
+                return FileResponse(target)
+            index_path = web_dist_dir / "index.html"
+            if index_path.is_file():
+                return FileResponse(index_path)
+            return JSONResponse(
+                {"detail": "SPA index.html not found"},
+                status_code=404,
+            )
+
+        app.add_api_route("/{full_path:path}", serve_spa, methods=["GET"])
+
+    return app
+
+
+app = create_app(ClearcutSettings.from_environment())
