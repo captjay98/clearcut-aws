@@ -41,13 +41,24 @@ from clearcut.identity.application.session_service import SessionService
 from clearcut.identity.delivery.http import router as identity_router
 from clearcut.items.delivery.http import router as items_router
 from clearcut.monitoring.delivery.http import router as monitoring_router
+from clearcut.operations.adapters.cloud_tasks import (
+    CloudTasksClient,
+    CloudTasksConfiguration,
+    CloudTasksJobDispatcher,
+    GoogleAccessToken,
+)
 from clearcut.operations.adapters.sql_job_repository import SqlJobRepository
 from clearcut.operations.application.local_dispatcher import (
     LocalDispatchConfigurationError,
     LocalJobDispatcher,
 )
+from clearcut.operations.application.reconcile_jobs import (
+    ReconcileJobsService,
+    SqlDispatchOutbox,
+)
 from clearcut.operations.application.run_job import RunJobService
 from clearcut.operations.delivery.http import router as operations_router
+from clearcut.operations.delivery.tasks_http import router as tasks_router
 from clearcut.organizations.adapters.sql_repository import DatabaseOrganizationRepository
 from clearcut.organizations.application.bootstrap import OrganizationBootstrapService
 from clearcut.organizations.delivery.http import router as organization_router
@@ -285,7 +296,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     application_container = build_application(settings)
     if settings.database.url != SecretStr(CONFIGURED_DATABASE_URL):
         raise RuntimeError("Configured database URL does not match the process database engine.")
-    if settings.dispatch.adapter is not DispatchAdapter.LOCAL:
+    if settings.dispatch.adapter not in {DispatchAdapter.LOCAL, DispatchAdapter.CLOUD_TASKS}:
         raise RuntimeError(
             f"Dispatch adapter {settings.dispatch.adapter.value!r} is not implemented yet."
         )
@@ -366,11 +377,42 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
         },
         lease_owner=f"local:{socket.gethostname()}:{os.getpid()}",
     )
-    job_dispatcher = LocalJobDispatcher(
-        runner=job_runner,
-        mode="local" if settings.dispatch.enabled else "disabled",
-        worker_count=_configured_api_worker_count(),
-    )
+    dispatch_outbox = SqlDispatchOutbox(repository=job_repository)
+    if settings.dispatch.adapter is DispatchAdapter.LOCAL:
+        job_dispatcher = LocalJobDispatcher(
+            runner=job_runner,
+            mode="local" if settings.dispatch.enabled else "disabled",
+            worker_count=_configured_api_worker_count(),
+        )
+        reconcile_jobs_service = ReconcileJobsService(
+            outbox=dispatch_outbox,
+            client=None,  # type: ignore[arg-type]
+            repository=job_repository,
+        )
+    elif settings.dispatch.adapter is DispatchAdapter.CLOUD_TASKS:
+        cloud_tasks_config = CloudTasksConfiguration(
+            project_id=settings.dispatch.project_id or "",
+            location=settings.dispatch.location or "",
+            queue=settings.dispatch.queue or "",
+            target_url=settings.dispatch.target_url or "",
+            audience=settings.dispatch.audience or "",
+            service_account_email=settings.dispatch.service_account_email or "",
+        )
+        task_client = CloudTasksClient(
+            configuration=cloud_tasks_config,
+            credentials=GoogleAccessToken(),
+        )
+        job_dispatcher = CloudTasksJobDispatcher(
+            client=task_client,
+            outbox=dispatch_outbox,
+        )
+        reconcile_jobs_service = ReconcileJobsService(
+            outbox=dispatch_outbox,
+            client=task_client,
+            repository=job_repository,
+        )
+        app.state.cloud_tasks_config = cloud_tasks_config
+        app.state.task_client = task_client
 
     app.state.settings = settings
     app.state.deployment_summary = application_container.summary
@@ -395,6 +437,8 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.state.run_research_job = run_research_job
     app.state.job_runner = job_runner
     app.state.job_dispatcher = job_dispatcher
+    app.state.dispatch_outbox = dispatch_outbox
+    app.state.reconcile_jobs_service = reconcile_jobs_service
     app.state.local_job_recovery_interval_seconds = float(
         os.getenv("CLEARCUT_LOCAL_JOB_RECOVERY_INTERVAL_SECONDS", "30")
     )
@@ -408,6 +452,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.include_router(detection_router)
     app.include_router(research_router)
     app.include_router(operations_router)
+    app.include_router(tasks_router)
     app.include_router(monitoring_router)
     app.include_router(records_router)
     app.include_router(evaluation_router)
