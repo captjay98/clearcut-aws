@@ -316,8 +316,14 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
         redoc_url="/api/redoc",
         lifespan=lifespan,
     )
-    app.add_exception_handler(StarletteHTTPException, handle_http_exception)
-    app.add_exception_handler(RequestValidationError, handle_request_validation_error)
+    app.add_exception_handler(
+        StarletteHTTPException,
+        handle_http_exception,  # pyright: ignore[reportArgumentType]
+    )
+    app.add_exception_handler(
+        RequestValidationError,
+        handle_request_validation_error,  # pyright: ignore[reportArgumentType]
+    )
     app.add_exception_handler(Exception, handle_unexpected_exception)
     app.add_middleware(
         CORSMiddleware,
