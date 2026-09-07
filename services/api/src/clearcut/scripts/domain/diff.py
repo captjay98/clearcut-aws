@@ -1,4 +1,5 @@
 import unicodedata
+from bisect import bisect_left
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -11,6 +12,10 @@ from clearcut.scripts.domain.elements import ElementType, ScriptElement
 MATCHING_ALGORITHM_VERSION: Final = "element-lineage-v1"
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
+_SIMILARITY_CANDIDATE_RADIUS: Final = 16
+_SIMILARITY_AMBIGUITY_FLOOR: Final = (
+    _SIMILARITY_THRESHOLD - _SIMILARITY_RUNNER_UP_MARGIN
+)
 
 
 class ChangeClassification(StrEnum):
@@ -62,6 +67,41 @@ class ScriptDiff:
     def elements(self) -> tuple[ElementDiff, ...]:
         return self.element_diffs
 
+    @property
+    def affected_before_element_ids(self) -> tuple[UUID, ...]:
+        return tuple(
+            element_diff.before_element_id
+            for element_diff in self.element_diffs
+            if element_diff.classification
+            in {ChangeClassification.MODIFIED, ChangeClassification.REMOVED}
+            and element_diff.before_element_id is not None
+        )
+
+    @property
+    def affected_after_element_ids(self) -> tuple[UUID, ...]:
+        return self.rescan_element_ids
+
+    @property
+    def rescan_before_element_ids(self) -> tuple[UUID, ...]:
+        return tuple(
+            element_diff.before_element_id
+            for element_diff in self.element_diffs
+            if element_diff.classification is ChangeClassification.MODIFIED
+            and element_diff.before_element_id is not None
+        )
+
+    @property
+    def carry_forward_before_element_ids(self) -> tuple[UUID, ...]:
+        return tuple(
+            element_diff.before_element_id
+            for element_diff in self.element_diffs
+            if element_diff.classification
+            in {ChangeClassification.UNCHANGED, ChangeClassification.MOVED}
+            and element_diff.confidence
+            in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
+            and element_diff.before_element_id is not None
+        )
+
 
 @dataclass(frozen=True)
 class _LineageMatch:
@@ -72,32 +112,61 @@ class _LineageMatch:
 
 _ElementKey = tuple[ElementType, str]
 _ContextKey = tuple[_ElementKey | None, _ElementKey | None]
+_Candidate = tuple[float, int]
+_TopCandidates = tuple[_Candidate | None, _Candidate | None]
+_SubsequenceEndpoint = tuple[int, int]
+
+
+@dataclass(frozen=True)
+class _PreparedElement:
+    element: ScriptElement
+    element_type: ElementType
+    normalized_text: str
+    text_length: int
+    key: _ElementKey
 
 
 def _normalize_text(text: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", text).split())
 
 
-def _element_key(element: ScriptElement) -> _ElementKey:
-    return element.element_type, _normalize_text(element.text)
+def _prepare_elements(elements: list[ScriptElement]) -> tuple[_PreparedElement, ...]:
+    prepared: list[_PreparedElement] = []
+    for element in elements:
+        normalized_text = _normalize_text(element.text)
+        prepared.append(
+            _PreparedElement(
+                element=element,
+                element_type=element.element_type,
+                normalized_text=normalized_text,
+                text_length=len(normalized_text),
+                key=(element.element_type, normalized_text),
+            )
+        )
+    return tuple(prepared)
 
 
-def _group_indexes(elements: list[ScriptElement]) -> dict[_ElementKey, list[int]]:
+def _group_indexes(
+    elements: tuple[_PreparedElement, ...],
+) -> dict[_ElementKey, list[int]]:
     grouped: dict[_ElementKey, list[int]] = defaultdict(list)
     for index, element in enumerate(elements):
-        grouped[_element_key(element)].append(index)
+        grouped[element.key].append(index)
     return grouped
 
 
-def _context_key(elements: list[ScriptElement], index: int) -> _ContextKey:
-    previous = _element_key(elements[index - 1]) if index > 0 else None
-    following = _element_key(elements[index + 1]) if index + 1 < len(elements) else None
+def _context_key(
+    elements: tuple[_PreparedElement, ...],
+    index: int,
+) -> _ContextKey:
+    previous = elements[index - 1].key if index > 0 else None
+    following = elements[index + 1].key if index + 1 < len(elements) else None
     return previous, following
 
 
 def _unique_exact_matches(
-    before_elements: list[ScriptElement],
-    after_elements: list[ScriptElement],
+    before_elements: tuple[_PreparedElement, ...],
+    after_elements: tuple[_PreparedElement, ...],
 ) -> list[_LineageMatch]:
     before_groups = _group_indexes(before_elements)
     after_groups = _group_indexes(after_elements)
@@ -118,8 +187,8 @@ def _unique_exact_matches(
 
 
 def _contextual_exact_matches(
-    before_elements: list[ScriptElement],
-    after_elements: list[ScriptElement],
+    before_elements: tuple[_PreparedElement, ...],
+    after_elements: tuple[_PreparedElement, ...],
     matched_before: set[int],
     matched_after: set[int],
 ) -> list[_LineageMatch]:
@@ -168,43 +237,129 @@ def _contextual_exact_matches(
 
 
 def _similarity(
-    before_element: ScriptElement,
-    after_element: ScriptElement,
+    before_element: _PreparedElement,
+    after_element: _PreparedElement,
 ) -> float:
     if before_element.element_type is not after_element.element_type:
         return 0.0
-    before_text = _normalize_text(before_element.text)
-    after_text = _normalize_text(after_element.text)
-    if before_text == after_text:
+    if before_element.normalized_text == after_element.normalized_text:
         return 0.0
-    return SequenceMatcher(None, before_text, after_text, autojunk=False).ratio()
+    return SequenceMatcher(
+        None,
+        before_element.normalized_text,
+        after_element.normalized_text,
+        autojunk=False,
+    ).ratio()
+
+
+def _indexes_by_type(
+    indexes: set[int],
+    elements: tuple[_PreparedElement, ...],
+) -> dict[ElementType, list[int]]:
+    indexes_by_type: dict[ElementType, list[int]] = defaultdict(list)
+    for index in sorted(indexes):
+        indexes_by_type[elements[index].element_type].append(index)
+    return indexes_by_type
+
+
+def _bounded_type_candidates(
+    source_index: int,
+    source_element: _PreparedElement,
+    target_indexes_by_type: dict[ElementType, list[int]],
+) -> list[int]:
+    target_indexes = target_indexes_by_type.get(source_element.element_type, [])
+    insertion_index = bisect_left(target_indexes, source_index)
+    start = max(0, insertion_index - _SIMILARITY_CANDIDATE_RADIUS)
+    stop = min(
+        len(target_indexes),
+        insertion_index + _SIMILARITY_CANDIDATE_RADIUS + 1,
+    )
+    return target_indexes[start:stop]
+
+
+def _can_affect_similarity_choice(
+    source_element: _PreparedElement,
+    target_element: _PreparedElement,
+) -> bool:
+    if source_element.normalized_text == target_element.normalized_text:
+        return False
+    combined_length = source_element.text_length + target_element.text_length
+    if combined_length == 0:
+        return False
+    maximum_ratio = (
+        2 * min(source_element.text_length, target_element.text_length)
+    ) / combined_length
+    return maximum_ratio > _SIMILARITY_AMBIGUITY_FLOOR
+
+
+def _similarity_candidate_pairs(
+    unmatched_before: set[int],
+    unmatched_after: set[int],
+    before_elements: tuple[_PreparedElement, ...],
+    after_elements: tuple[_PreparedElement, ...],
+) -> list[tuple[int, int]]:
+    before_by_type = _indexes_by_type(unmatched_before, before_elements)
+    after_by_type = _indexes_by_type(unmatched_after, after_elements)
+    candidate_pairs: set[tuple[int, int]] = set()
+
+    for before_index in sorted(unmatched_before):
+        for after_index in _bounded_type_candidates(
+            before_index,
+            before_elements[before_index],
+            after_by_type,
+        ):
+            if _can_affect_similarity_choice(
+                before_elements[before_index],
+                after_elements[after_index],
+            ):
+                candidate_pairs.add((before_index, after_index))
+
+    for after_index in sorted(unmatched_after):
+        for before_index in _bounded_type_candidates(
+            after_index,
+            after_elements[after_index],
+            before_by_type,
+        ):
+            if _can_affect_similarity_choice(
+                before_elements[before_index],
+                after_elements[after_index],
+            ):
+                candidate_pairs.add((before_index, after_index))
+
+    return sorted(candidate_pairs)
+
+
+def _candidate_is_better(candidate: _Candidate, incumbent: _Candidate) -> bool:
+    return candidate[0] > incumbent[0] or (
+        candidate[0] == incumbent[0] and candidate[1] < incumbent[1]
+    )
+
+
+def _record_candidate(
+    top_candidates: dict[int, _TopCandidates],
+    source_index: int,
+    target_index: int,
+    score: float,
+) -> None:
+    candidate = (score, target_index)
+    best, runner_up = top_candidates.get(source_index, (None, None))
+    if best is None or _candidate_is_better(candidate, best):
+        top_candidates[source_index] = (candidate, best)
+        return
+    if runner_up is None or _candidate_is_better(candidate, runner_up):
+        top_candidates[source_index] = (best, candidate)
 
 
 def _unique_best_candidates(
-    source_indexes: set[int],
-    target_indexes: set[int],
-    source_elements: list[ScriptElement],
-    target_elements: list[ScriptElement],
+    top_candidates: dict[int, _TopCandidates],
 ) -> dict[int, int]:
     best_candidates: dict[int, int] = {}
-    for source_index in sorted(source_indexes):
-        candidates = sorted(
-            (
-                (
-                    _similarity(
-                        source_elements[source_index],
-                        target_elements[target_index],
-                    ),
-                    target_index,
-                )
-                for target_index in target_indexes
-            ),
-            key=lambda candidate: (-candidate[0], candidate[1]),
-        )
-        if not candidates:
+    for source_index in sorted(top_candidates):
+        best, runner_up = top_candidates[source_index]
+        if best is None:
             continue
-        best_score, best_target = candidates[0]
-        runner_up_score = candidates[1][0] if len(candidates) > 1 else 0.0
+        best_score, best_target = best
+        runner_up_score = runner_up[0] if runner_up is not None else 0.0
         if (
             best_score > _SIMILARITY_THRESHOLD
             and best_score - runner_up_score > _SIMILARITY_RUNNER_UP_MARGIN
@@ -214,26 +369,31 @@ def _unique_best_candidates(
 
 
 def _similar_matches(
-    before_elements: list[ScriptElement],
-    after_elements: list[ScriptElement],
+    before_elements: tuple[_PreparedElement, ...],
+    after_elements: tuple[_PreparedElement, ...],
     matched_before: set[int],
     matched_after: set[int],
 ) -> list[_LineageMatch]:
     unmatched_before = set(range(len(before_elements))) - matched_before
     unmatched_after = set(range(len(after_elements))) - matched_after
-    best_after = _unique_best_candidates(
-        unmatched_before,
-        unmatched_after,
-        before_elements,
-        after_elements,
-    )
-    best_before = _unique_best_candidates(
-        unmatched_after,
-        unmatched_before,
-        after_elements,
-        before_elements,
-    )
+    before_candidates: dict[int, _TopCandidates] = {}
+    after_candidates: dict[int, _TopCandidates] = {}
 
+    for before_index, after_index in _similarity_candidate_pairs(
+        unmatched_before,
+        unmatched_after,
+        before_elements,
+        after_elements,
+    ):
+        score = _similarity(
+            before_elements[before_index],
+            after_elements[after_index],
+        )
+        _record_candidate(before_candidates, before_index, after_index, score)
+        _record_candidate(after_candidates, after_index, before_index, score)
+
+    best_after = _unique_best_candidates(before_candidates)
+    best_before = _unique_best_candidates(after_candidates)
     matches: list[_LineageMatch] = []
     for before_index, after_index in sorted(best_after.items()):
         if best_before.get(after_index) != before_index:
@@ -250,6 +410,17 @@ def _similar_matches(
     return matches
 
 
+def _preferred_endpoint(
+    candidate: _SubsequenceEndpoint,
+    incumbent: _SubsequenceEndpoint | None,
+) -> _SubsequenceEndpoint:
+    if incumbent is None:
+        return candidate
+    if candidate[0] != incumbent[0]:
+        return candidate if candidate[0] > incumbent[0] else incumbent
+    return candidate if candidate[1] < incumbent[1] else incumbent
+
+
 def _stable_exact_pairs(matches: list[_LineageMatch]) -> set[tuple[int, int]]:
     exact_matches = sorted(
         (
@@ -263,19 +434,38 @@ def _stable_exact_pairs(matches: list[_LineageMatch]) -> set[tuple[int, int]]:
     if not exact_matches:
         return set()
 
-    lengths = [1] * len(exact_matches)
+    tree: list[_SubsequenceEndpoint | None] = [
+        None
+    ] * (max(match.before_index for match in exact_matches) + 2)
     previous: list[int | None] = [None] * len(exact_matches)
-    for current_index, current in enumerate(exact_matches):
-        for candidate_index in range(current_index):
-            candidate = exact_matches[candidate_index]
-            if candidate.before_index >= current.before_index:
-                continue
-            candidate_length = lengths[candidate_index] + 1
-            if candidate_length > lengths[current_index]:
-                lengths[current_index] = candidate_length
-                previous[current_index] = candidate_index
+    best_endpoint: _SubsequenceEndpoint | None = None
 
-    end_index = max(range(len(exact_matches)), key=lengths.__getitem__)
+    for current_index, current in enumerate(exact_matches):
+        query_index = current.before_index
+        predecessor: _SubsequenceEndpoint | None = None
+        while query_index > 0:
+            endpoint = tree[query_index]
+            if endpoint is not None:
+                predecessor = _preferred_endpoint(endpoint, predecessor)
+            query_index -= query_index & -query_index
+
+        current_length = 1 if predecessor is None else predecessor[0] + 1
+        if predecessor is not None:
+            previous[current_index] = predecessor[1]
+        current_endpoint = (current_length, current_index)
+        best_endpoint = _preferred_endpoint(current_endpoint, best_endpoint)
+
+        update_index = current.before_index + 1
+        while update_index < len(tree):
+            tree[update_index] = _preferred_endpoint(
+                current_endpoint,
+                tree[update_index],
+            )
+            update_index += update_index & -update_index
+
+    if best_endpoint is None:
+        return set()
+    end_index: int | None = best_endpoint[1]
     stable: set[tuple[int, int]] = set()
     while end_index is not None:
         match = exact_matches[end_index]
@@ -327,21 +517,23 @@ def compute_script_diff(
     before_elements: list[ScriptElement],
     after_elements: list[ScriptElement],
 ) -> ScriptDiff:
-    matches = _unique_exact_matches(before_elements, after_elements)
+    prepared_before = _prepare_elements(before_elements)
+    prepared_after = _prepare_elements(after_elements)
+    matches = _unique_exact_matches(prepared_before, prepared_after)
     matched_before = {match.before_index for match in matches}
     matched_after = {match.after_index for match in matches}
     matches.extend(
         _contextual_exact_matches(
-            before_elements,
-            after_elements,
+            prepared_before,
+            prepared_after,
             matched_before,
             matched_after,
         )
     )
     matches.extend(
         _similar_matches(
-            before_elements,
-            after_elements,
+            prepared_before,
+            prepared_after,
             matched_before,
             matched_after,
         )

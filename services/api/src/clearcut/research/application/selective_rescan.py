@@ -24,13 +24,15 @@ class SelectiveRescanService:
     ) -> RescanResult:
         rescanned: set[UUID] = set()
         saved = 0
+        rescan_before_element_ids = set(diff.rescan_before_element_ids)
+        carry_forward_before_element_ids = set(diff.carry_forward_before_element_ids)
 
         for item in items:
-            if item.element_id in diff.affected_element_ids:
-                # Affected item requires re-scanning
+            if item.element_id in rescan_before_element_ids:
+                # Modified prior-version items require after-version detection.
                 rescanned.add(item.item_id)
-            else:
-                # Unaffected item carries forward previous evidence without new calls
+            elif item.element_id in carry_forward_before_element_ids:
+                # Unchanged prior-version items carry forward without new calls.
                 saved += 1
 
         return RescanResult(

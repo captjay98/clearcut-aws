@@ -303,3 +303,54 @@ def test_output_order_and_repeated_calls_are_deterministic():
         (None, 2),
         (None, 9),
     ]
+
+
+
+def test_crossing_exact_matches_keep_the_earliest_after_line_stable():
+    before = [_element("First", 1), _element("Second", 2)]
+    after = [_element("Second", 1), _element("First", 2)]
+
+    diff = _compute(before, after)
+    by_after_id = {row.after_element_id: row for row in diff.elements}
+
+    assert by_after_id[after[0].element_id].classification is ChangeClassification.UNCHANGED
+    assert by_after_id[after[1].element_id].classification is ChangeClassification.MOVED
+
+
+def test_similarity_comparisons_are_unique_and_bounded_for_screenplay_scale(
+    monkeypatch,
+):
+    line_count = 500
+    before = [
+        _element(
+            f"Character {index:03d} studies package {index:03d} by the north window.",
+            index + 1,
+            ElementType.DIALOGUE,
+        )
+        for index in range(line_count)
+    ]
+    after = [
+        _element(
+            f"Character {index:03d} studies package {index:03d} by the south window.",
+            index + 1,
+            ElementType.DIALOGUE,
+        )
+        for index in range(line_count)
+    ]
+    original_similarity = diff_domain._similarity
+    comparison_count = 0
+    compared_pairs: set[frozenset[int]] = set()
+
+    def counted_similarity(before_element, after_element):
+        nonlocal comparison_count
+        comparison_count += 1
+        compared_pairs.add(frozenset((id(before_element), id(after_element))))
+        return original_similarity(before_element, after_element)
+
+    monkeypatch.setattr(diff_domain, "_similarity", counted_similarity)
+
+    diff = _compute(before, after)
+
+    assert len(diff.elements) == line_count * 2
+    assert comparison_count == len(compared_pairs)
+    assert comparison_count <= 40_000
