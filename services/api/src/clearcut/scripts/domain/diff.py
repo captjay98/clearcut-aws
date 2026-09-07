@@ -10,6 +10,9 @@ from uuid import UUID
 from clearcut.scripts.domain.elements import ElementType, ScriptElement
 
 MATCHING_ALGORITHM_VERSION: Final = "element-lineage-v1"
+# Fuzzy scoring is synchronous. If unmatched same-type pairs exceed this per-diff
+# budget, skip fuzzy matching entirely rather than create arbitrary partial lineage.
+MAX_SIMILARITY_PAIR_EVALUATIONS: Final = 10_000
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
 _SIMILARITY_AMBIGUITY_FLOOR: Final = (
@@ -366,6 +369,15 @@ def _similar_matches(
 ) -> list[_LineageMatch]:
     unmatched_before = set(range(len(before_elements))) - matched_before
     unmatched_after = set(range(len(after_elements))) - matched_after
+    before_by_type = _indexes_by_type(unmatched_before, before_elements)
+    after_by_type = _indexes_by_type(unmatched_after, after_elements)
+    pair_evaluations = sum(
+        len(before_indexes) * len(after_by_type.get(element_type, ()))
+        for element_type, before_indexes in before_by_type.items()
+    )
+    if pair_evaluations > MAX_SIMILARITY_PAIR_EVALUATIONS:
+        return []
+
     before_candidates: dict[int, _TopCandidates] = {}
     after_candidates: dict[int, _TopCandidates] = {}
 

@@ -246,6 +246,42 @@ def test_distant_reordered_unique_near_edits_preserve_modified_lineage():
     assert diff.removed_element_ids == ()
 
 
+def test_distant_matches_just_under_similarity_budget_remain_modified():
+    line_count = 99
+    assert line_count * line_count < diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
+    assert (
+        (line_count + 1) * (line_count + 1)
+        == diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
+    )
+    tokens = [hashlib.sha256(str(index).encode()).hexdigest() for index in range(line_count)]
+    before = [
+        _element(
+            f"Continuity marker {token} remains beside the north window.",
+            index + 1,
+        )
+        for index, token in enumerate(tokens)
+    ]
+    rotation = line_count // 2
+    after_order = [*range(rotation, line_count), *range(rotation)]
+    after = [
+        _element(
+            f"Continuity marker {tokens[index]} remains beside the north windows.",
+            ordinal + 1,
+        )
+        for ordinal, index in enumerate(after_order)
+    ]
+
+    diff = _compute(before, after)
+
+    assert len(diff.elements) == line_count
+    assert all(
+        row.classification is ChangeClassification.MODIFIED for row in diff.elements
+    )
+    assert [row.before_element_id for row in diff.elements] == [
+        before[index].element_id for index in after_order
+    ]
+
+
 def test_ambiguous_exact_duplicates_fail_safe_as_removed_and_added():
     before = [
         _element("Anchor", 1, ElementType.ACTION),
@@ -362,42 +398,68 @@ def test_crossing_exact_matches_keep_the_earliest_after_line_stable():
     assert by_after_id[after[1].element_id].classification is ChangeClassification.MOVED
 
 
-def test_similarity_comparisons_are_unique_and_pruned_for_screenplay_scale(
+def test_similarity_work_is_bounded_for_shared_vocabulary_screenplay_scale(
     monkeypatch,
 ):
     line_count = 500
+    exact_before = _element("INT. TERMINAL - NIGHT", 1, ElementType.SCENE_HEADING)
+    exact_after = _element("INT. TERMINAL - NIGHT", 1, ElementType.SCENE_HEADING)
     before = [
-        _element(
-            f"{chr(0xE000 + index) * 48} opens the north door.",
-            index + 1,
-            ElementType.DIALOGUE,
-        )
-        for index in range(line_count)
+        exact_before,
+        *[
+            _element(
+                (
+                    "MARA scans the crowded terminal while the night train waits "
+                    f"at platform {index:03d}."
+                ),
+                index + 2,
+                ElementType.DIALOGUE,
+            )
+            for index in range(line_count)
+        ],
     ]
     after = [
-        _element(
-            f"{chr(0xE000 + index) * 48} opens the north doors.",
-            index + 1,
-            ElementType.DIALOGUE,
-        )
-        for index in range(line_count)
+        exact_after,
+        *[
+            _element(
+                (
+                    "MARA scans the crowded terminal while the night train waits "
+                    f"beside platform {index:03d}."
+                ),
+                index + 2,
+                ElementType.DIALOGUE,
+            )
+            for index in range(line_count)
+        ],
     ]
-    original_similarity = diff_domain._similarity
     comparison_count = 0
-    compared_pairs: set[frozenset[int]] = set()
+    compared_pairs: set[tuple[int, int]] = set()
 
     def counted_similarity(before_element, after_element):
         nonlocal comparison_count
         comparison_count += 1
-        compared_pairs.add(frozenset((id(before_element), id(after_element))))
-        return original_similarity(before_element, after_element)
+        compared_pairs.add((id(before_element), id(after_element)))
+        return 0.0
 
     monkeypatch.setattr(diff_domain, "_similarity", counted_similarity)
 
-    diff = _compute(before, after)
+    first = _compute(before, after)
+    first_comparison_count = comparison_count
+    second = _compute(before, after)
 
-    assert len(diff.elements) == line_count
-    assert all(
-        row.classification is ChangeClassification.MODIFIED for row in diff.elements
+    assert line_count * line_count > diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
+    assert first_comparison_count <= diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
+    assert (
+        comparison_count - first_comparison_count
+        <= diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
     )
-    assert comparison_count == len(compared_pairs) == line_count
+    assert comparison_count == len(compared_pairs) == 0
+    assert first.elements == second.elements
+    assert len(first.elements) == line_count * 2 + 1
+    assert [row.classification for row in first.elements] == [
+        ChangeClassification.UNCHANGED,
+        *([ChangeClassification.ADDED] * line_count),
+        *([ChangeClassification.REMOVED] * line_count),
+    ]
+    assert first.elements[0].before_element_id == exact_before.element_id
+    assert first.elements[0].after_element_id == exact_after.element_id
