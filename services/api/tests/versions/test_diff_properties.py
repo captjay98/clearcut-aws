@@ -1,6 +1,12 @@
+import hashlib
+
 import uuid6
 from clearcut.scripts.domain import diff as diff_domain
-from clearcut.scripts.domain.diff import ChangeClassification, compute_script_diff
+from clearcut.scripts.domain.diff import (
+    ChangeClassification,
+    LineageConfidence,
+    compute_script_diff,
+)
 from clearcut.scripts.domain.elements import ElementType, ScriptElement
 
 
@@ -97,7 +103,7 @@ def test_compute_script_diff_classifies_all_outcomes_with_distinct_ids():
     )
     assert (unchanged.before_ordinal, unchanged.after_ordinal) == (1, 1)
     assert (moved.before_ordinal, moved.after_ordinal) == (2, 5)
-    assert modified.confidence.value == "similar"
+    assert modified.confidence is LineageConfidence.SIMILAR
     assert added.confidence is None
     assert removed.confidence is None
 
@@ -150,9 +156,9 @@ def test_exact_duplicate_text_is_disambiguated_by_neighbor_context():
         ChangeClassification.UNCHANGED,
         ChangeClassification.UNCHANGED,
     ]
-    assert [row.confidence.value for row in dialogue_rows] == [
-        "contextual",
-        "contextual",
+    assert [row.confidence for row in dialogue_rows] == [
+        LineageConfidence.CONTEXTUAL,
+        LineageConfidence.CONTEXTUAL,
     ]
     assert [row.before_element_id for row in dialogue_rows] == [
         before[1].element_id,
@@ -170,7 +176,7 @@ def test_normalized_exact_matching_requires_the_same_element_type():
 
     exact_row = next(row for row in diff.elements if row.after_element_id == exact_after.element_id)
     assert exact_row.classification is ChangeClassification.UNCHANGED
-    assert exact_row.confidence.value == "exact"
+    assert exact_row.confidence is LineageConfidence.EXACT
     assert exact_row.before_element_id == exact_before.element_id
 
     wrong_type_rows = [
@@ -194,11 +200,50 @@ def test_conservative_same_type_similarity_is_modified_not_carryable():
     assert len(diff.elements) == 1
     row = diff.elements[0]
     assert row.classification is ChangeClassification.MODIFIED
-    assert row.confidence.value == "similar"
+    assert row.confidence is LineageConfidence.SIMILAR
     assert row.before_element_id == before.element_id
     assert row.after_element_id == after.element_id
     assert diff.rescan_element_ids == (after.element_id,)
     assert diff.carry_forward_element_ids == ()
+
+
+def test_distant_reordered_unique_near_edits_preserve_modified_lineage():
+    line_count = 40
+    rotation = line_count // 2
+    tokens = [hashlib.sha256(str(index).encode()).hexdigest() for index in range(line_count)]
+    before = [
+        _element(
+            f"Continuity marker {token} remains beside the north window.",
+            index + 1,
+        )
+        for index, token in enumerate(tokens)
+    ]
+    after_order = [*range(rotation, line_count), *range(rotation)]
+    after = [
+        _element(
+            f"Continuity marker {tokens[index]} remains beside the north windows.",
+            ordinal + 1,
+        )
+        for ordinal, index in enumerate(after_order)
+    ]
+
+    diff = _compute(before, after)
+
+    assert len(diff.elements) == line_count
+    assert all(
+        row.classification is ChangeClassification.MODIFIED for row in diff.elements
+    )
+    assert [row.before_element_id for row in diff.elements] == [
+        before[index].element_id for index in after_order
+    ]
+    assert [row.after_element_id for row in diff.elements] == [
+        element.element_id for element in after
+    ]
+    assert diff.rescan_element_ids == tuple(element.element_id for element in after)
+    assert diff.rescan_before_element_ids == tuple(
+        before[index].element_id for index in after_order
+    )
+    assert diff.removed_element_ids == ()
 
 
 def test_ambiguous_exact_duplicates_fail_safe_as_removed_and_added():
@@ -317,13 +362,13 @@ def test_crossing_exact_matches_keep_the_earliest_after_line_stable():
     assert by_after_id[after[1].element_id].classification is ChangeClassification.MOVED
 
 
-def test_similarity_comparisons_are_unique_and_bounded_for_screenplay_scale(
+def test_similarity_comparisons_are_unique_and_pruned_for_screenplay_scale(
     monkeypatch,
 ):
     line_count = 500
     before = [
         _element(
-            f"Character {index:03d} studies package {index:03d} by the north window.",
+            f"{chr(0xE000 + index) * 48} opens the north door.",
             index + 1,
             ElementType.DIALOGUE,
         )
@@ -331,7 +376,7 @@ def test_similarity_comparisons_are_unique_and_bounded_for_screenplay_scale(
     ]
     after = [
         _element(
-            f"Character {index:03d} studies package {index:03d} by the south window.",
+            f"{chr(0xE000 + index) * 48} opens the north doors.",
             index + 1,
             ElementType.DIALOGUE,
         )
@@ -351,6 +396,8 @@ def test_similarity_comparisons_are_unique_and_bounded_for_screenplay_scale(
 
     diff = _compute(before, after)
 
-    assert len(diff.elements) == line_count * 2
-    assert comparison_count == len(compared_pairs)
-    assert comparison_count <= 40_000
+    assert len(diff.elements) == line_count
+    assert all(
+        row.classification is ChangeClassification.MODIFIED for row in diff.elements
+    )
+    assert comparison_count == len(compared_pairs) == line_count

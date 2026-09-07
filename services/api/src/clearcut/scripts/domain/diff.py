@@ -1,6 +1,6 @@
 import unicodedata
-from bisect import bisect_left
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import StrEnum
@@ -12,7 +12,6 @@ from clearcut.scripts.domain.elements import ElementType, ScriptElement
 MATCHING_ALGORITHM_VERSION: Final = "element-lineage-v1"
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
-_SIMILARITY_CANDIDATE_RADIUS: Final = 16
 _SIMILARITY_AMBIGUITY_FLOOR: Final = (
     _SIMILARITY_THRESHOLD - _SIMILARITY_RUNNER_UP_MARGIN
 )
@@ -123,6 +122,7 @@ class _PreparedElement:
     element_type: ElementType
     normalized_text: str
     text_length: int
+    character_counts: Counter[str]
     key: _ElementKey
 
 
@@ -140,6 +140,7 @@ def _prepare_elements(elements: list[ScriptElement]) -> tuple[_PreparedElement, 
                 element_type=element.element_type,
                 normalized_text=normalized_text,
                 text_length=len(normalized_text),
+                character_counts=Counter(normalized_text),
                 key=(element.element_type, normalized_text),
             )
         )
@@ -262,19 +263,22 @@ def _indexes_by_type(
     return indexes_by_type
 
 
-def _bounded_type_candidates(
-    source_index: int,
+def _character_multiset_similarity_upper_bound(
     source_element: _PreparedElement,
-    target_indexes_by_type: dict[ElementType, list[int]],
-) -> list[int]:
-    target_indexes = target_indexes_by_type.get(source_element.element_type, [])
-    insertion_index = bisect_left(target_indexes, source_index)
-    start = max(0, insertion_index - _SIMILARITY_CANDIDATE_RADIUS)
-    stop = min(
-        len(target_indexes),
-        insertion_index + _SIMILARITY_CANDIDATE_RADIUS + 1,
+    target_element: _PreparedElement,
+) -> float:
+    combined_length = source_element.text_length + target_element.text_length
+    if combined_length == 0:
+        return 0.0
+    source_counts = source_element.character_counts
+    target_counts = target_element.character_counts
+    if len(source_counts) > len(target_counts):
+        source_counts, target_counts = target_counts, source_counts
+    shared_characters = sum(
+        min(count, target_counts.get(character, 0))
+        for character, count in source_counts.items()
     )
-    return target_indexes[start:stop]
+    return (2 * shared_characters) / combined_length
 
 
 def _can_affect_similarity_choice(
@@ -286,10 +290,15 @@ def _can_affect_similarity_choice(
     combined_length = source_element.text_length + target_element.text_length
     if combined_length == 0:
         return False
-    maximum_ratio = (
+    length_ratio_upper_bound = (
         2 * min(source_element.text_length, target_element.text_length)
     ) / combined_length
-    return maximum_ratio > _SIMILARITY_AMBIGUITY_FLOOR
+    if length_ratio_upper_bound <= _SIMILARITY_AMBIGUITY_FLOOR:
+        return False
+    return (
+        _character_multiset_similarity_upper_bound(source_element, target_element)
+        > _SIMILARITY_AMBIGUITY_FLOOR
+    )
 
 
 def _similarity_candidate_pairs(
@@ -297,36 +306,17 @@ def _similarity_candidate_pairs(
     unmatched_after: set[int],
     before_elements: tuple[_PreparedElement, ...],
     after_elements: tuple[_PreparedElement, ...],
-) -> list[tuple[int, int]]:
-    before_by_type = _indexes_by_type(unmatched_before, before_elements)
+) -> Iterator[tuple[int, int]]:
     after_by_type = _indexes_by_type(unmatched_after, after_elements)
-    candidate_pairs: set[tuple[int, int]] = set()
 
     for before_index in sorted(unmatched_before):
-        for after_index in _bounded_type_candidates(
-            before_index,
-            before_elements[before_index],
-            after_by_type,
-        ):
+        before_element = before_elements[before_index]
+        for after_index in after_by_type.get(before_element.element_type, []):
             if _can_affect_similarity_choice(
-                before_elements[before_index],
+                before_element,
                 after_elements[after_index],
             ):
-                candidate_pairs.add((before_index, after_index))
-
-    for after_index in sorted(unmatched_after):
-        for before_index in _bounded_type_candidates(
-            after_index,
-            after_elements[after_index],
-            before_by_type,
-        ):
-            if _can_affect_similarity_choice(
-                before_elements[before_index],
-                after_elements[after_index],
-            ):
-                candidate_pairs.add((before_index, after_index))
-
-    return sorted(candidate_pairs)
+                yield before_index, after_index
 
 
 def _candidate_is_better(candidate: _Candidate, incumbent: _Candidate) -> bool:
