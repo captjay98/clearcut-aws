@@ -70,6 +70,101 @@ def test_profile_defaults(
     assert settings.secrets.backend == secrets
 
 
+def test_local_dispatch_defaults_to_enabled() -> None:
+    settings = ClearcutSettings.model_validate(valid_settings("local"))
+
+    assert settings.dispatch.enabled is True
+
+
+def test_explicit_local_dispatch_disable_is_composed(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = LOCAL_DATABASE_URL
+    environment["CLEARCUT_DEPLOYMENT_PROFILE"] = "local"
+    environment["CLEARCUT_STORAGE_PATH"] = str(tmp_path / "storage")
+    environment["CLEARCUT_DISPATCH_ENABLED"] = "false"
+    environment.pop("CLEARCUT_JOB_DISPATCH_MODE", None)
+    environment.pop("CLEARCUT_API_WORKERS", None)
+    environment.pop("WEB_CONCURRENCY", None)
+    script = """
+from clearcut.bootstrap.settings import ClearcutSettings
+from clearcut.main import create_app
+from fastapi.testclient import TestClient
+
+settings = ClearcutSettings.from_environment()
+created = create_app(settings)
+assert settings.dispatch.enabled is False
+assert created.state.job_dispatcher.mode == "disabled"
+assert created.state.deployment_summary.dispatch_adapter == "local"
+assert created.state.deployment_summary.dispatch_enabled is False
+assert TestClient(created).get("/healthz").json()["jobDispatch"] == {
+    "mode": "disabled",
+    "durable": False,
+}
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_legacy_disabled_dispatch_mode_maps_to_explicit_local_override() -> None:
+    settings = ClearcutSettings.from_environment(
+        {"CLEARCUT_JOB_DISPATCH_MODE": "disabled"}
+    )
+
+    assert settings.profile == "local"
+    assert settings.dispatch.adapter == "local"
+    assert settings.dispatch.enabled is False
+
+
+def test_legacy_disabled_dispatch_mode_is_ignored_for_hosted_profile() -> None:
+    settings = ClearcutSettings.from_environment(
+        {
+            "CLEARCUT_DEPLOYMENT_PROFILE": "portable",
+            "DATABASE_URL": POSTGRES_DATABASE_URL,
+            "CLEARCUT_STORAGE_BUCKET": "clearcut-artifacts",
+            "CLEARCUT_JOB_DISPATCH_MODE": "disabled",
+        }
+    )
+
+    assert settings.dispatch.adapter == "postgres"
+    assert settings.dispatch.enabled is True
+
+
+def test_explicit_dispatch_enabled_takes_precedence_over_legacy_mode() -> None:
+    settings = ClearcutSettings.from_environment(
+        {
+            "CLEARCUT_DISPATCH_ENABLED": "true",
+            "CLEARCUT_JOB_DISPATCH_MODE": "disabled",
+        }
+    )
+
+    assert settings.dispatch.enabled is True
+
+
+@pytest.mark.parametrize("profile", ["portable", "gcp"])
+def test_hosted_profiles_reject_disabled_dispatch(profile: str) -> None:
+    config = valid_settings(profile)
+    dispatch = dict(config.get("dispatch", {}))
+    dispatch["enabled"] = False
+    config["dispatch"] = dispatch
+
+    with pytest.raises(ValidationError) as exc_info:
+        ClearcutSettings.model_validate(config)
+
+    assert exc_info.value.errors()[0]["type"] == "value_error"
+    assert "Hosted deployment profiles require dispatch to remain enabled." in str(
+        exc_info.value
+    )
+
+
 @pytest.mark.parametrize(
     ("profile", "expected_adapter", "expected_storage_fields"),
     [

@@ -7,6 +7,7 @@ import uuid6
 from clearcut.database import is_sqlite, session_scope
 from clearcut.init_db import init_and_seed_db
 from clearcut.main import app
+from clearcut.operations.application.local_dispatcher import LocalJobDispatcher
 from clearcut.research.runtime_provider import ResearchRuntime, get_research_runtime
 from httpx import ASGITransport, AsyncClient
 
@@ -91,6 +92,12 @@ class _FakeResearchRuntime(ResearchRuntime):
 @pytest.mark.asyncio
 async def test_start_research_persists_canonical_job_and_authoritative_audit():
     await init_and_seed_db()
+    original_dispatcher = app.state.job_dispatcher
+    app.state.job_dispatcher = LocalJobDispatcher(
+        runner=app.state.job_runner,
+        mode="disabled",
+        worker_count=None,
+    )
     app.dependency_overrides[get_research_runtime] = lambda: _FakeResearchRuntime()
     try:
         transport = ASGITransport(app=app)
@@ -155,6 +162,7 @@ async def test_start_research_persists_canonical_job_and_authoritative_audit():
                 assert audit_payload["correlationId"] == str(job["correlation_id"])
     finally:
         app.dependency_overrides.pop(get_research_runtime, None)
+        app.state.job_dispatcher = original_dispatcher
 
 
 @pytest.mark.asyncio

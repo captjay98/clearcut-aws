@@ -11,6 +11,7 @@ class RedactedDeploymentSummary:
     database_configured: bool
     storage_adapter: str
     dispatch_adapter: str
+    dispatch_enabled: bool
     authentication_adapter: str
     secret_backend: str
     paid_providers_enabled: tuple[str, ...]
@@ -29,6 +30,7 @@ def build_application(settings: ClearcutSettings) -> ApplicationContainer:
         database_configured=bool(settings.database.url),
         storage_adapter=settings.storage.adapter.value,
         dispatch_adapter=settings.dispatch.adapter.value,
+        dispatch_enabled=settings.dispatch.enabled,
         authentication_adapter=settings.authentication.adapter.value,
         secret_backend=settings.secrets.backend.value,
         paid_providers_enabled=tuple(sorted(settings.paid_providers_enabled)),

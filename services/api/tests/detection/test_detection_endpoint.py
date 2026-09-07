@@ -9,6 +9,7 @@ from clearcut.detection.adapters.hermetic_runtime import HermeticDetectionRuntim
 from clearcut.detection.runtime_provider import get_detection_runtime
 from clearcut.init_db import init_and_seed_db
 from clearcut.main import app
+from clearcut.operations.application.local_dispatcher import LocalJobDispatcher
 from httpx import ASGITransport, AsyncClient
 
 
@@ -60,6 +61,12 @@ async def _insert_version(org_id: str, proj_id: str) -> str:
 @pytest.mark.asyncio
 async def test_start_detection_persists_canonical_job_and_authoritative_audit():
     await init_and_seed_db()
+    original_dispatcher = app.state.job_dispatcher
+    app.state.job_dispatcher = LocalJobDispatcher(
+        runner=app.state.job_runner,
+        mode="disabled",
+        worker_count=None,
+    )
     app.dependency_overrides[get_detection_runtime] = lambda: HermeticDetectionRuntime()
     try:
         transport = ASGITransport(app=app)
@@ -143,6 +150,7 @@ async def test_start_detection_persists_canonical_job_and_authoritative_audit():
                 assert audit_payload["correlationId"] == str(job["correlation_id"])
     finally:
         app.dependency_overrides.pop(get_detection_runtime, None)
+        app.state.job_dispatcher = original_dispatcher
 
 
 @pytest.mark.asyncio

@@ -126,6 +126,7 @@ StorageSettings = Annotated[
 
 class DispatchSettings(_FrozenModel):
     adapter: DispatchAdapter
+    enabled: bool = True
     project_id: str | None = None
     location: str | None = None
     queue: str | None = None
@@ -267,6 +268,13 @@ class ClearcutSettings(BaseSettings):
             self._raise_redacted_validation_error(
                 "Dispatch adapter contradicts the selected profile."
             )
+        if (
+            self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}
+            and not self.dispatch.enabled
+        ):
+            self._raise_redacted_validation_error(
+                "Hosted deployment profiles require dispatch to remain enabled."
+            )
         if self.authentication.adapter not in allowed_authentication[self.profile]:
             self._raise_redacted_validation_error(
                 "Authentication adapter contradicts the selected profile."
@@ -344,6 +352,7 @@ class ClearcutSettings(BaseSettings):
                 dispatch,
                 {
                     "adapter": "CLEARCUT_DISPATCH_ADAPTER",
+                    "enabled": "CLEARCUT_DISPATCH_ENABLED",
                     "project_id": "CLEARCUT_CLOUD_TASKS_PROJECT_ID",
                     "location": "CLEARCUT_CLOUD_TASKS_LOCATION",
                     "queue": "CLEARCUT_CLOUD_TASKS_QUEUE",
@@ -369,6 +378,14 @@ class ClearcutSettings(BaseSettings):
                     target[field_name] = value.strip()
         if profile == DeploymentProfile.LOCAL and "path" not in storage:
             storage["path"] = str(Path(tempfile.gettempdir()) / "clearcut-storage")
+
+        legacy_dispatch_mode = source.get("CLEARCUT_JOB_DISPATCH_MODE", "").strip().lower()
+        if profile == DeploymentProfile.LOCAL and legacy_dispatch_mode:
+            if legacy_dispatch_mode not in {"disabled", "local"}:
+                raise ValueError(
+                    "CLEARCUT_JOB_DISPATCH_MODE must be 'disabled' or 'local'."
+                )
+            dispatch.setdefault("enabled", legacy_dispatch_mode == "local")
 
         paid_providers = frozenset(
             name.strip()

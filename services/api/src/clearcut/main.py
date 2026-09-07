@@ -362,7 +362,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     )
     job_dispatcher = LocalJobDispatcher(
         runner=job_runner,
-        mode=settings.dispatch.adapter.value,
+        mode="local" if settings.dispatch.enabled else "disabled",
         worker_count=_configured_api_worker_count(),
     )
 
