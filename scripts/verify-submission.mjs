@@ -2,7 +2,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import yaml from "js-yaml";
+import { load as loadYaml } from "js-yaml";
 
 const requiredFiles = [
   "docs/submission/manifest.yaml",
@@ -35,8 +35,69 @@ function isUnavailable(value) {
   );
 }
 
-function hasExactImageDigest(value, service) {
-  return new RegExp(`^${service}@sha256:[a-f0-9]{64}$`).test(value ?? "");
+function hasExactImageDigest(value) {
+  return typeof value === "string" && /^clearcut@sha256:[a-f0-9]{64}$/.test(value);
+}
+
+function hasHttpsUrl(value) {
+  if (typeof value !== "string" || /\s/.test(value) || !value.startsWith("https://")) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function hasCloudRunRevision(value) {
+  return typeof value === "string" && value.length <= 63 &&
+    /^clearcut-(?!site-|web-|api-)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(value);
+}
+
+function hasMigrationRun(value) {
+  return !isUnavailable(value) && !/\s/.test(value);
+}
+
+function validateRelease(submission, errors) {
+  for (const key of ["image_digests", "hosted_services"]) {
+    if (Object.hasOwn(submission, key)) {
+      errors.push(`submission.${key} is a legacy key; use submission.release`);
+    }
+  }
+  const release = submission.release;
+  if (!isRecord(release)) {
+    errors.push("submission.release must be a single-release mapping");
+    return false;
+  }
+  const validators = {
+    image_digest: hasExactImageDigest,
+    deployment_profile: (value) => value === "gcp-starter",
+    migration_run_id: hasMigrationRun,
+    cloud_run_revision: hasCloudRunRevision,
+    service_url: hasHttpsUrl,
+  };
+  const unavailable = {
+    image_digest: "not-built",
+    migration_run_id: "not-available",
+    cloud_run_revision: "not-deployed",
+    service_url: null,
+  };
+  const unknown = Object.keys(release).filter((key) => !Object.hasOwn(validators, key));
+  if (unknown.length > 0) {
+    errors.push(`release contains unsupported keys: ${unknown.join(", ")}`);
+  }
+  for (const [field, validate] of Object.entries(validators)) {
+    const explicitlyUnavailable = submission.verdict === "NO-GO" &&
+      Object.hasOwn(unavailable, field) && release[field] === unavailable[field];
+    if (!Object.hasOwn(release, field) || (!validate(release[field]) && !explicitlyUnavailable)) {
+      errors.push(`release.${field} must contain a valid single-release value`);
+    }
+  }
+  return unknown.length === 0 && Object.entries(validators).every(
+    ([field, validate]) => validate(release[field]),
+  );
 }
 
 function collectForbiddenPlaceholders(value, path = "submission") {
@@ -106,6 +167,8 @@ function validateManifest(document, licenseText, readmeText) {
     errors.push("revision.git_sha must be an exact 40-character commit SHA");
   }
 
+  const releaseEvidenceIsComplete = validateRelease(submission, errors);
+
   const adapters = submission.production_adapters ?? {};
   const runtimeProof = submission.runtime_proof ?? {};
   if (
@@ -127,19 +190,12 @@ function validateManifest(document, licenseText, readmeText) {
       errors.push("NO-GO requires at least one explicit external blocker");
     }
   } else if (submission.verdict === "GO") {
-    const imageDigests = submission.image_digests ?? {};
-    const hosted = submission.hosted_services ?? {};
     const video = submission.video ?? {};
     const compliance = submission.compliance_correspondence ?? {};
     const goEvidenceIsComplete =
       revision.clean_tree === true &&
       revision.remote_parity === "verified" &&
-      hasExactImageDigest(imageDigests.site, "clearcut-site") &&
-      hasExactImageDigest(imageDigests.web, "clearcut-web") &&
-      hasExactImageDigest(imageDigests.api, "clearcut-api") &&
-      [hosted.site, hosted.web, hosted.api].every(
-        (value) => typeof value === "string" && /^https:\/\//.test(value),
-      ) &&
+      releaseEvidenceIsComplete &&
       !isUnavailable(runtimeProof.gemini_trace_id) &&
       !isUnavailable(runtimeProof.parallel_search_id) &&
       !isUnavailable(runtimeProof.parallel_extract_id) &&
@@ -193,7 +249,7 @@ if (!existsSync(manifestPath)) {
 
 let document;
 try {
-  document = yaml.load(readFileSync(manifestPath, "utf8"));
+  document = loadYaml(readFileSync(manifestPath, "utf8"));
 } catch (error) {
   console.error(`❌ Manifest YAML is invalid: ${error.message}`);
   process.exit(1);

@@ -13,15 +13,12 @@ submission:
     clean_tree: false
     remote_parity: "not-verified"
 
-  image_digests:
-    site: "not-built"
-    web: "not-built"
-    api: "not-built"
-
-  hosted_services:
-    site: null
-    web: null
-    api: null
+  release:
+    image_digest: "not-built"
+    deployment_profile: "gcp-starter"
+    migration_run_id: "not-available"
+    cloud_run_revision: "not-deployed"
+    service_url: null
 
   runtime_proof:
     gemini_trace_id: "not-available"
@@ -68,7 +65,9 @@ submission:
       status: "blocked"
       evidence_required: >-
         Authorized GCP project, billing, IAM, Workload Identity Federation,
-        three built image digests, deployed revisions, and verified hosted URLs.
+        one exact clearcut@sha256 image digest, the gcp-starter deployment profile,
+        a successful migration run attestation tied to that candidate, one clearcut
+        Cloud Run revision, and one verified HTTPS service URL.
     - id: "live-provider-runtime"
       status: "blocked"
       evidence_required: >-

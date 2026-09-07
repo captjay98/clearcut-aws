@@ -60,3 +60,14 @@ def test_legacy_direct_deploy_script_is_disabled() -> None:
     assert "gcloud " not in deploy_script
     assert "Deployment is blocked while submission readiness is NO-GO" in deploy_script
     assert "docs/submission/manifest.yaml" in deploy_script
+
+
+def test_submission_copy_describes_one_unverified_deadline_release() -> None:
+    for relative_path in ("docs/submission/devpost-copy.md", "docs/submission/limitations.md"):
+        copy = read(relative_path).lower()
+        assert "gcp-starter" in copy
+        assert "one" in copy and "clearcut" in copy
+        assert "migration" in copy
+        assert "three-image" not in copy
+        assert "immutable production image digests" not in copy
+        assert "not" in copy and "verified" in copy

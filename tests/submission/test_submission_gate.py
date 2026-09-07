@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import subprocess
+
+import pytest
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -96,14 +99,12 @@ submission:
     git_sha: not-recorded-dirty-worktree
     clean_tree: false
     remote_parity: not-verified
-  image_digests:
-    site: not-built
-    web: not-built
-    api: not-built
-  hosted_services:
-    site: null
-    web: null
-    api: null
+  release:
+    image_digest: not-built
+    deployment_profile: gcp-starter
+    migration_run_id: not-available
+    cloud_run_revision: not-deployed
+    service_url: null
   runtime_proof:
     gemini_trace_id: not-available
     parallel_search_id: not-available
@@ -189,3 +190,131 @@ def test_root_verify_includes_submission_readiness_gate() -> None:
         "bun scripts/verify-submission.mjs && uv run pytest tests/submission -q"
     )
     assert "pnpm verify:submission" in scripts["verify"]
+
+
+def release_document(*, verdict: str = "NO-GO") -> dict:
+    """Synthetic contract fixture; never deployment or provider evidence."""
+    return {"submission": {
+        "license": "MIT",
+        "verdict": verdict,
+        "legal_boundary": "ClearCut does not provide legal advice or final legal clearance.",
+        "revision": {"git_sha": "a" * 40, "clean_tree": True, "remote_parity": "verified"},
+        "release": {
+            "image_digest": "clearcut@sha256:" + "b" * 64,
+            "deployment_profile": "gcp-starter",
+            "migration_run_id": "migration-run-123",
+            "cloud_run_revision": "clearcut-00001-abc",
+            "service_url": "https://clearcut.test",
+        },
+        "production_adapters": {"monitor_adapter": "not-enabled", "monitor_decision": "NO-GO"},
+        "runtime_proof": {
+            "gemini_trace_id": "test-gemini-run",
+            "parallel_search_id": "test-search-run",
+            "parallel_extract_id": "test-extract-run",
+        },
+        "video": {"url": "https://video.test/watch", "duration_seconds": 120, "visibility": "public"},
+        "compliance_correspondence": {"status": "verified", "reference": "test-correspondence"},
+        "external_blockers": [] if verdict == "GO" else [{"id": "runtime", "status": "blocked"}],
+    }}
+
+
+def verify_document(tmp_path: Path, document: dict) -> subprocess.CompletedProcess[str]:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+    return run_verifier(manifest)
+
+
+def test_accepts_complete_single_release_contract_shape(tmp_path: Path) -> None:
+    result = verify_document(tmp_path, release_document(verdict="GO"))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("verdict", ["GO", "NO-GO"])
+@pytest.mark.parametrize("legacy_key", ["image_digests", "hosted_services"])
+def test_rejects_legacy_keys_even_alongside_single_release(
+    tmp_path: Path, verdict: str, legacy_key: str,
+) -> None:
+    document = release_document(verdict=verdict)
+    document["submission"][legacy_key] = {}
+    result = verify_document(tmp_path, document)
+    assert result.returncode != 0
+    assert f"submission.{legacy_key} is a legacy key" in result.stderr
+
+
+@pytest.mark.parametrize("field,value", [
+    ("image_digest", "clearcut:latest"),
+    ("image_digest", "clearcut-site@sha256:" + "b" * 64),
+    ("image_digest", "clearcut-web@sha256:" + "b" * 64),
+    ("image_digest", "clearcut-api@sha256:" + "b" * 64),
+    ("image_digest", "registry.test/clearcut@sha256:" + "b" * 64),
+    ("image_digest", "clearcut@sha256:" + "B" * 64),
+    ("deployment_profile", "production"),
+    ("migration_run_id", True),
+    ("cloud_run_revision", "clearcut-api-00001-abc"),
+    ("cloud_run_revision", "other-00001-abc"),
+    ("service_url", "http://clearcut.test"),
+    ("service_url", "https://"),
+    ("service_url", "https://clearcut.test https://other.test"),
+    ("service_url", ["https://clearcut.test", "https://other.test"]),
+    ("service_url", "https://user:secret@clearcut.test"),
+])
+def test_rejects_invalid_release_values_even_for_no_go(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    document = release_document()
+    document["submission"]["release"][field] = value
+    result = verify_document(tmp_path, document)
+    assert result.returncode != 0
+    assert f"release.{field}" in result.stderr
+
+
+@pytest.mark.parametrize("field", [
+    "image_digest", "deployment_profile", "migration_run_id", "cloud_run_revision", "service_url",
+])
+def test_requires_every_release_field(tmp_path: Path, field: str) -> None:
+    document = release_document()
+    del document["submission"]["release"][field]
+    result = verify_document(tmp_path, document)
+    assert result.returncode != 0
+    assert f"release.{field}" in result.stderr
+
+
+def test_rejects_additional_release_service_fields(tmp_path: Path) -> None:
+    document = release_document()
+    document["submission"]["release"]["api"] = "https://api.test"
+    result = verify_document(tmp_path, document)
+    assert result.returncode != 0
+    assert "release contains unsupported keys" in result.stderr
+
+
+@pytest.mark.parametrize("field,value", [
+    ("image_digest", "not-built"),
+    ("migration_run_id", "not-available"),
+    ("cloud_run_revision", "not-deployed"),
+    ("service_url", None),
+])
+def test_go_requires_available_release_evidence(tmp_path: Path, field: str, value: object) -> None:
+    document = release_document(verdict="GO")
+    document["submission"]["release"][field] = value
+    result = verify_document(tmp_path, document)
+    assert result.returncode != 0
+    assert "GO requires independently verifiable evidence" in result.stderr
+
+
+def test_real_manifest_uses_unavailable_single_release_and_cannot_be_flipped_to_go(tmp_path: Path) -> None:
+    manifest = REPOSITORY_ROOT / "docs/submission/manifest.yaml"
+    source = manifest.read_text(encoding="utf-8")
+    assert 'verdict: "NO-GO"' in source
+    assert "image_digests:" not in source
+    assert "hosted_services:" not in source
+    assert 'image_digest: "not-built"' in source
+    assert 'deployment_profile: "gcp-starter"' in source
+    assert 'migration_run_id: "not-available"' in source
+    assert 'cloud_run_revision: "not-deployed"' in source
+    assert "service_url: null" in source
+    assert run_verifier(manifest).returncode == 0
+    fabricated = tmp_path / "fabricated.yaml"
+    fabricated.write_text(source.replace('verdict: "NO-GO"', 'verdict: "GO"'), encoding="utf-8")
+    result = run_verifier(fabricated)
+    assert result.returncode != 0
+    assert "GO requires independently verifiable evidence" in result.stderr

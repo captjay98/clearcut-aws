@@ -14,6 +14,7 @@ ClearCut parses screenplays across ten protected categories, maintains source-ba
 
 - **Backend:** FastAPI modular monolith, Python 3.12, SQLAlchemy, Alembic, and PostgreSQL-compatible persistence.
 - **Frontend:** React, Vite, TanStack Router, Astro, and the shared ClearCut design system.
+- **Deadline release contract:** one `clearcut` image with an exact SHA-256 digest, the `gcp-starter` deployment profile, a successful migration run attestation, one Cloud Run revision, and one HTTPS service URL; deployment is not verified.
 - **Contracts:** OpenAPI-generated TypeScript and Python clients.
 - **AI and retrieval boundaries:** the production profile is designed to require Gemini ADK and Parallel Search/Extract. Live provider traces tied to an exact deployed candidate are not yet available and are not claimed.
 - **Governance:** organization/project authorization, human-triggered decisions, immutable audit events, and separate report generation and release.
@@ -21,4 +22,4 @@ ClearCut parses screenplays across ten protected categories, maintains source-ba
 
 ## Current proof status
 
-Local API, unit, contract, build, lint, and multi-browser tests have been run during development. Hosted URLs, immutable production image digests, live Gemini/Parallel traces, recovery drills, a public video, Devpost confirmation, and organizer correspondence remain external blockers. Parallel Monitor is not enabled.
+Local API, unit, contract, build, lint, and multi-browser tests have been run during development. The HTTPS service URL, immutable production image digest, migration run attestation, Cloud Run revision, live Gemini/Parallel traces, recovery drills, a public video, Devpost confirmation, and organizer correspondence remain external blockers. Parallel Monitor is not enabled.
