@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Monitoring, Watch Cadence, and Change Detection", () => {
   test("cadence selector, sources inventory, manual check trigger, and signals", async ({ page }) => {
-    await page.goto("/o/northlight/projects/018f0000-0000-7000-8000-000000000101/watch");
+    await page.goto("/app/o/northlight/projects/018f0000-0000-7000-8000-000000000101/watch");
 
     // 1. Check cadence selector
     const cadenceSelect = page.locator("[data-testid='cadence-selector']");

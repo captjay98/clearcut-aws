@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createEvidenceWorkspace } from "./support/evidenceWorkspace";
 
 function reportPath(orgId: string, projectId: string): string {
-  return `/o/${orgId}/projects/${projectId}/report`;
+  return `/app/o/${orgId}/projects/${projectId}/report`;
 }
 
 test.describe("Immutable clearance report release", () => {

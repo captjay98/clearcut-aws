@@ -11,7 +11,7 @@ test("trust center reports the honest unavailable evaluation boundary", async ({
 
   try {
     const page = workspace.owner.page;
-    await page.goto(`/o/${workspace.orgId}/trust`);
+    await page.goto(`/app/o/${workspace.orgId}/trust`);
 
     await expect(
       page.getByRole("heading", {

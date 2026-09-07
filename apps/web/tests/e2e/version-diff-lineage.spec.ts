@@ -12,7 +12,7 @@ test("versions show the persisted revision and honest diff-lineage boundary", as
   try {
     const page = workspace.owner.page;
     await page.goto(
-      `/o/${workspace.orgId}/projects/${workspace.projectId}/versions`,
+      `/app/o/${workspace.orgId}/projects/${workspace.projectId}/versions`,
     );
 
     await expect(

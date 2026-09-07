@@ -14,7 +14,7 @@ test("imports, acknowledges, commits, and reloads the original screenplay", asyn
     "../../demo/original-screenplay/clearcut_test.fountain",
   );
 
-  await page.goto("/auth/sign-up");
+  await page.goto("/app/auth/sign-up");
   await page.getByLabel("Full Name").fill("Jordan Reyes");
   await page.getByLabel("Email Address").fill(`script-import-${unique}@example.com`);
   await page.getByLabel("Password").fill("CorrectHorse123!");
@@ -105,7 +105,7 @@ test("imports, acknowledges, commits, and reloads the original screenplay", asyn
 
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByRole("heading", { name: "Check script" })).toBeFocused();
-  await page.goto(`/o/${organizationSlug}/projects/${projectId}/workspace`);
+  await page.goto(`/app/o/${organizationSlug}/projects/${projectId}/workspace`);
   const viewer = page.getByTestId("screenplay-viewer");
   await expect(viewer.getByText("Signal Fires", { exact: true })).toBeVisible();
   await expect(viewer.getByText("v1", { exact: true })).toBeVisible();

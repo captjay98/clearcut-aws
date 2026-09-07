@@ -206,5 +206,5 @@ export function itemPath(
   workspace: EvidenceWorkspace,
   itemId: string,
 ): string {
-  return `/o/${workspace.orgId}/projects/${workspace.projectId}/items/${itemId}`;
+  return `/app/o/${workspace.orgId}/projects/${workspace.projectId}/items/${itemId}`;
 }

@@ -6,13 +6,11 @@ import os
 import socket
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
-from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -79,6 +77,7 @@ from clearcut.scripts.adapters.sql_import_repository import SqlImportRepository
 from clearcut.scripts.application.import_script import ImportScriptService
 from clearcut.scripts.delivery.http import router as scripts_router
 from clearcut.scripts.domain.elements import ScriptElement
+from clearcut.static_delivery import install_same_origin_routes
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +91,7 @@ def _configured_api_worker_count() -> int:
         try:
             configured_workers[variable] = int(value)
         except ValueError as error:
-            raise LocalDispatchConfigurationError(
-                f"{variable} must be an integer."
-            ) from error
+            raise LocalDispatchConfigurationError(f"{variable} must be an integer.") from error
     if len(set(configured_workers.values())) > 1:
         raise LocalDispatchConfigurationError(
             "CLEARCUT_API_WORKERS and WEB_CONCURRENCY must match when both are set."
@@ -287,9 +284,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     """Compose a FastAPI application from validated deployment settings."""
     application_container = build_application(settings)
     if settings.database.url != SecretStr(CONFIGURED_DATABASE_URL):
-        raise RuntimeError(
-            "Configured database URL does not match the process database engine."
-        )
+        raise RuntimeError("Configured database URL does not match the process database engine.")
     if settings.dispatch.adapter is not DispatchAdapter.LOCAL:
         raise RuntimeError(
             f"Dispatch adapter {settings.dispatch.adapter.value!r} is not implemented yet."
@@ -305,6 +300,9 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
         title="ClearCut API",
         version="0.1.0",
         description="Screenplay pre-clearance research desk and evidence workspace API",
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url="/api/redoc",
         lifespan=lifespan,
     )
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)
@@ -431,34 +429,24 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.add_api_route("/healthz", healthz, methods=["GET"])
     app.add_api_route("/api/v1/healthz", healthz, methods=["GET"])
 
-    web_dist_env = os.getenv("WEB_DIST_PATH")
-    if web_dist_env and Path(web_dist_env).is_dir():
-        web_dist_dir = Path(web_dist_env)
-        assets_dir = web_dist_dir / "assets"
-        if assets_dir.is_dir():
-            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-
-        async def serve_spa(full_path: str):
-            if (
-                full_path.startswith("api/")
-                or full_path.startswith("docs")
-                or full_path.startswith("openapi.json")
-                or full_path.startswith("healthz")
-                or full_path == "healthz"
-            ):
-                return JSONResponse({"detail": "Not Found"}, status_code=404)
-            target = web_dist_dir / full_path
-            if target.is_file():
-                return FileResponse(target)
-            index_path = web_dist_dir / "index.html"
-            if index_path.is_file():
-                return FileResponse(index_path)
-            return JSONResponse(
-                {"detail": "SPA index.html not found"},
-                status_code=404,
+    static_delivery = settings.static_delivery
+    configured_static_paths = (
+        static_delivery.site_dist is not None or static_delivery.workspace_dist is not None
+    )
+    if not static_delivery.enabled and configured_static_paths:
+        raise RuntimeError(
+            "Static delivery paths cannot be configured while static delivery is disabled."
+        )
+    if static_delivery.enabled:
+        if static_delivery.site_dist is None or static_delivery.workspace_dist is None:
+            raise RuntimeError(
+                "Enabled static delivery requires both site and workspace distribution paths."
             )
-
-        app.add_api_route("/{full_path:path}", serve_spa, methods=["GET"])
+        install_same_origin_routes(
+            app,
+            site_dist=static_delivery.site_dist,
+            workspace_dist=static_delivery.workspace_dist,
+        )
 
     return app
 

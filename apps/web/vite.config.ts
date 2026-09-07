@@ -4,6 +4,7 @@ import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  base: "/app/",
   plugins: [
     TanStackRouterVite({
       routesDirectory: "./src/routes",

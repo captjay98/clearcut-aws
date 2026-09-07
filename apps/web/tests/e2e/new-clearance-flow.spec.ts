@@ -60,7 +60,7 @@ async function createNewClearance(page: Page, testInfo: TestInfo): Promise<FlowC
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-  await page.goto("/auth/sign-up");
+  await page.goto("/app/auth/sign-up");
   await page.getByLabel("Full Name").fill("Morgan Lee");
   await page.getByLabel("Email Address").fill(`new-clearance-${unique}@example.com`);
   await page.getByLabel("Password").fill("CorrectHorse123!");
@@ -164,15 +164,15 @@ test("persists all three new-clearance steps and renders only authoritative term
 
   await expect(page.getByRole("link", { name: "Open persisted screenplay" })).toHaveAttribute(
     "href",
-    `/o/${orgSlug}/projects/${projectId}/workspace`,
+    `/app/o/${orgSlug}/projects/${projectId}/workspace`,
   );
   await expect(page.getByRole("link", { name: "Review detected items" })).toHaveAttribute(
     "href",
-    `/o/${orgSlug}/projects/${projectId}/items`,
+    `/app/o/${orgSlug}/projects/${projectId}/items`,
   );
   await expect(page.getByRole("link", { name: "View operation Records" })).toHaveAttribute(
     "href",
-    new RegExp(`/o/${orgSlug}/records\\?.*projectId=${projectId}`),
+    new RegExp(`/app/o/${orgSlug}/records\\?.*projectId=${projectId}`),
   );
 
   const recordsRequest = page.waitForRequest((request) => {
@@ -193,15 +193,28 @@ test("persists all three new-clearance steps and renders only authoritative term
   const persistedItems = (await itemsResponse.json()).data;
   expect(persistedItems.length).toBeGreaterThan(0);
   await page.getByRole("link", { name: "Review detected items" }).click();
-  await expect(page).toHaveURL(`/o/${orgSlug}/projects/${projectId}/items`);
+  await expect(page).toHaveURL(`/app/o/${orgSlug}/projects/${projectId}/items`);
   await expect(page.getByRole("heading", { name: "Detected clearance items" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: persistedItems[0].entityName, exact: true }),
   ).toBeVisible();
+  const persistedItemRow = page.getByRole("listitem").filter({
+    has: page.getByRole("heading", {
+      name: persistedItems[0].entityName,
+      exact: true,
+    }),
+  });
+  const reviewItemLink = persistedItemRow.getByRole("link", {
+    name: "Review item",
+  });
+  await expect(reviewItemLink).toHaveAttribute(
+    "href",
+    `/app/o/${orgSlug}/projects/${projectId}/items/${persistedItems[0].itemId}`,
+  );
   await page.goBack();
 
   await page.getByRole("link", { name: "Open persisted screenplay" }).click();
-  await expect(page).toHaveURL(`/o/${orgSlug}/projects/${projectId}/workspace`);
+  await expect(page).toHaveURL(`/app/o/${orgSlug}/projects/${projectId}/workspace`);
   await expect(page.getByText("EXT. MARKET STREET - DAY")).toBeVisible();
 });
 
@@ -387,8 +400,8 @@ test("items route shows persisted empty and error states without redirecting", a
   page,
 }, testInfo) => {
   const { orgSlug, projectId } = await createNewClearance(page, testInfo);
-  await page.goto(`/o/${orgSlug}/projects/${projectId}/items`);
-  await expect(page).toHaveURL(`/o/${orgSlug}/projects/${projectId}/items`);
+  await page.goto(`/app/o/${orgSlug}/projects/${projectId}/items`);
+  await expect(page).toHaveURL(`/app/o/${orgSlug}/projects/${projectId}/items`);
   await expect(page.getByRole("heading", { name: "Detected clearance items" })).toBeVisible();
   await expect(page.getByText("No detected clearance items yet.")).toBeVisible();
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { clearanceItemsQueryOptions } from "../../../../../../queries/clearanceItems";
 
@@ -58,12 +58,13 @@ export function ClearanceItemsRoute() {
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
                 <span>{item.claimCount ?? 0} cited evidence claims</span>
-                <a
-                  href={`/o/${orgSlug}/projects/${projectId}/items/${item.itemId}`}
+                <Link
+                  to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                  params={{ orgSlug, projectId, itemId: item.itemId }}
                   className="font-bold text-amber-300 hover:text-amber-200"
                 >
                   Review item
-                </a>
+                </Link>
               </div>
             </li>
           ))}

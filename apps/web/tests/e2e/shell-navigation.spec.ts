@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Shell, Navigation, and Theme System", () => {
   test("skip link, landmarks, and semantic structure exist", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/app/");
     const skipLink = page.locator("a[href='#main-content']");
     await expect(skipLink).toBeAttached();
 
@@ -14,8 +14,8 @@ test.describe("Shell, Navigation, and Theme System", () => {
   });
 
   test("theme switcher toggles and persists data-theme attribute", async ({ page }) => {
-    await page.goto("/");
-    
+    await page.goto("/app/");
+
     // Initial data-theme attribute on html
     const html = page.locator("html");
     const initialTheme = await html.getAttribute("data-theme");
@@ -38,12 +38,12 @@ test.describe("Shell, Navigation, and Theme System", () => {
 
   test("organization sidebar navigation and project routing", async ({ page }) => {
     // Navigate directly to sign in and check auth flow
-    await page.goto("/auth/sign-in");
+    await page.goto("/app/auth/sign-in");
     await expect(page.locator("input#email")).toBeVisible();
     await expect(page.locator("input#password")).toBeVisible();
 
     // Navigate to onboarding
-    await page.goto("/onboarding");
+    await page.goto("/app/onboarding");
     await expect(page.locator("input#org-name")).toBeVisible();
     await expect(page.locator("input#org-slug")).toBeVisible();
   });

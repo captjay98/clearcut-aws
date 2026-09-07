@@ -9,7 +9,7 @@ test("signup persists through onboarding and workspace reload", async ({ page },
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-  await page.goto("/auth/sign-in");
+  await page.goto("/app/auth/sign-in");
   await page.getByRole("link", { name: "Create an account" }).click();
 
   await expect(page).toHaveURL(/\/auth\/sign-up$/);

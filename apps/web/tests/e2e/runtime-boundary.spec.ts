@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Runtime and Architecture Boundary", () => {
   test("root renders React application, no hash routes, no legacy localStorage", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/app/");
 
     // 1. Verify React root marker is present
     const root = page.locator("[data-clearcut-app='react']").first();
@@ -16,14 +16,14 @@ test.describe("Runtime and Architecture Boundary", () => {
     expect(storageKeys).not.toContain("clearcut-flow-state");
     expect(storageKeys).not.toContain("clearcut-flow-state-v2");
 
-    // 4. Navigate to a typed route e.g. /auth/sign-in
-    await page.goto("/auth/sign-in");
-    await expect(page).toHaveURL(/\/auth\/sign-in$/);
+    // 4. Navigate to a typed route under the workspace base
+    await page.goto("/app/auth/sign-in");
+    await expect(page).toHaveURL(/\/app\/auth\/sign-in$/);
     expect(page.url()).not.toContain("#");
 
     // 5. Refresh typed route and verify it remains without hash routing or legacy storage
     await page.reload();
-    await expect(page).toHaveURL(/\/auth\/sign-in$/);
+    await expect(page).toHaveURL(/\/app\/auth\/sign-in$/);
     expect(page.url()).not.toContain("#");
 
     const refreshedStorageKeys = await page.evaluate(() => Object.keys(localStorage));

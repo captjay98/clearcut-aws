@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { api, type ApiError, type Job, type RunStatus } from "@clearcut/contracts";
 
 const TERMINAL_STATUSES = new Set<RunStatus>([
@@ -269,24 +270,28 @@ export function JobProgress({
         <LifecycleHistory job={job} />
 
         <div className="flex flex-wrap gap-2">
-          <a
-            href={`/o/${orgSlug}/projects/${projectId}/workspace`}
+          <Link
+            to="/o/$orgSlug/projects/$projectId/workspace"
+            params={{ orgSlug, projectId }}
             className="rounded bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700"
           >
             Open persisted screenplay
-          </a>
-          <a
-            href={`/o/${orgSlug}/projects/${projectId}/items`}
+          </Link>
+          <Link
+            to="/o/$orgSlug/projects/$projectId/items"
+            params={{ orgSlug, projectId }}
             className="rounded border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 hover:border-slate-500"
           >
             Review detected items
-          </a>
-          <a
-            href={`/o/${orgSlug}/records?view=operations&projectId=${projectId}`}
+          </Link>
+          <Link
+            to="/o/$orgSlug/records"
+            params={{ orgSlug }}
+            search={{ view: "operations", projectId }}
             className="rounded border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 hover:border-slate-500"
           >
             View operation Records
-          </a>
+          </Link>
         </div>
       </section>
     );

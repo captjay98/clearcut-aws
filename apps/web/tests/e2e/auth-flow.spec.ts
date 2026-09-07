@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
  */
 test.describe("Authenticated sign-in flow (API-backed)", () => {
   test("invalid credentials surface a typed error and do NOT authenticate", async ({ page }) => {
-    await page.goto("/auth/sign-in");
+    await page.goto("/app/auth/sign-in");
     await page.fill("#email", "nobody@example.com");
     await page.fill("#password", "wrong-password");
     await page.click("button[type='submit']");
@@ -26,7 +26,7 @@ test.describe("Authenticated sign-in flow (API-backed)", () => {
     const logout = await page.request.delete("/api/v1/sessions/current");
     expect(logout.status()).toBe(204);
 
-    await page.goto("/auth/sign-in");
+    await page.goto("/app/auth/sign-in");
     await page.fill("#email", email);
     await page.fill("#password", password);
 

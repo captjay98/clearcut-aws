@@ -27,9 +27,7 @@ LOCAL_SQLITE_URL = "sqlite+aiosqlite:////tmp/clearcut.db"
 def validate_hosted_database_url(database_url: str | SecretStr) -> None:
     """Validate a hosted database URL without exposing credentials in errors."""
     url_value = (
-        database_url.get_secret_value()
-        if isinstance(database_url, SecretStr)
-        else database_url
+        database_url.get_secret_value() if isinstance(database_url, SecretStr) else database_url
     )
     try:
         parsed_url = make_url(url_value)
@@ -45,13 +43,10 @@ def validate_hosted_database_url(database_url: str | SecretStr) -> None:
         ) from None
 
     if backend_name != "postgresql":
-        raise ValueError(
-            "Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL."
-        )
+        raise ValueError("Hosted deployment profiles require a valid PostgreSQL SQLAlchemy URL.")
     if driver_name != "postgresql+asyncpg":
         raise ValueError(
-            "Hosted deployment profiles require the supported PostgreSQL async "
-            "driver (asyncpg)."
+            "Hosted deployment profiles require the supported PostgreSQL async driver (asyncpg)."
         )
     if not host or not database or (port is not None and not 1 <= port <= 65_535):
         raise ValueError(
@@ -145,6 +140,12 @@ class SecretsSettings(_FrozenModel):
     backend: SecretBackend
 
 
+class StaticDeliverySettings(_FrozenModel):
+    enabled: bool = False
+    site_dist: Path | None = None
+    workspace_dist: Path | None = None
+
+
 _PROFILE_DEFAULTS: dict[DeploymentProfile, dict[str, StrEnum]] = {
     DeploymentProfile.LOCAL: {
         "storage": StorageAdapter.FILESYSTEM,
@@ -182,6 +183,7 @@ class ClearcutSettings(BaseSettings):
     dispatch: DispatchSettings
     authentication: AuthenticationSettings
     secrets: SecretsSettings
+    static_delivery: StaticDeliverySettings = StaticDeliverySettings()
     paid_providers_enabled: frozenset[Literal["gemini", "parallel"]] = frozenset()
 
     @model_validator(mode="before")
@@ -205,6 +207,9 @@ class ClearcutSettings(BaseSettings):
             nested = dict(data.get(section) or {})
             nested.setdefault(field_name, defaults[section])
             data[section] = nested
+        static_delivery = dict(data.get("static_delivery") or {})
+        static_delivery.setdefault("enabled", profile is not DeploymentProfile.LOCAL)
+        data["static_delivery"] = static_delivery
         return data
 
     def _raise_redacted_validation_error(self, message: str) -> NoReturn:
@@ -292,16 +297,11 @@ class ClearcutSettings(BaseSettings):
             self.dispatch.audience,
             self.dispatch.service_account_email,
         )
-        if (
-            self.dispatch.adapter is not DispatchAdapter.CLOUD_TASKS
-            and any(cloud_tasks_fields)
-        ):
+        if self.dispatch.adapter is not DispatchAdapter.CLOUD_TASKS and any(cloud_tasks_fields):
             self._raise_redacted_validation_error(
                 f"{self.dispatch.adapter.value} dispatch does not accept Cloud Tasks fields."
             )
-        if self.dispatch.adapter is DispatchAdapter.CLOUD_TASKS and not all(
-            cloud_tasks_fields
-        ):
+        if self.dispatch.adapter is DispatchAdapter.CLOUD_TASKS and not all(cloud_tasks_fields):
             self._raise_redacted_validation_error(
                 "Cloud Tasks dispatch requires project_id, location, queue, target_url, "
                 "audience, and service_account_email."
@@ -333,6 +333,7 @@ class ClearcutSettings(BaseSettings):
         dispatch: dict[str, Any] = {}
         authentication: dict[str, Any] = {}
         secrets: dict[str, Any] = {}
+        static_delivery: dict[str, Any] = {}
         optional_values = (
             (
                 storage,
@@ -370,6 +371,14 @@ class ClearcutSettings(BaseSettings):
                 },
             ),
             (secrets, {"backend": "CLEARCUT_SECRET_BACKEND"}),
+            (
+                static_delivery,
+                {
+                    "enabled": "CLEARCUT_STATIC_DELIVERY_ENABLED",
+                    "site_dist": "CLEARCUT_SITE_DIST_PATH",
+                    "workspace_dist": "CLEARCUT_WORKSPACE_DIST_PATH",
+                },
+            ),
         )
         for target, fields in optional_values:
             for field_name, variable in fields.items():
@@ -382,9 +391,7 @@ class ClearcutSettings(BaseSettings):
         legacy_dispatch_mode = source.get("CLEARCUT_JOB_DISPATCH_MODE", "").strip().lower()
         if profile == DeploymentProfile.LOCAL and legacy_dispatch_mode:
             if legacy_dispatch_mode not in {"disabled", "local"}:
-                raise ValueError(
-                    "CLEARCUT_JOB_DISPATCH_MODE must be 'disabled' or 'local'."
-                )
+                raise ValueError("CLEARCUT_JOB_DISPATCH_MODE must be 'disabled' or 'local'.")
             dispatch.setdefault("enabled", legacy_dispatch_mode == "local")
 
         paid_providers = frozenset(
@@ -400,6 +407,7 @@ class ClearcutSettings(BaseSettings):
                 "dispatch": dispatch,
                 "authentication": authentication,
                 "secrets": secrets,
+                "static_delivery": static_delivery,
                 "paid_providers_enabled": paid_providers,
             }
         )

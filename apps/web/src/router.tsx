@@ -5,6 +5,7 @@ import { routeTree } from "./routeTree.gen";
 export function createRouter() {
   return createTanStackRouter({
     routeTree,
+    basepath: "/app",
     context: {
       queryClient,
     },

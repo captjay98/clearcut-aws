@@ -141,7 +141,7 @@ test("evidence drawer supports keyboard operation and restores trigger focus", a
   try {
     const page = workspace.owner.page;
     await page.goto(
-      `/o/${workspace.orgId}/projects/${workspace.projectId}/workspace`,
+      `/app/o/${workspace.orgId}/projects/${workspace.projectId}/workspace`,
     );
     const citedCard = page
       .getByTestId("clearance-item-card")
