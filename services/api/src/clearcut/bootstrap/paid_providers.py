@@ -1,9 +1,10 @@
 """Paid provider enablement and concurrency bounding gate."""
+
 from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Set
+from collections.abc import Mapping, Set
 from typing import Any
 
 from clearcut.bootstrap.settings import ClearcutSettings
@@ -91,7 +92,7 @@ class PaidProviderGate:
     def __init__(
         self,
         enabled_providers: Set[str] | None = None,
-        concurrency_limits: dict[str, int] | None = None,
+        concurrency_limits: Mapping[str, int] | None = None,
     ) -> None:
         self._enabled_providers = frozenset(enabled_providers or ())
         limits = dict(DEFAULT_CONCURRENCY_LIMITS)
@@ -154,11 +155,17 @@ def build_paid_provider_gate(
     settings: ClearcutSettings | None = None,
     *,
     enabled_providers: Set[str] | None = None,
-    concurrency_limits: dict[str, int] | None = None,
+    concurrency_limits: Mapping[str, int] | None = None,
 ) -> PaidProviderGate:
     """Construct a PaidProviderGate from settings or explicit parameters."""
+    limits: dict[str, int] | None
     if settings is not None:
         providers = settings.paid_providers_enabled
+        limits = {
+            str(provider): limit
+            for provider, limit in settings.paid_provider_concurrency_limits.items()
+        }
     else:
         providers = frozenset(enabled_providers or ())
-    return PaidProviderGate(enabled_providers=providers, concurrency_limits=concurrency_limits)
+        limits = dict(concurrency_limits) if concurrency_limits is not None else None
+    return PaidProviderGate(enabled_providers=providers, concurrency_limits=limits)

@@ -1,8 +1,10 @@
 """Paid provider enablement and concurrency control conformance."""
+
 from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import Any, cast
 
 import pytest
 from clearcut.bootstrap.paid_providers import (
@@ -11,6 +13,8 @@ from clearcut.bootstrap.paid_providers import (
     build_paid_provider_gate,
 )
 from clearcut.bootstrap.settings import ClearcutSettings
+from clearcut.main import _ConfiguredDetectionRuntime, _ConfiguredResearchRuntime
+from pydantic import ValidationError
 
 
 class FakePaidClient:
@@ -130,8 +134,47 @@ def test_gate_from_settings_factory() -> None:
             "database": {"url": "sqlite+aiosqlite:////tmp/cc-test.db"},
             "storage": {"path": "/tmp/cc-storage"},
             "paid_providers_enabled": ["parallel"],
+            "paid_provider_cost_acknowledged": True,
+            "paid_provider_concurrency_limits": {"parallel": 1, "gemini": 2},
         }
     )
     gate = build_paid_provider_gate(settings=settings)
     assert gate.is_enabled("parallel")
     assert not gate.is_enabled("gemini")
+    assert gate.concurrency_limit("parallel") == 1
+    assert gate.concurrency_limit("gemini") == 2
+
+
+def test_enabled_provider_requires_cost_acknowledgement() -> None:
+    with pytest.raises(ValidationError, match="cost acknowledgement"):
+        ClearcutSettings.model_validate(
+            {
+                "profile": "local",
+                "database": {"url": "sqlite+aiosqlite:////tmp/cc-test.db"},
+                "storage": {"path": "/tmp/cc-storage"},
+                "paid_providers_enabled": ["parallel"],
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_runtime_boundaries_deny_before_resolving_paid_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolved: list[str] = []
+    monkeypatch.setattr(
+        "clearcut.main.get_detection_runtime",
+        lambda: resolved.append("gemini"),
+    )
+    monkeypatch.setattr(
+        "clearcut.main.get_research_runtime",
+        lambda: resolved.append("parallel"),
+    )
+    gate = build_paid_provider_gate(enabled_providers=frozenset())
+
+    with pytest.raises(PaidProviderDisabledError):
+        await _ConfiguredDetectionRuntime(gate).detect_element(cast(Any, object()))
+    with pytest.raises(PaidProviderDisabledError):
+        _ConfiguredResearchRuntime(gate).search(cast(Any, object()))
+
+    assert resolved == []

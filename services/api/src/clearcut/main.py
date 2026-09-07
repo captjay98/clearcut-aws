@@ -15,7 +15,7 @@ from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from clearcut.bootstrap.container import build_application
-from clearcut.bootstrap.paid_providers import build_paid_provider_gate
+from clearcut.bootstrap.paid_providers import PaidProviderGate, build_paid_provider_gate
 from clearcut.bootstrap.secrets import build_secret_resolver
 from clearcut.bootstrap.settings import (
     ClearcutSettings,
@@ -112,17 +112,20 @@ def _configured_api_worker_count() -> int:
 
 
 class _ConfiguredDetectionRuntime(ModelRuntimePort):
-    """Resolve and cache the configured live runtime only when a job executes."""
+    """Resolve and gate the configured live runtime only when a job executes."""
 
-    def __init__(self) -> None:
+    def __init__(self, gate: PaidProviderGate) -> None:
+        self._gate = gate
         self._runtime: ModelRuntimePort | None = None
 
     @property
     def requested_model(self) -> str:
-        return self._resolve().requested_model
+        with self._gate.acquire("gemini"):
+            return self._resolve().requested_model
 
     async def detect_element(self, element: ScriptElement) -> DetectionResult:
-        return await self._resolve().detect_element(element)
+        async with self._gate.acquire("gemini"):
+            return await self._resolve().detect_element(element)
 
     def _resolve(self) -> ModelRuntimePort:
         if self._runtime is None:
@@ -131,17 +134,20 @@ class _ConfiguredDetectionRuntime(ModelRuntimePort):
 
 
 class _ConfiguredJudgeRuntime(JudgePort):
-    """Resolve and cache the configured live Pro judge only when invoked."""
+    """Resolve and gate the configured live Pro judge only when invoked."""
 
-    def __init__(self) -> None:
+    def __init__(self, gate: PaidProviderGate) -> None:
+        self._gate = gate
         self._runtime: JudgePort | None = None
 
     @property
     def requested_model(self) -> str:
-        return self._resolve().requested_model
+        with self._gate.acquire("gemini"):
+            return self._resolve().requested_model
 
     async def evaluate(self, request: JudgeRequest) -> JudgeResult:
-        return await self._resolve().evaluate(request)
+        async with self._gate.acquire("gemini"):
+            return await self._resolve().evaluate(request)
 
     def _resolve(self) -> JudgePort:
         if self._runtime is None:
@@ -150,20 +156,23 @@ class _ConfiguredJudgeRuntime(JudgePort):
 
 
 class _ConfiguredResearchPlanner(ResearchPlannerPort):
-    """Resolve the configured Flash-Lite planner only when research executes."""
+    """Resolve and gate the configured Flash-Lite planner only when research executes."""
 
-    def __init__(self) -> None:
+    def __init__(self, gate: PaidProviderGate) -> None:
+        self._gate = gate
         self._runtime: ResearchPlannerPort | None = None
 
     @property
     def requested_model(self) -> str:
-        return self._resolve().requested_model
+        with self._gate.acquire("gemini"):
+            return self._resolve().requested_model
 
     async def plan_research(
         self,
         request: ResearchPlanningRequest,
     ) -> ResearchPlanningResult:
-        return await self._resolve().plan_research(request)
+        async with self._gate.acquire("gemini"):
+            return await self._resolve().plan_research(request)
 
     def _resolve(self) -> ResearchPlannerPort:
         if self._runtime is None:
@@ -172,16 +181,19 @@ class _ConfiguredResearchPlanner(ResearchPlannerPort):
 
 
 class _ConfiguredResearchRuntime(WebSearchPort, UrlExtractPort):
-    """Resolve and cache configured Parallel Search/Extract on first call."""
+    """Resolve and gate configured Parallel Search/Extract on first call."""
 
-    def __init__(self) -> None:
+    def __init__(self, gate: PaidProviderGate) -> None:
+        self._gate = gate
         self._runtime: ResearchRuntime | None = None
 
     def search(self, request: SearchRequest) -> ProviderResult:
-        return self._resolve().search.search(request)
+        with self._gate.acquire("parallel"):
+            return self._resolve().search.search(request)
 
     def extract(self, request: ExtractRequest) -> ExtractResult:
-        return self._resolve().extract.extract(request)
+        with self._gate.acquire("parallel"):
+            return self._resolve().extract.extract(request)
 
     def _resolve(self) -> ResearchRuntime:
         if self._runtime is None:
@@ -354,8 +366,8 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     job_repository = SqlJobRepository()
     candidate_repository = SqlCandidateRepository()
     evaluation_repository = SqlEvaluationRepository()
-    detection_runtime = _ConfiguredDetectionRuntime()
-    judge_runtime = _ConfiguredJudgeRuntime()
+    detection_runtime = _ConfiguredDetectionRuntime(paid_provider_gate)
+    judge_runtime = _ConfiguredJudgeRuntime(paid_provider_gate)
     evaluation_service = EvaluationService(
         judge=judge_runtime,
         repository=evaluation_repository,
@@ -367,8 +379,8 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
         evaluation=evaluation_service,
     )
     research_repository = SqlResearchRepository()
-    research_planner = _ConfiguredResearchPlanner()
-    research_runtime = _ConfiguredResearchRuntime()
+    research_planner = _ConfiguredResearchPlanner(paid_provider_gate)
+    research_runtime = _ConfiguredResearchRuntime(paid_provider_gate)
     run_research_job = RunResearchJobService(
         repository=research_repository,
         planner=research_planner,

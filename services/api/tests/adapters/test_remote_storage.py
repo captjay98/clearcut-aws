@@ -1,4 +1,5 @@
 """ObjectStoragePort conformance using injected clients only."""
+
 import io
 import traceback
 from types import SimpleNamespace
@@ -82,7 +83,8 @@ def remote(request):
     client = FakeClient()
     settings = (
         GCSStorageSettings(bucket="scripts", project_id="project")
-        if request.param == "gcs" else S3StorageSettings(bucket="scripts")
+        if request.param == "gcs"
+        else S3StorageSettings(bucket="scripts")
     )
     return storage_module.build_object_storage(settings, client=client), client
 
@@ -103,10 +105,14 @@ async def test_binary_round_trip_and_idempotent_deletion(remote):
     if client.body is not None:
         assert client.body.closed
     put_kwargs = next(kwargs for operation, kwargs in client.calls if operation == "put")
-    assert put_kwargs.get("content_type", put_kwargs.get("ContentType")) == "application/octet-stream"
+    assert (
+        put_kwargs.get("content_type", put_kwargs.get("ContentType")) == "application/octet-stream"
+    )
 
 
-@pytest.mark.parametrize("key", ["", "/absolute", "../escape", "org/../escape", "a\\b", "a//b", "a/./b", "a\x00b"])
+@pytest.mark.parametrize(
+    "key", ["", "/absolute", "../escape", "org/../escape", "a\\b", "a//b", "a/./b", "a\x00b"]
+)
 @pytest.mark.asyncio
 async def test_invalid_keys_never_reach_client(remote, key):
     storage, client = remote
@@ -120,7 +126,11 @@ async def test_invalid_keys_never_reach_client(remote, key):
 async def test_provider_failure_is_typed_redacted_and_not_missing(remote, method):
     storage, client = remote
     client.failure = RuntimeError("credential-secret-and-object-body")
-    args = ("org/project/file", b"x", "text/plain") if method == "put_object" else ("org/project/file",)
+    args = (
+        ("org/project/file", b"x", "text/plain")
+        if method == "put_object"
+        else ("org/project/file",)
+    )
     with pytest.raises(storage_module.ObjectStorageError) as caught:
         await getattr(storage, method)(*args)
     assert "credential-secret" not in "".join(traceback.format_exception(caught.value))
@@ -129,7 +139,9 @@ async def test_provider_failure_is_typed_redacted_and_not_missing(remote, method
 @pytest.mark.asyncio
 async def test_gcs_calls_have_bounded_timeout_without_implicit_retries():
     client = FakeClient()
-    storage = storage_module.build_object_storage(GCSStorageSettings(bucket="b", project_id="p"), client=client)
+    storage = storage_module.build_object_storage(
+        GCSStorageSettings(bucket="b", project_id="p"), client=client
+    )
     await storage.put_object("org/project/key", b"x", "text/plain")
     await storage.get_object("org/project/key")
     await storage.object_exists("org/project/key")

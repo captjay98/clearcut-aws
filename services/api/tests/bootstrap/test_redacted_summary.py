@@ -21,6 +21,7 @@ def test_redacted_summary_contains_only_safe_deployment_fields() -> None:
                 "secret_access_key": "secret-access-key",
             },
             "paid_providers_enabled": ["parallel", "gemini"],
+            "paid_provider_cost_acknowledged": True,
         }
     )
 

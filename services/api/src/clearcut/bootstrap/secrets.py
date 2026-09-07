@@ -1,4 +1,5 @@
 """Secret resolution backends with redacted error handling."""
+
 from __future__ import annotations
 
 import os
@@ -49,7 +50,9 @@ class HostSecretResolver(SecretResolver):
     """Resolves secrets from host-mounted files (e.g., /run/secrets/{name})."""
 
     def __init__(self, secrets_dir: Path | str | None = None) -> None:
-        self._secrets_dir = Path(secrets_dir) if secrets_dir is not None else DEFAULT_HOST_SECRETS_DIR
+        self._secrets_dir = (
+            Path(secrets_dir) if secrets_dir is not None else DEFAULT_HOST_SECRETS_DIR
+        )
 
     def resolve(self, name: str) -> SecretStr:
         try:
@@ -64,7 +67,9 @@ class HostSecretResolver(SecretResolver):
             if not resolved.is_relative_to(self._secrets_dir.resolve()):
                 raise SecretResolutionError(f"Path traversal detected for secret: '{name}'")
             if not resolved.is_file():
-                raise SecretResolutionError(f"Secret file for '{name}' not found or not a regular file.")
+                raise SecretResolutionError(
+                    f"Secret file for '{name}' not found or not a regular file."
+                )
             content = resolved.read_text(encoding="utf-8").strip()
             if not content:
                 raise SecretResolutionError(f"Secret file for '{name}' is empty.")
@@ -89,7 +94,9 @@ class SecretManagerResolver(SecretResolver):
 
                 self._client = secretmanager.SecretManagerServiceClient()
             except Exception:
-                raise SecretResolutionError("Failed to initialize Google Secret Manager client.") from None
+                raise SecretResolutionError(
+                    "Failed to initialize Google Secret Manager client."
+                ) from None
         return self._client
 
     def resolve(self, name: str) -> SecretStr:
@@ -115,7 +122,9 @@ class SecretManagerResolver(SecretResolver):
         except SecretResolutionError:
             raise
         except Exception:
-            raise SecretResolutionError(f"Secret resolution failed from Secret Manager for '{name}'.") from None
+            raise SecretResolutionError(
+                f"Secret resolution failed from Secret Manager for '{name}'."
+            ) from None
 
 
 def build_secret_resolver(

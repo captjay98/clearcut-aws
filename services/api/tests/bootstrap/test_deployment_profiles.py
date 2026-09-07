@@ -822,7 +822,7 @@ def test_local_dispatch_rejects_multiple_api_workers(tmp_path: Path) -> None:
                 "CLEARCUT_CLOUD_TASKS_LOCATION": "us-central1",
                 "CLEARCUT_CLOUD_TASKS_QUEUE": "clearcut-jobs",
                 "CLEARCUT_CLOUD_TASKS_TARGET_URL": (
-                    "https://clearcut.example/api/v1/jobs/execute"
+                    "https://clearcut.example/api/internal/jobs:execute"
                 ),
                 "CLEARCUT_CLOUD_TASKS_AUDIENCE": "https://clearcut.example",
                 "CLEARCUT_CLOUD_TASKS_SERVICE_ACCOUNT_EMAIL": (
@@ -832,7 +832,7 @@ def test_local_dispatch_rejects_multiple_api_workers(tmp_path: Path) -> None:
         ),
     ],
 )
-def test_hosted_dispatch_composition_rejects_unavailable_adapter_without_local_fallback(
+def test_hosted_dispatch_composition_never_falls_back_to_local(
     profile: str,
     expected_adapter: str,
     profile_environment: dict[str, str],
@@ -846,12 +846,14 @@ def test_hosted_dispatch_composition_rejects_unavailable_adapter_without_local_f
     environment.update(profile_environment)
     environment["DATABASE_URL"] = database_url
     environment["CLEARCUT_DEPLOYMENT_PROFILE"] = profile
+    environment["CLEARCUT_STATIC_DELIVERY_ENABLED"] = "false"
     if profile == "portable":
         environment["CLEARCUT_STORAGE_PATH"] = str(tmp_path / "durable-storage")
     else:
         environment.pop("CLEARCUT_STORAGE_PATH", None)
     script = f"""
 from clearcut.bootstrap.settings import ClearcutSettings
+import clearcut.bootstrap.storage as storage_module
 import clearcut.operations.application.local_dispatcher as local_dispatcher
 
 settings = ClearcutSettings.from_environment()
@@ -861,9 +863,15 @@ class UnexpectedLocalJobDispatcher:
     def __init__(self, *args, **kwargs):
         raise AssertionError("local dispatch instantiated")
 
+class FakeGcsClient:
+    def bucket(self, name):
+        return object()
+
 local_dispatcher.LocalJobDispatcher = UnexpectedLocalJobDispatcher
+storage_module.storage.Client = lambda project: FakeGcsClient()
 from clearcut.main import create_app
-create_app(settings)
+created = create_app(settings)
+assert created.state.job_dispatcher.mode == {expected_adapter!r}
 """
 
     result = subprocess.run(
@@ -876,8 +884,11 @@ create_app(settings)
     )
 
     diagnostics = result.stdout + result.stderr
-    assert result.returncode != 0
-    assert f"Dispatch adapter '{expected_adapter}' is not implemented yet." in diagnostics
+    if profile == "portable":
+        assert result.returncode != 0
+        assert f"Dispatch adapter '{expected_adapter}' is not implemented yet." in diagnostics
+    else:
+        assert result.returncode == 0, diagnostics
     assert "local dispatch instantiated" not in diagnostics
     assert sentinel_password not in diagnostics
     assert database_url not in diagnostics

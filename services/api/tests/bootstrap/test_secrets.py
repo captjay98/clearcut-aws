@@ -1,4 +1,5 @@
 """Secret resolution conformance across Environment, Host, and Secret Manager backends."""
+
 from __future__ import annotations
 
 import traceback
@@ -27,7 +28,9 @@ class FakeSecretManagerClient:
         self.calls: list[str] = []
         self.failure: Exception | None = None
 
-    def access_secret_version(self, request: dict[str, str] | None = None, name: str | None = None) -> Any:
+    def access_secret_version(
+        self, request: dict[str, str] | None = None, name: str | None = None
+    ) -> Any:
         secret_name = name or (request.get("name") if request else "")
         self.calls.append(secret_name or "")
         if self.failure:
@@ -173,7 +176,9 @@ def test_no_cross_backend_fallback(tmp_path: Path) -> None:
         (SecretBackend.SECRET_MANAGER, SecretManagerResolver),
     ],
 )
-def test_build_secret_resolver_factory(tmp_path: Path, backend: SecretBackend, expected_cls: type) -> None:
+def test_build_secret_resolver_factory(
+    tmp_path: Path, backend: SecretBackend, expected_cls: type
+) -> None:
     settings = SecretsSettings(backend=backend)
     fake_client = FakeSecretManagerClient()
     resolver = build_secret_resolver(

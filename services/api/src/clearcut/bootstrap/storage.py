@@ -1,4 +1,5 @@
 """Construct the explicitly selected storage adapter with optional injected SDK clients."""
+
 from typing import Any
 
 import boto3
@@ -34,9 +35,15 @@ def build_object_storage(settings: StorageSettings, *, client: Any = None) -> Ob
                 "s3",
                 endpoint_url=settings.endpoint_url,
                 region_name=settings.region,
-                aws_access_key_id=settings.access_key_id.get_secret_value() if settings.access_key_id else None,
-                aws_secret_access_key=settings.secret_access_key.get_secret_value() if settings.secret_access_key else None,
-                config=Config(connect_timeout=5, read_timeout=30, retries={"total_max_attempts": 1}),
+                aws_access_key_id=settings.access_key_id.get_secret_value()
+                if settings.access_key_id
+                else None,
+                aws_secret_access_key=settings.secret_access_key.get_secret_value()
+                if settings.secret_access_key
+                else None,
+                config=Config(
+                    connect_timeout=5, read_timeout=30, retries={"total_max_attempts": 1}
+                ),
             )
         return S3ObjectStorage(settings.bucket, client)
     except Exception:

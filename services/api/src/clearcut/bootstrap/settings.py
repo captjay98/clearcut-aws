@@ -185,6 +185,10 @@ class ClearcutSettings(BaseSettings):
     secrets: SecretsSettings
     static_delivery: StaticDeliverySettings = StaticDeliverySettings()
     paid_providers_enabled: frozenset[Literal["gemini", "parallel"]] = frozenset()
+    paid_provider_cost_acknowledged: bool = False
+    paid_provider_concurrency_limits: dict[Literal["gemini", "parallel"], int] = Field(
+        default_factory=lambda: {"gemini": 1, "parallel": 1}
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -318,6 +322,14 @@ class ClearcutSettings(BaseSettings):
             self._raise_redacted_validation_error(
                 "Firebase authentication requires project_id and audience."
             )
+        if self.paid_providers_enabled and not self.paid_provider_cost_acknowledged:
+            self._raise_redacted_validation_error(
+                "Paid provider enablement requires explicit cost acknowledgement."
+            )
+        if any(limit <= 0 for limit in self.paid_provider_concurrency_limits.values()):
+            self._raise_redacted_validation_error(
+                "Paid provider concurrency limits must be positive."
+            )
         return self
 
     @classmethod
@@ -399,6 +411,10 @@ class ClearcutSettings(BaseSettings):
             for name in source.get("CLEARCUT_PAID_PROVIDERS_ENABLED", "").split(",")
             if name.strip()
         )
+        paid_provider_concurrency_limits = {
+            "gemini": source.get("CLEARCUT_GEMINI_CONCURRENCY_LIMIT", "1"),
+            "parallel": source.get("CLEARCUT_PARALLEL_CONCURRENCY_LIMIT", "1"),
+        }
         return cls.model_validate(
             {
                 "profile": profile,
@@ -409,5 +425,9 @@ class ClearcutSettings(BaseSettings):
                 "secrets": secrets,
                 "static_delivery": static_delivery,
                 "paid_providers_enabled": paid_providers,
+                "paid_provider_cost_acknowledged": source.get(
+                    "CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED", "false"
+                ),
+                "paid_provider_concurrency_limits": paid_provider_concurrency_limits,
             }
         )
