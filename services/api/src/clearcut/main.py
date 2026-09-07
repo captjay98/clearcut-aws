@@ -17,7 +17,11 @@ from pydantic import SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from clearcut.bootstrap.container import build_application
-from clearcut.bootstrap.settings import ClearcutSettings, StorageAdapter
+from clearcut.bootstrap.settings import (
+    ClearcutSettings,
+    DispatchAdapter,
+    StorageAdapter,
+)
 from clearcut.collaboration.delivery.http import router as collaboration_router
 from clearcut.database import DATABASE_URL as CONFIGURED_DATABASE_URL
 from clearcut.decisions.delivery.http import router as decisions_router
@@ -285,6 +289,10 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     if settings.database.url != SecretStr(CONFIGURED_DATABASE_URL):
         raise RuntimeError(
             "Configured database URL does not match the process database engine."
+        )
+    if settings.dispatch.adapter is not DispatchAdapter.LOCAL:
+        raise RuntimeError(
+            f"Dispatch adapter {settings.dispatch.adapter.value!r} is not implemented yet."
         )
     if settings.storage.adapter is not StorageAdapter.FILESYSTEM:
         raise RuntimeError(

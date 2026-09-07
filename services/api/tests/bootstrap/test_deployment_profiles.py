@@ -801,6 +801,88 @@ def test_local_dispatch_rejects_multiple_api_workers(tmp_path: Path) -> None:
     assert "exactly one worker" in result.stderr
 
 
+@pytest.mark.parametrize(
+    ("profile", "expected_adapter", "profile_environment"),
+    [
+        (
+            "portable",
+            "postgres",
+            {
+                "CLEARCUT_STORAGE_ADAPTER": "filesystem",
+                "CLEARCUT_STORAGE_EPHEMERAL": "false",
+            },
+        ),
+        (
+            "gcp",
+            "cloud_tasks",
+            {
+                "CLEARCUT_STORAGE_BUCKET": "clearcut-artifacts",
+                "CLEARCUT_STORAGE_PROJECT_ID": "clearcut-project",
+                "CLEARCUT_CLOUD_TASKS_PROJECT_ID": "clearcut-project",
+                "CLEARCUT_CLOUD_TASKS_LOCATION": "us-central1",
+                "CLEARCUT_CLOUD_TASKS_QUEUE": "clearcut-jobs",
+                "CLEARCUT_CLOUD_TASKS_TARGET_URL": (
+                    "https://clearcut.example/api/v1/jobs/execute"
+                ),
+                "CLEARCUT_CLOUD_TASKS_AUDIENCE": "https://clearcut.example",
+                "CLEARCUT_CLOUD_TASKS_SERVICE_ACCOUNT_EMAIL": (
+                    "tasks@clearcut-project.iam.gserviceaccount.com"
+                ),
+            },
+        ),
+    ],
+)
+def test_hosted_dispatch_composition_rejects_unavailable_adapter_without_local_fallback(
+    profile: str,
+    expected_adapter: str,
+    profile_environment: dict[str, str],
+    tmp_path: Path,
+) -> None:
+    sentinel_password = "sentinel-hosted-dispatch-password"
+    database_url = (
+        f"postgresql+asyncpg://clearcut:{sentinel_password}@database/clearcut"
+    )
+    environment = os.environ.copy()
+    environment.update(profile_environment)
+    environment["DATABASE_URL"] = database_url
+    environment["CLEARCUT_DEPLOYMENT_PROFILE"] = profile
+    if profile == "portable":
+        environment["CLEARCUT_STORAGE_PATH"] = str(tmp_path / "durable-storage")
+    else:
+        environment.pop("CLEARCUT_STORAGE_PATH", None)
+    script = f"""
+from clearcut.bootstrap.settings import ClearcutSettings
+import clearcut.operations.application.local_dispatcher as local_dispatcher
+
+settings = ClearcutSettings.from_environment()
+assert settings.dispatch.adapter == {expected_adapter!r}
+
+class UnexpectedLocalJobDispatcher:
+    def __init__(self, *args, **kwargs):
+        raise AssertionError("local dispatch instantiated")
+
+local_dispatcher.LocalJobDispatcher = UnexpectedLocalJobDispatcher
+from clearcut.main import create_app
+create_app(settings)
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    diagnostics = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert f"Dispatch adapter '{expected_adapter}' is not implemented yet." in diagnostics
+    assert "local dispatch instantiated" not in diagnostics
+    assert sentinel_password not in diagnostics
+    assert database_url not in diagnostics
+
+
 def test_portable_profile_accepts_explicit_durable_filesystem_storage() -> None:
     config = valid_settings("portable")
     config["storage"] = {
