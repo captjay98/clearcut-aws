@@ -24,10 +24,22 @@ export interface JobDispatchMetadata {
   durable: boolean;
 }
 
+export interface DeploymentMetadata {
+  profile: 'local' | 'portable' | 'gcp';
+  databaseConfigured: boolean;
+  storageAdapter: 'filesystem' | 's3' | 'gcs';
+  dispatchAdapter: 'local' | 'postgres' | 'cloud_tasks';
+  dispatchEnabled: boolean;
+  authenticationAdapter: 'builtin' | 'firebase';
+  secretBackend: 'environment' | 'host' | 'secret_manager';
+  paidProvidersEnabled: Array<'gemini' | 'parallel'>;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: ISODateTime;
   version: string;
+  deployment: DeploymentMetadata;
   jobDispatch: JobDispatchMetadata;
 }
 

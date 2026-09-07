@@ -31,10 +31,21 @@ class JobDispatchMetadata(BaseModel):
     mode: Literal["disabled", "local", "cloud_tasks"]
     durable: bool
 
+class DeploymentMetadata(BaseModel):
+    profile: Literal["local", "portable", "gcp"]
+    databaseConfigured: bool
+    storageAdapter: Literal["filesystem", "s3", "gcs"]
+    dispatchAdapter: Literal["local", "postgres", "cloud_tasks"]
+    dispatchEnabled: bool
+    authenticationAdapter: Literal["builtin", "firebase"]
+    secretBackend: Literal["environment", "host", "secret_manager"]
+    paidProvidersEnabled: List[Literal["gemini", "parallel"]]
+
 class HealthResponse(BaseModel):
     status: str
     timestamp: ISODateTime
     version: str
+    deployment: DeploymentMetadata
     jobDispatch: JobDispatchMetadata
 
 class SessionContext(BaseModel):

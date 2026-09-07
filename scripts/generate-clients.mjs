@@ -47,6 +47,7 @@ const task10PredeclaredNames = new Set([
   'CreateOrganizationRequest',
   'CreateProjectRequest',
   'CreateSessionRequest',
+  'DeploymentMetadata',
   'EvidenceClaim',
   'HealthResponse',
   'ISODateTime',
@@ -129,10 +130,22 @@ export interface JobDispatchMetadata {
   durable: boolean;
 }
 
+export interface DeploymentMetadata {
+  profile: 'local' | 'portable' | 'gcp';
+  databaseConfigured: boolean;
+  storageAdapter: 'filesystem' | 's3' | 'gcs';
+  dispatchAdapter: 'local' | 'postgres' | 'cloud_tasks';
+  dispatchEnabled: boolean;
+  authenticationAdapter: 'builtin' | 'firebase';
+  secretBackend: 'environment' | 'host' | 'secret_manager';
+  paidProvidersEnabled: Array<'gemini' | 'parallel'>;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: ISODateTime;
   version: string;
+  deployment: DeploymentMetadata;
   jobDispatch: JobDispatchMetadata;
 }
 
@@ -1058,10 +1071,21 @@ class JobDispatchMetadata(BaseModel):
     mode: Literal["disabled", "local", "cloud_tasks"]
     durable: bool
 
+class DeploymentMetadata(BaseModel):
+    profile: Literal["local", "portable", "gcp"]
+    databaseConfigured: bool
+    storageAdapter: Literal["filesystem", "s3", "gcs"]
+    dispatchAdapter: Literal["local", "postgres", "cloud_tasks"]
+    dispatchEnabled: bool
+    authenticationAdapter: Literal["builtin", "firebase"]
+    secretBackend: Literal["environment", "host", "secret_manager"]
+    paidProvidersEnabled: List[Literal["gemini", "parallel"]]
+
 class HealthResponse(BaseModel):
     status: str
     timestamp: ISODateTime
     version: str
+    deployment: DeploymentMetadata
     jobDispatch: JobDispatchMetadata
 
 class SessionContext(BaseModel):

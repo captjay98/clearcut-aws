@@ -534,6 +534,8 @@ def test_observable_job_contract_exposes_safe_lifecycle_and_attempt_history() ->
     assert "export interface SafeJobError" in typescript
     assert "export interface JobAttempt" in typescript
     assert "export interface JobLifecycleEvent" in typescript
+    assert "export interface DeploymentMetadata" in typescript
+    assert "deployment: DeploymentMetadata" in typescript
     assert "resultSummary: Record<string, unknown> | null" in typescript
     assert "attempts: JobAttempt[]" in typescript
     assert "history: JobLifecycleEvent[]" in typescript
@@ -545,6 +547,8 @@ def test_observable_job_contract_exposes_safe_lifecycle_and_attempt_history() ->
     assert "class SafeJobError(BaseModel):" in python
     assert "class JobAttempt(BaseModel):" in python
     assert "class JobLifecycleEvent(BaseModel):" in python
+    assert "class DeploymentMetadata(BaseModel):" in python
+    assert "deployment: DeploymentMetadata" in python
     assert "resultSummary: Optional[Dict[str, Any]]" in python
     assert "attempts: List[JobAttempt]" in python
     assert "history: List[JobLifecycleEvent]" in python
