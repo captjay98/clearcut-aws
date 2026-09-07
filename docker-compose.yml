@@ -1,10 +1,8 @@
-version: "3.8"
-
 x-clearcut-runtime: &clearcut-runtime
   build:
     context: .
     dockerfile: Dockerfile
-  image: clearcut-local:latest
+  image: clearcut:local
   environment: &clearcut-environment
     DATABASE_URL: postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
     PORT: 8080

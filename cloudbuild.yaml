@@ -1,20 +1,18 @@
-# Build-only validation for the current combined local runtime image.
-# This file intentionally does not deploy or promote production traffic.
-# Production requires separately built clearcut-site, clearcut-web, and
-# clearcut-api digests passed through the protected GitHub workflows.
+# Build the single production application artifact; deployment and traffic
+# promotion remain explicit operations outside this build configuration.
 substitutions:
   _REGISTRY_HOST: "us-central1-docker.pkg.dev"
-  _REPOSITORY: "clearcut-validation"
+  _REPOSITORY: "clearcut"
 
 steps:
   - name: "gcr.io/cloud-builders/docker"
-    id: "build-combined-validation-image"
+    id: "build-clearcut-image"
     args:
       - "build"
       - "--label"
       - "org.opencontainers.image.revision=$COMMIT_SHA"
       - "--tag"
-      - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut-validation:sha-$COMMIT_SHA"
+      - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut:sha-$COMMIT_SHA"
       - "."
 
   - name: "gcr.io/cloud-builders/docker"
@@ -23,11 +21,11 @@ steps:
     args:
       - "-ceu"
       - |
-        IMAGE="${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut-validation:sha-$COMMIT_SHA"
+        IMAGE="${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut:sha-$COMMIT_SHA"
         test "$$(docker inspect --format='{{ index .Config.Labels \"org.opencontainers.image.revision\" }}' "$$IMAGE")" = "$COMMIT_SHA"
 
 images:
-  - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut-validation:sha-$COMMIT_SHA"
+  - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut:sha-$COMMIT_SHA"
 
 options:
   logging: CLOUD_LOGGING_ONLY

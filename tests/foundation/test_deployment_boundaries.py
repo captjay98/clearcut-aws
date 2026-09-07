@@ -49,7 +49,9 @@ def test_application_startup_never_runs_database_migrations() -> None:
     services = compose["services"]
 
     app_command = str(services["app"].get("command", ""))
-    runtime_command = dockerfile.split("FROM python:3.12-slim AS runtime", maxsplit=1)[1]
+    runtime_command = "\n".join(
+        line for line in dockerfile.splitlines() if line.startswith(("CMD ", "ENTRYPOINT "))
+    )
 
     assert "alembic" not in app_command.lower()
     assert "alembic" not in runtime_command.lower()
@@ -101,10 +103,10 @@ def test_migration_workflow_executes_protected_digest_pinned_job() -> None:
     assert 'run: echo "Running alembic' not in workflow
 
 
-def test_cloudbuild_cannot_deploy_or_promote_the_combined_validation_image() -> None:
+def test_cloudbuild_cannot_deploy_or_promote_the_application_image() -> None:
     config = (REPOSITORY_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
 
-    assert "clearcut-validation" in config
+    assert "/clearcut:sha-$COMMIT_SHA" in config
     assert "gcloud run deploy" not in config
     assert "gcloud run services update-traffic" not in config
     assert "--allow-unauthenticated" not in config
