@@ -207,6 +207,45 @@ def test_conservative_same_type_similarity_is_modified_not_carryable():
     assert diff.carry_forward_element_ids == ()
 
 
+def test_pathological_similarity_work_is_rejected_before_ratio(monkeypatch):
+    exact_before = _element("INT. ARCHIVE - NIGHT", 1, ElementType.SCENE_HEADING)
+    ordinary_before = _element("Jon opens the heavy wooden door.", 2, ElementType.ACTION)
+    pathological_before = _element("A" * 8_001, 3, ElementType.ACTION)
+    exact_after = _element("INT. ARCHIVE - NIGHT", 1, ElementType.SCENE_HEADING)
+    ordinary_after = _element("Jon opens the heavy wood door.", 2, ElementType.ACTION)
+    pathological_after = _element(f'{"A" * 8_000}B', 3, ElementType.ACTION)
+    ratio_call_count = 0
+
+    assert diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS > 2 * 2
+    assert (
+        len(pathological_before.text) * len(pathological_after.text)
+        > diff_domain.MAX_SIMILARITY_CHARACTER_WORK
+    )
+
+    def counted_ratio(_matcher):
+        nonlocal ratio_call_count
+        ratio_call_count += 1
+        return 1.0
+
+    monkeypatch.setattr(diff_domain.SequenceMatcher, "ratio", counted_ratio)
+
+    diff = _compute(
+        [exact_before, ordinary_before, pathological_before],
+        [exact_after, ordinary_after, pathological_after],
+    )
+
+    assert ratio_call_count == 0
+    assert [row.classification for row in diff.elements] == [
+        ChangeClassification.UNCHANGED,
+        ChangeClassification.ADDED,
+        ChangeClassification.ADDED,
+        ChangeClassification.REMOVED,
+        ChangeClassification.REMOVED,
+    ]
+    assert diff.elements[0].before_element_id == exact_before.element_id
+    assert diff.elements[0].after_element_id == exact_after.element_id
+
+
 def test_distant_reordered_unique_near_edits_preserve_modified_lineage():
     line_count = 40
     rotation = line_count // 2

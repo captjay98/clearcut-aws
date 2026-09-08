@@ -10,9 +10,13 @@ from uuid import UUID
 from clearcut.scripts.domain.elements import ElementType, ScriptElement
 
 MATCHING_ALGORITHM_VERSION: Final = "element-lineage-v1"
-# Fuzzy scoring is synchronous. If unmatched same-type pairs exceed this per-diff
-# budget, skip fuzzy matching entirely rather than create arbitrary partial lineage.
+# Fuzzy scoring is synchronous. Before scoring any otherwise eligible candidate,
+# enforce both the same-type pair count and a conservative quadratic character-work
+# estimate. Fifty million permits 9,801 short screenplay-line pairs while rejecting
+# one repetitive 8,001-character pair. Exceeding either per-diff budget skips the
+# entire fuzzy phase rather than creating arbitrary partial lineage.
 MAX_SIMILARITY_PAIR_EVALUATIONS: Final = 10_000
+MAX_SIMILARITY_CHARACTER_WORK: Final = 50_000_000
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
 _SIMILARITY_AMBIGUITY_FLOOR: Final = (
@@ -378,15 +382,26 @@ def _similar_matches(
     if pair_evaluations > MAX_SIMILARITY_PAIR_EVALUATIONS:
         return []
 
+    candidate_pairs = tuple(
+        _similarity_candidate_pairs(
+            unmatched_before,
+            unmatched_after,
+            before_elements,
+            after_elements,
+        )
+    )
+    character_work = sum(
+        before_elements[before_index].text_length
+        * after_elements[after_index].text_length
+        for before_index, after_index in candidate_pairs
+    )
+    if character_work > MAX_SIMILARITY_CHARACTER_WORK:
+        return []
+
     before_candidates: dict[int, _TopCandidates] = {}
     after_candidates: dict[int, _TopCandidates] = {}
 
-    for before_index, after_index in _similarity_candidate_pairs(
-        unmatched_before,
-        unmatched_after,
-        before_elements,
-        after_elements,
-    ):
+    for before_index, after_index in candidate_pairs:
         score = _similarity(
             before_elements[before_index],
             after_elements[after_index],
