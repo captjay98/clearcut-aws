@@ -27,8 +27,13 @@ from clearcut.scripts.adapters.sql_import_repository import SqlImportRepository
 # (fuzzy) match is treated as modified and re-detected instead.
 _CARRYABLE_CHANGE_KINDS = frozenset({"unchanged", "moved"})
 _CARRYABLE_CONFIDENCES = frozenset({"exact", "contextual"})
-# Affected elements require fresh detection on the after version.
-_AFFECTED_CHANGE_KINDS = frozenset({"modified", "added"})
+# A modified element has a predecessor clearance item on the BEFORE version, so
+# it is routed to affected-item detection/research by its BEFORE element id — the
+# key the item-lineage lookup resolves the predecessor item from. An ADDED
+# element has no predecessor item (and no before element id); it is represented
+# in the diff and left for fresh after-version detection, which is a separate
+# path outside this predecessor-resolution lookup.
+_AFFECTED_CHANGE_KINDS = frozenset({"modified"})
 
 
 class SqlRevisionPlanAdapter(RevisionPlanPort):
@@ -78,8 +83,13 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
                         after_text=change.after_text or "",
                     )
                 )
-            elif change_kind in _AFFECTED_CHANGE_KINDS and change.after_element_id is not None:
-                affected.add(change.after_element_id)
+            elif change_kind in _AFFECTED_CHANGE_KINDS and change.before_element_id is not None:
+                # Resolve the affected passage by its BEFORE element id: the
+                # predecessor clearance item that item-lineage looks up lives on
+                # the before version. Publishing the after element id here would
+                # miss the predecessor (globally unique element ids) and silently
+                # drop the modified passage from detection/research.
+                affected.add(change.before_element_id)
             elif change_kind == "removed" and change.before_element_id is not None:
                 removed.add(change.before_element_id)
 
