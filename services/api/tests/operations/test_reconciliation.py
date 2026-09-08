@@ -214,3 +214,31 @@ async def test_reconcile_endpoint_requires_strict_oidc_auth():
         assert data["dispatchedCount"] == 0
         assert data["recoveredCount"] == 0
         assert data["failedCount"] == 0
+
+
+
+@pytest.mark.asyncio
+async def test_selective_rescan_failed_dispatch_stays_pending_then_reconciles():
+    """A selective_rescan whose initial dispatch fails leaves a durable queued
+    request that a later reconciliation re-dispatches, through the same
+    job-kind agnostic outbox/reconcile path as every other job."""
+    rescan_cmd = JobDispatchRequest(uuid4(), uuid4(), uuid4(), datetime.now(UTC), 0)
+    outbox = InMemoryDispatchOutbox([rescan_cmd])
+
+    failing_client = MockTaskClient({rescan_cmd.job_id: "error"})
+    repo = MockJobRepository()
+    first = await ReconcileJobsService(
+        outbox=outbox, client=failing_client, repository=repo
+    ).reconcile()
+    assert first.dispatched_count == 0
+    assert first.failed_count == 1
+    # The durable request remains pending for a later reconciliation.
+    assert await outbox.pending_dispatches() == (rescan_cmd,)
+
+    recovering_client = MockTaskClient({rescan_cmd.job_id: DispatchStatus.CONFIRMED})
+    second = await ReconcileJobsService(
+        outbox=outbox, client=recovering_client, repository=repo
+    ).reconcile()
+    assert second.dispatched_count == 1
+    assert second.failed_count == 0
+    assert await outbox.pending_dispatches() == ()

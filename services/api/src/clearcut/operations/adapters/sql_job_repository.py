@@ -539,10 +539,11 @@ class SqlJobRepository:
                 and (error := self._deserialize_error(current["error"])) is not None
                 and error.retryable
             )
-            cancelled_detection = (
-                status is RunStatus.CANCELLED and str(current["job_type"]) == "detection"
+            cancelled_retryable = status is RunStatus.CANCELLED and str(current["job_type"]) in (
+                "detection",
+                "selective_rescan",
             )
-            if not (retryable_failure or status is RunStatus.MANUAL_RETRY or cancelled_detection):
+            if not (retryable_failure or status is RunStatus.MANUAL_RETRY or cancelled_retryable):
                 raise JobTransitionError(f"A job in status '{status.value}' cannot be retried.")
             row = (
                 (
@@ -559,7 +560,10 @@ class SqlJobRepository:
                             AND project_id = :project_id
                             AND (
                                 status IN ('failed', 'manual_retry')
-                                OR (status = 'cancelled' AND job_type = 'detection')
+                                OR (
+                                    status = 'cancelled'
+                                    AND job_type IN ('detection', 'selective_rescan')
+                                )
                             )
                         RETURNING *
                         """
@@ -615,7 +619,14 @@ class SqlJobRepository:
                 if current is None:
                     raise JobNotFoundError("Job was not found.")
                 current_status = RunStatus(str(current["status"]))
-                if current_status not in cancellable:
+                # A succeeded selective rescan awaits accountable human
+                # confirmation; an accountable request may cancel it to force a
+                # governed re-run. This parity is limited to selective_rescan so
+                # other terminal jobs stay non-cancellable.
+                stage_scoped_cancellable = cancellable
+                if str(current["job_type"]) == "selective_rescan":
+                    stage_scoped_cancellable = cancellable | {RunStatus.SUCCEEDED}
+                if current_status not in stage_scoped_cancellable:
                     raise JobTransitionError(
                         f"A job in status '{current_status.value}' cannot be cancelled."
                     )

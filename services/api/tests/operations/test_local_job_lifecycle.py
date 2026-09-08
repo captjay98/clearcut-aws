@@ -72,6 +72,7 @@ def _enqueue_command(
     target_type = {
         "detection": "script_version",
         "research": "clearance_item",
+        "selective_rescan": "script_version",
     }.get(job_type, "project")
     return EnqueueJob(
         org_id=org_id,
@@ -1753,3 +1754,65 @@ async def test_list_jobs_bulk_loads_lifecycle_in_constant_queries(
     ] == [(1, "cancelled")]
     assert [event.action for event in listed_by_id[claimed.job_id].history] == ["cancelled"]
     assert query_count == 4
+
+
+
+@pytest.mark.asyncio
+async def test_cancelled_selective_rescan_can_be_governedly_retried_with_attempt_history() -> None:
+    """A cancelled selective_rescan is retryable only via an accountable request,
+    with the same durable attempt-history parity as detection."""
+    org_id, project_id, actor_id = await _create_scope()
+    repository = SqlJobRepository()
+    enqueued = await repository.enqueue(
+        _enqueue_command(
+            org_id,
+            project_id,
+            actor_id,
+            idempotency_key="selective_rescan:cancelled-retry",
+            job_type="selective_rescan",
+        )
+    )
+    claimed = await repository.claim(
+        org_id=org_id,
+        project_id=project_id,
+        job_id=enqueued.job.job_id,
+        lease_owner="cancelled-rescan-attempt",
+    )
+    assert claimed is not None
+
+    cancelled = await repository.cancel(
+        org_id=org_id,
+        project_id=project_id,
+        job_id=enqueued.job.job_id,
+        actor_id=actor_id,
+    )
+    assert cancelled.status is RunStatus.CANCELLED
+    assert [(attempt.number, attempt.status) for attempt in cancelled.attempts] == [
+        (1, "cancelled")
+    ]
+
+    retried = await repository.retry(
+        org_id=org_id,
+        project_id=project_id,
+        job_id=enqueued.job.job_id,
+        actor_id=actor_id,
+    )
+    assert retried.job_id == enqueued.job.job_id
+    assert retried.status is RunStatus.QUEUED
+    assert retried.attempt_count == 1
+    assert [(attempt.number, attempt.status) for attempt in retried.attempts] == [(1, "cancelled")]
+
+    async def succeed(_job):
+        return JobExecutionResult(summary={"retried": True})
+
+    completed = await RunJobService(
+        repository=repository,
+        processors={"selective_rescan": succeed},
+        lease_owner="retried-rescan-attempt",
+    ).run(enqueued.job.job_id, org_id, project_id)
+
+    assert completed.attempt_count == 2
+    assert [(attempt.number, attempt.status) for attempt in completed.attempts] == [
+        (1, "cancelled"),
+        (2, "succeeded"),
+    ]

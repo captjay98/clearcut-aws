@@ -158,16 +158,15 @@ REQUIRED_OPERATIONS = {
     ),
 }
 
-# TODO(integration): The revision-diff route (getScriptVersionDiff) and the selective
-# rescan route (startSelectiveRescan) are implemented in the server layer by a parallel
-# task and are not yet mounted in the running FastAPI app at this commit. They ARE
-# canonical in packages/contracts/openapi.yaml (asserted by the OpenAPI inventory test
-# above), but the mounted-parity assertion below temporarily tolerates their absence so
-# this contracts suite is green standalone. Remove entries from this set once the routes
-# are mounted; parity for every other operation stays strict.
+# The selective rescan route (startSelectiveRescan) is now mounted in the running
+# FastAPI app, so it is held to strict mounted parity below. The revision-diff
+# route (getScriptVersionDiff) is canonical in packages/contracts/openapi.yaml
+# (asserted by the OpenAPI inventory test above) but is implemented and mounted by
+# a separate revision-diff task, not this selective-rescan task. Its mount is
+# tolerated here only; every other operation — including startSelectiveRescan —
+# stays strict. Remove this entry once the diff route is mounted.
 PENDING_MOUNT_OPERATIONS = {
     "getScriptVersionDiff",
-    "startSelectiveRescan",
 }
 
 
@@ -222,9 +221,9 @@ def test_canonical_openapi_contains_exact_vertical_slice_inventory() -> None:
 def test_get_clearance_item_uses_authoritative_detail_schema() -> None:
     path = "/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}"
     source = _load_spec()
-    source_data = source["paths"][path]["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]["properties"]["data"]
+    source_data = source["paths"][path]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["properties"]["data"]
     assert source_data == {"$ref": "#/components/schemas/ClearanceItemDetail"}
 
     detail = source["components"]["schemas"]["ClearanceItemDetail"]
@@ -253,9 +252,7 @@ def test_get_clearance_item_uses_authoritative_detail_schema() -> None:
     mounted_response = mounted["paths"][path]["get"]["responses"]["200"]["content"][
         "application/json"
     ]["schema"]
-    mounted_envelope = mounted["components"]["schemas"][
-        mounted_response["$ref"].rsplit("/", 1)[-1]
-    ]
+    mounted_envelope = mounted["components"]["schemas"][mounted_response["$ref"].rsplit("/", 1)[-1]]
     mounted_data = mounted_envelope["properties"]["data"]
     assert mounted_data["$ref"].endswith("/ClearanceItemDetail")
 
@@ -482,9 +479,10 @@ def test_report_generation_contract_requires_a_uuid7_version_when_supplied() -> 
 def test_required_openapi_operations_are_mounted_with_exact_ids_and_paths() -> None:
     inventory = _mounted_inventory()
 
-    # getScriptVersionDiff and startSelectiveRescan are canonical in openapi.yaml but are
-    # mounted by a parallel server task; tolerate their pending mount here only. Parity for
-    # every other operation remains strict. See PENDING_MOUNT_OPERATIONS above.
+    # startSelectiveRescan is now mounted and held to strict parity. Only the
+    # revision-diff route (getScriptVersionDiff), owned by a separate task, is
+    # tolerated as pending; every other operation must be mounted with the exact
+    # operation id, method, and path. See PENDING_MOUNT_OPERATIONS above.
     expected = {
         operation_id: value
         for operation_id, value in REQUIRED_OPERATIONS.items()
@@ -500,6 +498,9 @@ def test_required_openapi_operations_are_mounted_with_exact_ids_and_paths() -> N
 
     assert not missing, f"FastAPI is missing canonical operations: {sorted(missing)}"
     assert not mismatched, f"Mounted FastAPI method/path drift: {mismatched}"
+    # startSelectiveRescan parity is now strictly enforced (never pending).
+    assert "startSelectiveRescan" not in PENDING_MOUNT_OPERATIONS
+    assert "startSelectiveRescan" in inventory
 
 
 def test_error_envelope_supports_truthful_capability_unavailable() -> None:
@@ -628,7 +629,6 @@ async def test_router_failures_use_canonical_error_envelope(
     }
 
 
-
 def test_comment_command_request_schemas_match_canonical_contract() -> None:
     source = _load_spec()
     mounted = app.openapi()
@@ -638,13 +638,13 @@ def test_comment_command_request_schemas_match_canonical_contract() -> None:
         "/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:revise",
     )
     for path in paths:
-        source_ref = source["paths"][path]["post"]["requestBody"]["content"][
-            "application/json"
-        ]["schema"]["$ref"]
+        source_ref = source["paths"][path]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]["$ref"]
         source_schema = source["components"]["schemas"][source_ref.rsplit("/", 1)[-1]]
-        mounted_ref = mounted["paths"][path]["post"]["requestBody"]["content"][
-            "application/json"
-        ]["schema"]["$ref"]
+        mounted_ref = mounted["paths"][path]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]["$ref"]
         mounted_schema = mounted["components"]["schemas"][mounted_ref.rsplit("/", 1)[-1]]
         assert set(mounted_schema["required"]) == set(source_schema["required"])
         assert set(mounted_schema["properties"]) == set(source_schema["properties"])
@@ -671,7 +671,6 @@ def test_comment_command_request_schemas_match_canonical_contract() -> None:
             model.model_validate({**valid, "intentHash": "short"})
 
 
-
 def test_comment_command_mounted_success_statuses_match_canonical_contract() -> None:
     source = _load_spec()
     mounted = app.openapi()
@@ -685,7 +684,6 @@ def test_comment_command_mounted_success_statuses_match_canonical_contract() -> 
         assert success_status in mounted["paths"][path]["post"]["responses"]
 
 
-
 def test_comment_mentions_are_unique_uuid7_values_in_mounted_schema_and_runtime() -> None:
     mounted = app.openapi()
     uuid7_pattern = _load_spec()["components"]["schemas"]["UUIDv7"]["pattern"]
@@ -695,9 +693,9 @@ def test_comment_mentions_are_unique_uuid7_values_in_mounted_schema_and_runtime(
         "/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:revise",
     )
     for path in paths:
-        request_ref = mounted["paths"][path]["post"]["requestBody"]["content"][
-            "application/json"
-        ]["schema"]["$ref"]
+        request_ref = mounted["paths"][path]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]["$ref"]
         request_schema = mounted["components"]["schemas"][request_ref.rsplit("/", 1)[-1]]
         mentions = request_schema["properties"]["mentions"]
         assert mentions["uniqueItems"] is True
@@ -726,13 +724,11 @@ def test_comment_success_responses_mount_typed_data_and_meta_schemas() -> None:
         "/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/comments/{commentId}:revise": "200",
     }
     for path, status_code in expected.items():
-        response_schema = mounted["paths"][path]["post"]["responses"][status_code][
-            "content"
-        ]["application/json"]["schema"]
+        response_schema = mounted["paths"][path]["post"]["responses"][status_code]["content"][
+            "application/json"
+        ]["schema"]
         assert "$ref" in response_schema
-        envelope = mounted["components"]["schemas"][
-            response_schema["$ref"].rsplit("/", 1)[-1]
-        ]
+        envelope = mounted["components"]["schemas"][response_schema["$ref"].rsplit("/", 1)[-1]]
         assert set(envelope["required"]) == {"data", "meta"}
         data_ref = envelope["properties"]["data"]["$ref"]
         data = mounted["components"]["schemas"][data_ref.rsplit("/", 1)[-1]]
@@ -741,7 +737,8 @@ def test_comment_success_responses_mount_typed_data_and_meta_schemas() -> None:
         assert {"commentId", "itemId", "itemVersion", "authorId", "body", "createdAt"} <= set(
             data["required"]
         )
-        assert data["properties"]["commentId"]["pattern"] == _load_spec()["components"][
-            "schemas"
-        ]["UUIDv7"]["pattern"]
+        assert (
+            data["properties"]["commentId"]["pattern"]
+            == _load_spec()["components"]["schemas"]["UUIDv7"]["pattern"]
+        )
         assert "$ref" in envelope["properties"]["meta"]

@@ -42,6 +42,7 @@ class JobTarget:
 _EXPECTED_TARGET_TYPE_BY_JOB_TYPE = {
     "detection": "script_version",
     "research": "clearance_item",
+    "selective_rescan": "script_version",
     "test": "project",
 }
 _SUPPORTED_JOB_PAYLOAD_SCHEMA_VERSION = 1

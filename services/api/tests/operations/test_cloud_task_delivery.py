@@ -446,3 +446,66 @@ async def test_execution_route_returns_404_for_unknown_job():
         )
         assert res.status_code == 404
         assert res.json()["error"]["code"] == "not_found"
+
+
+
+@pytest.mark.asyncio
+async def test_selective_rescan_executes_via_generic_execute_route_unchanged():
+    """A selective_rescan job flows through the job-kind agnostic /jobs:execute
+    wire payload with no branching, proving the generic dispatch/execute contract
+    is unchanged for the new job kind."""
+    repo = MockJobRepository()
+    app = _test_app(repo)
+
+    async def rescan_processor(job: JobRecord) -> JobExecutionResult:
+        assert job.job_type == "selective_rescan"
+        return JobExecutionResult(summary={"stage": "completed", "carriedItemCount": 3})
+
+    app.state.job_runner = RunJobService(
+        repository=repo,
+        processors={"selective_rescan": rescan_processor},
+        lease_owner="test-worker",
+    )
+
+    org_id, project_id, job_id = uuid4(), uuid4(), uuid6.uuid7()
+    now = datetime.now(UTC)
+    repo.jobs[(org_id, project_id, job_id)] = JobRecord(
+        job_id=job_id,
+        org_id=org_id,
+        project_id=project_id,
+        actor_id=uuid4(),
+        correlation_id=uuid6.uuid7(),
+        job_type="selective_rescan",
+        target=JobTarget(type="script_version", id=uuid4()),
+        status=RunStatus.QUEUED,
+        idempotency_key="selective_rescan:v1",
+        payload={"schemaVersion": 1, "target": {"type": "script_version", "id": str(uuid4())}},
+        progress=0.0,
+        stage="queued",
+        result_summary=None,
+        error=None,
+        attempt_count=0,
+        attempts=(),
+        history=(),
+        available_at=now,
+        created_at=now,
+        updated_at=now,
+        lease_owner=None,
+        lease_expires_at=None,
+    )
+
+    token = _valid_token()
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://api.example.com"
+    ) as client:
+        res = await client.post(
+            "/api/internal/jobs:execute",
+            json={"orgId": str(org_id), "projectId": str(project_id), "jobId": str(job_id)},
+            headers={"authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 200
+        data = res.json()["data"]
+        assert data["jobId"] == str(job_id)
+        assert data["jobType"] == "selective_rescan"
+        assert data["status"] == "succeeded"
+        assert data["resultSummary"] == {"stage": "completed", "carriedItemCount": 3}

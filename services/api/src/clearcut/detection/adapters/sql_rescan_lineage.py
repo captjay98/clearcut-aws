@@ -85,6 +85,7 @@ class SqlItemLineageAdapter(ItemLineagePort):
                         after_version_id=after_version_id,
                         after_element_id=element.after_element_id,
                         predecessor_item_id=element.predecessor_item_id,
+                        predecessor_version_id=before_version_id,
                         category=predecessor["category"],
                         text=predecessor["text"],
                         created_at=now,
@@ -186,17 +187,20 @@ class SqlItemLineageAdapter(ItemLineagePort):
         after_version_id: VersionId,
         after_element_id: ItemId,
         predecessor_item_id: ItemId,
+        predecessor_version_id: VersionId,
         category: str,
         text: str,
         created_at: datetime,
     ) -> ItemId:
         new_item_id = uuid6.uuid7()
         # A carried item is bound to the after version/element with a
-        # ``carried_forward`` predecessor edge. It has no assignee, disposition,
-        # decision, or detection provenance (candidate/run/fingerprint all null),
-        # and its confirmation flag is true so a governed human step must confirm
-        # before prior evidence is treated as current. The insert is idempotent
-        # on the successor-projection unique constraint.
+        # ``carried_forward`` predecessor edge that names both the predecessor
+        # item and its before version, satisfying ``ck_clearance_items_lineage_state``.
+        # It has no assignee, disposition, decision, or detection provenance
+        # (candidate/run/fingerprint all null), and its confirmation flag is true
+        # so a governed human step must confirm before prior evidence is treated
+        # as current. The insert is idempotent on the successor-projection unique
+        # constraint.
         await session.execute(
             sa.text(
                 """
@@ -204,13 +208,13 @@ class SqlItemLineageAdapter(ItemLineagePort):
                     id, org_id, project_id, script_id, version_id, element_id,
                     category, text, status, research_status, workflow_status,
                     disposition_status, created_at, version,
-                    predecessor_item_id, lineage_kind,
+                    predecessor_item_id, predecessor_version_id, lineage_kind,
                     carried_forward_confirmation_required
                 ) VALUES (
                     :id, :org_id, :project_id, :script_id, :version_id, :element_id,
                     :category, :text, :status, :research_status, :workflow_status,
                     :disposition_status, :created_at, 1,
-                    :predecessor_item_id, :lineage_kind,
+                    :predecessor_item_id, :predecessor_version_id, :lineage_kind,
                     :confirmation_required
                 )
                 ON CONFLICT (org_id, project_id, predecessor_item_id, version_id)
@@ -232,6 +236,7 @@ class SqlItemLineageAdapter(ItemLineagePort):
                 "disposition_status": _CARRIED_DISPOSITION_STATUS,
                 "created_at": created_at,
                 "predecessor_item_id": str(predecessor_item_id),
+                "predecessor_version_id": str(predecessor_version_id),
                 "lineage_kind": LineageKind.CARRIED_FORWARD.value,
                 "confirmation_required": True,
             },

@@ -61,7 +61,10 @@ def job_to_data(job: JobRecord) -> dict[str, object]:
             and (
                 job.status.value == "manual_retry"
                 or (job.status.value == "failed" and bool(job.error and job.error.retryable))
-                or (job.status.value == "cancelled" and job.job_type == "detection")
+                or (
+                    job.status.value == "cancelled"
+                    and job.job_type in ("detection", "selective_rescan")
+                )
             )
         ),
         "progress": job.progress,

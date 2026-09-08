@@ -6,7 +6,9 @@ import os
 import socket
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from uuid import UUID
 
+import sqlalchemy as sa
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,9 +26,11 @@ from clearcut.bootstrap.settings import (
 from clearcut.bootstrap.storage import build_object_storage
 from clearcut.collaboration.delivery.http import router as collaboration_router
 from clearcut.database import DATABASE_URL as CONFIGURED_DATABASE_URL
+from clearcut.database import session_scope
 from clearcut.decisions.delivery.http import router as decisions_router
 from clearcut.delivery_errors import error_response
 from clearcut.detection.adapters.sql_candidate_repository import SqlCandidateRepository
+from clearcut.detection.adapters.sql_rescan_lineage import SqlItemLineageAdapter
 from clearcut.detection.application.run_detection_job import RunDetectionJobService
 from clearcut.detection.delivery.http import router as detection_router
 from clearcut.detection.ports.model_runtime import DetectionResult, ModelRuntimePort
@@ -61,12 +65,24 @@ from clearcut.operations.application.reconcile_jobs import (
 from clearcut.operations.application.run_job import RunJobService
 from clearcut.operations.delivery.http import router as operations_router
 from clearcut.operations.delivery.tasks_http import router as tasks_router
+from clearcut.operations.ports.job_repository import EnqueueJob
 from clearcut.organizations.adapters.sql_repository import DatabaseOrganizationRepository
 from clearcut.organizations.application.bootstrap import OrganizationBootstrapService
 from clearcut.organizations.delivery.http import router as organization_router
 from clearcut.projects.adapters.sql_repository import DatabaseProjectRepository
 from clearcut.projects.application.project_service import ProjectService
 from clearcut.records.delivery.http import router as records_router
+from clearcut.rescan.adapters.sql_repository import SqlSelectiveRescanRepository
+from clearcut.rescan.application.models import (
+    CarriedItemMapping,
+    CarryableElement,
+    RescanSafeError,
+)
+from clearcut.rescan.application.run_rescan_job import RunSelectiveRescanJobService
+from clearcut.rescan.application.start_rescan import StartSelectiveRescanService
+from clearcut.rescan.delivery.http import router as rescan_router
+from clearcut.rescan.ports.repository import RescanChildWorkTicket
+from clearcut.research.adapters.sql_evidence_lineage import SqlEvidenceLineageAdapter
 from clearcut.research.adapters.sql_research_repository import SqlResearchRepository
 from clearcut.research.application.run_research_job import RunResearchJobService
 from clearcut.research.delivery.http import router as research_router
@@ -86,6 +102,7 @@ from clearcut.research.runtime_provider import (
     get_research_runtime,
 )
 from clearcut.scripts.adapters.sql_import_repository import SqlImportRepository
+from clearcut.scripts.adapters.sql_revision_plan import SqlRevisionPlanAdapter
 from clearcut.scripts.application.import_script import ImportScriptService
 from clearcut.scripts.delivery.http import router as scripts_router
 from clearcut.scripts.domain.elements import ScriptElement
@@ -199,6 +216,205 @@ class _ConfiguredResearchRuntime(WebSearchPort, UrlExtractPort):
         if self._runtime is None:
             self._runtime = get_research_runtime()
         return self._runtime
+
+
+class _SqlActivePolicyGate:
+    """Composition-root active-policy check for the rescan start service.
+
+    Persistence stays out of the rescan application layer: the service reads an
+    organization's active governing policy through this structural gate.
+    """
+
+    async def is_active(self, org_id: UUID) -> bool:
+        async with session_scope() as session:
+            row = (
+                await session.execute(
+                    sa.text(
+                        "SELECT 1 FROM protected_configurations "
+                        "WHERE org_id = :org_id AND lifecycle = 'active' LIMIT 1"
+                    ),
+                    {"org_id": str(org_id)},
+                )
+            ).first()
+        return row is not None
+
+
+class _SelectiveRescanItemLineageCoordinator:
+    """Resolves each carryable element's predecessor item, then materializes.
+
+    The scripts diff yields element-only carryable pairs; the orchestration passes
+    the ``before_element_id`` as the join key. This coordinator resolves the real
+    predecessor clearance item bound to that before element/version within scope,
+    then delegates to the detection-owned :class:`SqlItemLineageAdapter`. An
+    unresolved predecessor is a typed, safe failure — never a synthesized item.
+    """
+
+    def __init__(self, adapter: SqlItemLineageAdapter) -> None:
+        self._adapter = adapter
+
+    async def materialize(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        script_id: UUID,
+        before_version_id: UUID,
+        after_version_id: UUID,
+        carryable_elements: tuple[CarryableElement, ...],
+    ) -> tuple[CarriedItemMapping, ...]:
+        if not carryable_elements:
+            return ()
+        resolved: list[CarryableElement] = []
+        async with session_scope() as session:
+            for element in carryable_elements:
+                row = (
+                    (
+                        await session.execute(
+                            sa.text(
+                                "SELECT id, category, text FROM clearance_items "
+                                "WHERE org_id = :org_id AND project_id = :project_id "
+                                "AND script_id = :script_id AND version_id = :version_id "
+                                "AND element_id = :element_id"
+                            ),
+                            {
+                                "org_id": str(org_id),
+                                "project_id": str(project_id),
+                                "script_id": str(script_id),
+                                "version_id": str(before_version_id),
+                                "element_id": str(element.before_element_id),
+                            },
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                if row is None:
+                    raise RescanSafeError(
+                        code="predecessor_item_not_found",
+                        message=("A carryable element has no predecessor clearance item in scope."),
+                        retryable=False,
+                    )
+                resolved.append(
+                    CarryableElement(
+                        before_element_id=element.before_element_id,
+                        after_element_id=element.after_element_id,
+                        predecessor_item_id=UUID(str(row["id"])),
+                        category=str(row["category"]),
+                        text=str(row["text"]),
+                    )
+                )
+        return await self._adapter.materialize_carried_items(
+            org_id=org_id,
+            project_id=project_id,
+            script_id=script_id,
+            before_version_id=before_version_id,
+            after_version_id=after_version_id,
+            carryable_elements=tuple(resolved),
+        )
+
+
+class _SelectiveRescanChildWorkCoordinator:
+    """Lists affected items and requests durable child rescan work.
+
+    Child detection/research is enqueued through the shared job repository with
+    stable idempotency keys so a reload or retry never duplicates a child job.
+    The single local worker is never blocked on child completion: child jobs are
+    durable queued requests dispatched independently.
+    """
+
+    def __init__(
+        self,
+        *,
+        item_lineage: SqlItemLineageAdapter,
+        job_repository: SqlJobRepository,
+    ) -> None:
+        self._item_lineage = item_lineage
+        self._job_repository = job_repository
+
+    async def list_affected_items(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        before_version_id: UUID,
+        affected_element_ids: tuple[UUID, ...],
+    ) -> tuple[UUID, ...]:
+        return await self._item_lineage.list_affected_items(
+            org_id=org_id,
+            project_id=project_id,
+            before_version_id=before_version_id,
+            affected_element_ids=affected_element_ids,
+        )
+
+    async def request_detection(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+        affected_item_ids: tuple[UUID, ...],
+        actor_id: UUID,
+    ) -> tuple[RescanChildWorkTicket, ...]:
+        return await self._request(
+            kind="detection",
+            org_id=org_id,
+            project_id=project_id,
+            after_version_id=after_version_id,
+            affected_item_ids=affected_item_ids,
+            actor_id=actor_id,
+        )
+
+    async def request_research(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+        affected_item_ids: tuple[UUID, ...],
+        actor_id: UUID,
+    ) -> tuple[RescanChildWorkTicket, ...]:
+        return await self._request(
+            kind="research",
+            org_id=org_id,
+            project_id=project_id,
+            after_version_id=after_version_id,
+            affected_item_ids=affected_item_ids,
+            actor_id=actor_id,
+        )
+
+    async def _request(
+        self,
+        *,
+        kind: str,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+        affected_item_ids: tuple[UUID, ...],
+        actor_id: UUID,
+    ) -> tuple[RescanChildWorkTicket, ...]:
+        target_type = "script_version" if kind == "detection" else "clearance_item"
+        tickets: list[RescanChildWorkTicket] = []
+        for item_id in affected_item_ids:
+            key = f"selective_rescan:{kind}:{item_id}"
+            target_id = after_version_id if kind == "detection" else item_id
+            await self._job_repository.enqueue(
+                EnqueueJob(
+                    org_id=org_id,
+                    project_id=project_id,
+                    actor_id=actor_id,
+                    job_type=kind,
+                    idempotency_key=key,
+                    payload={
+                        "schemaVersion": 1,
+                        "target": {"type": target_type, "id": str(target_id)},
+                    },
+                    audit_action=f"{kind}.started",
+                    target_type=target_type,
+                    target_id=target_id,
+                )
+            )
+            tickets.append(RescanChildWorkTicket(item_id=item_id, idempotency_key=key))
+        return tuple(tickets)
 
 
 async def _recover_expired_local_jobs_periodically(
@@ -388,11 +604,35 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
         extract=research_runtime,
         evaluation=evaluation_service,
     )
+    rescan_repository = SqlSelectiveRescanRepository()
+    revision_plan_adapter = SqlRevisionPlanAdapter(import_repository)
+    item_lineage_adapter = SqlItemLineageAdapter()
+    rescan_item_lineage = _SelectiveRescanItemLineageCoordinator(item_lineage_adapter)
+    rescan_evidence_lineage = SqlEvidenceLineageAdapter()
+    rescan_child_work = _SelectiveRescanChildWorkCoordinator(
+        item_lineage=item_lineage_adapter,
+        job_repository=job_repository,
+    )
+    run_rescan_job = RunSelectiveRescanJobService(
+        revision_plan=revision_plan_adapter,
+        materialize_items=rescan_item_lineage,
+        carry_evidence=rescan_evidence_lineage,
+        child_work=rescan_child_work,
+        repository=rescan_repository,
+        job_repository=job_repository,
+    )
+    start_selective_rescan_service = StartSelectiveRescanService(
+        revision_plan=revision_plan_adapter,
+        provider_gate=paid_provider_gate,
+        active_policy=_SqlActivePolicyGate(),
+        job_repository=job_repository,
+    )
     job_runner = RunJobService(
         repository=job_repository,
         processors={
             "detection": run_detection_job,
             "research": run_research_job,
+            "selective_rescan": run_rescan_job,
         },
         lease_owner=f"local:{socket.gethostname()}:{os.getpid()}",
     )
@@ -456,6 +696,9 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.state.research_planner = research_planner
     app.state.research_runtime = research_runtime
     app.state.run_research_job = run_research_job
+    app.state.rescan_repository = rescan_repository
+    app.state.run_rescan_job = run_rescan_job
+    app.state.start_selective_rescan_service = start_selective_rescan_service
     app.state.job_runner = job_runner
     app.state.job_dispatcher = job_dispatcher
     app.state.dispatch_outbox = dispatch_outbox
@@ -472,6 +715,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.include_router(collaboration_router)
     app.include_router(detection_router)
     app.include_router(research_router)
+    app.include_router(rescan_router)
     app.include_router(operations_router)
     app.include_router(tasks_router)
     app.include_router(monitoring_router)
