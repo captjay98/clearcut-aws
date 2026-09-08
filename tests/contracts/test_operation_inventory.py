@@ -34,6 +34,7 @@ REQUIRED_OPERATIONS = [
     "parseImportArtifact",
     "acceptParseWarnings",
     "commitScriptVersion",
+    "getScriptVersionDiff",
     "startDetection",
     "startResearch",
     "retryJob",
@@ -108,3 +109,105 @@ def test_operations_have_valid_operation_ids():
 
     missing_required = set(REQUIRED_OPERATIONS) - operation_ids
     assert not missing_required, f"OpenAPI spec missing required operations from API_OPERATIONS.md: {sorted(missing_required)}"
+
+
+def _load_spec() -> dict:
+    with open(OPENAPI_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def test_get_script_version_diff_operation_shape() -> None:
+    spec = _load_spec()
+    path = (
+        "/api/v1/organizations/{orgId}/projects/{projectId}"
+        "/script-versions/{versionId}/diff"
+    )
+    operation = spec["paths"][path]["get"]
+    assert operation["operationId"] == "getScriptVersionDiff"
+
+    data_schema = operation["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]["properties"]["data"]
+    assert data_schema == {"$ref": "#/components/schemas/ScriptVersionDiff"}
+
+
+def test_script_version_diff_schemas_are_defined() -> None:
+    schemas = _load_spec()["components"]["schemas"]
+
+    assert schemas["ScriptDiffChangeKind"]["enum"] == [
+        "unchanged",
+        "moved",
+        "modified",
+        "added",
+        "removed",
+    ]
+    assert schemas["ScriptDiffConfidence"]["enum"] == [
+        "exact",
+        "contextual",
+        "similar",
+        "unmatched",
+    ]
+
+    element = schemas["ScriptDiffElement"]
+    assert {"type", "changeKind", "confidence"} <= set(element["required"])
+    assert element["properties"]["changeKind"] == {
+        "$ref": "#/components/schemas/ScriptDiffChangeKind"
+    }
+    assert element["properties"]["confidence"] == {
+        "$ref": "#/components/schemas/ScriptDiffConfidence"
+    }
+
+    summary = schemas["ScriptDiffSummary"]
+    for change_kind in ("unchanged", "moved", "modified", "added", "removed"):
+        assert change_kind in summary["properties"]
+    assert "affectedElementCount" in summary["properties"]
+    assert "carriedForwardItemCount" in summary["properties"]
+    assert "carriedForwardEvidenceCount" in summary["properties"]
+    assert "providerWorkEstimate" in summary["properties"]
+
+    diff = schemas["ScriptVersionDiff"]
+    assert {
+        "beforeVersionId",
+        "afterVersionId",
+        "algorithmVersion",
+        "elements",
+        "summary",
+        "createdAt",
+    } <= set(diff["required"])
+    assert diff["properties"]["elements"]["items"] == {
+        "$ref": "#/components/schemas/ScriptDiffElement"
+    }
+    assert diff["properties"]["summary"] == {
+        "$ref": "#/components/schemas/ScriptDiffSummary"
+    }
+
+
+def test_start_selective_rescan_requires_idempotency_key_and_derives_scope() -> None:
+    spec = _load_spec()
+    path = (
+        "/api/v1/organizations/{orgId}/projects/{projectId}"
+        "/script-versions/{versionId}:startSelectiveRescan"
+    )
+    operation = spec["paths"][path]["post"]
+    assert operation["operationId"] == "startSelectiveRescan"
+
+    # Idempotency-Key must be required.
+    assert {
+        "$ref": "#/components/parameters/RequiredIdempotencyKey"
+    } in operation["parameters"]
+
+    # The server derives affected scope from the persisted diff: no client-selectable itemIds.
+    request_body = operation.get("requestBody")
+    if request_body is not None:
+        json_schema = (
+            request_body.get("content", {})
+            .get("application/json", {})
+            .get("schema", {})
+        )
+        assert "itemIds" not in json_schema.get("properties", {})
+
+    # Returns the durable Job schema.
+    data_schema = operation["responses"]["202"]["content"]["application/json"][
+        "schema"
+    ]["properties"]["data"]
+    assert data_schema == {"$ref": "#/components/schemas/Job"}

@@ -11,6 +11,7 @@ const orgId = '01900000-0000-7000-8000-000000000001'
 const projectId = '01900000-0000-7000-8000-000000000002'
 const jobId = '01900000-0000-7000-8000-000000000003'
 const snapshotId = '01900000-0000-7000-8000-000000000004'
+const versionId = '01900000-0000-7000-8000-000000000005'
 
 function consume(_value: unknown): void {}
 
@@ -108,6 +109,39 @@ async function verifyGeneratedClientContract(): Promise<void> {
     params: { orgId, projectId, snapshotId },
     body: { attestation: 'Reviewed by an accountable human.' },
   })
+
+  // Revision diff: read the persisted before/after element diff for a script version.
+  const diff = await api.getScriptVersionDiff({
+    params: { orgId, projectId, versionId },
+  })
+  if (diff.ok) {
+    const algorithmVersion: string = diff.value.algorithmVersion
+    const affectedElementCount: number = diff.value.summary.affectedElementCount
+    const firstElementChangeKind:
+      | 'unchanged'
+      | 'moved'
+      | 'modified'
+      | 'added'
+      | 'removed'
+      | undefined = diff.value.elements[0]?.changeKind
+    consume(algorithmVersion)
+    consume(affectedElementCount)
+    consume(firstElementChangeKind)
+  }
+
+  // Selective rescan: the server derives affected scope from the persisted diff; the
+  // accountable trigger must supply an Idempotency-Key and receives a durable Job.
+  const rescan = await api.startSelectiveRescan({
+    params: { orgId, projectId, versionId },
+    headers: { 'Idempotency-Key': 'selective-rescan-key-0001' },
+  })
+  if (rescan.ok) {
+    const rescanJobStatus = rescan.value.status
+    consume(rescanJobStatus)
+  }
+
+  // @ts-expect-error Selective rescan requires the accountable Idempotency-Key header.
+  await api.startSelectiveRescan({ params: { orgId, projectId, versionId } })
 
   // @ts-expect-error Registration requires a human-readable name.
   await api.registerUser({ body: { email: 'contract@example.com', password: 'Password123!' } })

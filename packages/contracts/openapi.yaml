@@ -1034,7 +1034,11 @@ paths:
 
   /api/v1/organizations/{orgId}/projects/{projectId}/parse-runs/{runId}:commitVersion:
     post:
-      summary: Commit parsed script as immutable version
+      summary: Commit parse run as the next immutable script version
+      description: >-
+        Commit the accepted parse run as the next immutable version in the
+        script's revision lineage. The committed version is append-only and
+        never mutated in place.
       operationId: commitScriptVersion
       tags:
         - scripts
@@ -1161,6 +1165,50 @@ paths:
                     $ref: '#/components/schemas/ScriptVersion'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}/diff:
+    get:
+      summary: Read the persisted diff between a version and its predecessor
+      description: >-
+        Return the persisted, algorithm-versioned diff describing how the given
+        script version differs from its immediate predecessor: ordered element
+        changes and summary counts used to scope carried-forward items,
+        evidence, and provider work for selective rescan.
+      operationId: getScriptVersionDiff
+      tags:
+        - scripts
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Persisted script version diff
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ScriptVersionDiff'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '404':
+          description: No diff exists for the version (or version out of scope)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 
   /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect:
     post:
@@ -2203,6 +2251,11 @@ paths:
   /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan:
     post:
       summary: Start selective rescan of affected items for revision
+      description: >-
+        Trigger a selective rescan for a committed revision. The server derives
+        the affected scope from the persisted version diff; clients cannot select
+        item IDs. Requires an Idempotency-Key so the accountable trigger is safely
+        retryable and intent-bound. Returns the durable rescan job.
       operationId: startSelectiveRescan
       tags:
         - rescan
@@ -2217,17 +2270,7 @@ paths:
           required: true
           schema:
             $ref: '#/components/schemas/UUIDv7'
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                itemIds:
-                  type: array
-                  items:
-                    $ref: '#/components/schemas/UUIDv7'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       responses:
         '202':
           description: Rescan job initiated
@@ -3820,6 +3863,155 @@ components:
         elementCount:
           type: integer
           minimum: 0
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ScriptDiffChangeKind:
+      type: string
+      description: Classification of how a script element changed between two versions
+      enum:
+        - unchanged
+        - moved
+        - modified
+        - added
+        - removed
+
+    ScriptDiffConfidence:
+      type: string
+      description: Confidence with which an element was matched across versions
+      enum:
+        - exact
+        - contextual
+        - similar
+        - unmatched
+
+    ScriptDiffElement:
+      type: object
+      description: A single element-level change between the before and after versions
+      required:
+        - type
+        - changeKind
+        - confidence
+      properties:
+        beforeElementId:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+          description: Element ID in the predecessor (before) version, if present
+        afterElementId:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+          description: Element ID in the current (after) version, if present
+        beforeOrdinal:
+          anyOf:
+            - type: integer
+              minimum: 0
+            - type: 'null'
+          description: Ordinal position in the before version, if present
+        afterOrdinal:
+          anyOf:
+            - type: integer
+              minimum: 0
+            - type: 'null'
+          description: Ordinal position in the after version, if present
+        type:
+          type: string
+          description: Screenplay element type (e.g. scene_heading, action, dialogue)
+        text:
+          type: string
+          description: Representative element text for review context
+        changeKind:
+          $ref: '#/components/schemas/ScriptDiffChangeKind'
+        confidence:
+          $ref: '#/components/schemas/ScriptDiffConfidence'
+
+    ScriptDiffSummary:
+      type: object
+      description: Aggregate counts describing the scope of a version diff
+      required:
+        - unchanged
+        - moved
+        - modified
+        - added
+        - removed
+        - affectedElementCount
+        - carriedForwardItemCount
+        - carriedForwardEvidenceCount
+        - providerWorkEstimate
+      properties:
+        unchanged:
+          type: integer
+          minimum: 0
+        moved:
+          type: integer
+          minimum: 0
+        modified:
+          type: integer
+          minimum: 0
+        added:
+          type: integer
+          minimum: 0
+        removed:
+          type: integer
+          minimum: 0
+        affectedElementCount:
+          type: integer
+          minimum: 0
+          description: Number of elements changed enough to affect clearance scope
+        carriedForwardItemCount:
+          type: integer
+          minimum: 0
+          description: Clearance items carried forward unchanged from the predecessor
+        carriedForwardEvidenceCount:
+          type: integer
+          minimum: 0
+          description: Evidence claims carried forward unchanged from the predecessor
+        providerWorkEstimate:
+          type: integer
+          minimum: 0
+          description: Estimated provider research units required for the affected scope
+
+    ScriptVersionDiff:
+      type: object
+      description: >-
+        Persisted, algorithm-versioned diff between a committed script version
+        and its immediate predecessor.
+      required:
+        - beforeVersionId
+        - afterVersionId
+        - beforeLabel
+        - afterLabel
+        - algorithmVersion
+        - elements
+        - summary
+        - createdAt
+      properties:
+        beforeVersionId:
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+          description: Predecessor version ID; null for the first committed version
+        afterVersionId:
+          $ref: '#/components/schemas/UUIDv7'
+        beforeLabel:
+          anyOf:
+            - type: string
+            - type: 'null'
+          description: Predecessor revision label; null for the first committed version
+        afterLabel:
+          type: string
+          description: Revision label of the current (after) version
+        algorithmVersion:
+          type: string
+          description: Version of the diff algorithm that produced this result
+        elements:
+          type: array
+          description: Ordered element-level changes
+          items:
+            $ref: '#/components/schemas/ScriptDiffElement'
+        summary:
+          $ref: '#/components/schemas/ScriptDiffSummary'
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
 

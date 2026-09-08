@@ -578,6 +578,45 @@ export interface ReportArtifactMetadata {
 }
 
 
+export type ScriptDiffChangeKind = 'unchanged' | 'moved' | 'modified' | 'added' | 'removed';
+
+export type ScriptDiffConfidence = 'exact' | 'contextual' | 'similar' | 'unmatched';
+
+export interface ScriptDiffElement {
+  beforeElementId?: UUIDv7 | null;
+  afterElementId?: UUIDv7 | null;
+  beforeOrdinal?: number | null;
+  afterOrdinal?: number | null;
+  type: string;
+  text?: string;
+  changeKind: ScriptDiffChangeKind;
+  confidence: ScriptDiffConfidence;
+}
+
+export interface ScriptDiffSummary {
+  unchanged: number;
+  moved: number;
+  modified: number;
+  added: number;
+  removed: number;
+  affectedElementCount: number;
+  carriedForwardItemCount: number;
+  carriedForwardEvidenceCount: number;
+  providerWorkEstimate: number;
+}
+
+export interface ScriptVersionDiff {
+  beforeVersionId: UUIDv7 | null;
+  afterVersionId: UUIDv7;
+  beforeLabel: string | null;
+  afterLabel: string;
+  algorithmVersion: string;
+  elements: Array<ScriptDiffElement>;
+  summary: ScriptDiffSummary;
+  createdAt: ISODateTime;
+}
+
+
 export type ApiResult<T, E extends ApiError = ApiError> =
   | { ok: true; value: T; meta?: ResponseMeta }
   | { ok: false; error: E };
@@ -723,6 +762,7 @@ export interface Operations {
   getProjectScript: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script' };
   listProjectVersions: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions' };
   getProjectVersion: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}' };
+  getScriptVersionDiff: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}/diff' };
   startDetection: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:detect' };
   startResearch: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:research' };
   listJobs: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/jobs' };
@@ -1190,7 +1230,7 @@ export function createApiClient(config: ApiClientConfig = {}) {
       });
     },
 
-    /** Commit parsed script as immutable version */
+    /** Commit parse run as the next immutable script version */
     commitScriptVersion: async (
       args: {
         params: { orgId: UUIDv7; projectId: UUIDv7; runId: UUIDv7 };
@@ -1241,6 +1281,20 @@ export function createApiClient(config: ApiClientConfig = {}) {
     ): Promise<ApiResult<ScriptVersion>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<ScriptVersion>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Read the persisted diff between a version and its predecessor */
+    getScriptVersionDiff: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7; versionId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<ScriptVersionDiff>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<ScriptVersionDiff>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}/diff', {
         params: args?.params,
         headers,
       });
@@ -1592,15 +1646,12 @@ export function createApiClient(config: ApiClientConfig = {}) {
     startSelectiveRescan: async (
       args: {
         params: { orgId: UUIDv7; projectId: UUIDv7; versionId: UUIDv7 };
-        body?: { itemIds?: Array<UUIDv7> };
-        headers?: Record<string, string>;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
       }
     ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan', {
         params: args?.params,
-        body: args?.body,
-        bodyMediaType: 'application/json',
         headers,
       });
     },

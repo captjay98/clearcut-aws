@@ -39,6 +39,7 @@ const reportSchemas = reportSchemaNames.map(name => {
   if (!schema) throw new Error(`Report schema component ${name} is required`)
   return { name, schema }
 })
+const diffSchemaRootNames = ['ScriptVersionDiff']
 const task10PredeclaredNames = new Set([
   'ApiClientConfig',
   'ApiResult',
@@ -90,6 +91,7 @@ const task10PredeclaredNames = new Set([
 const task10ExternalSchemaNames = new Set(['ISODateTime', 'UUIDv7'])
 const task10SchemaNames = collectTask10OperationSchemaNames()
 const task10Schemas = collectTask10Schemas(task10SchemaNames)
+const diffSchemas = collectDiffSchemas(diffSchemaRootNames)
 
 const doNotEditTs = `/**
  * AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY.
@@ -419,6 +421,8 @@ export interface ReportPreview {
 
 ${generateReportTsDeclarations()}
 
+${generateDiffTsDeclarations()}
+
 export type ApiResult<T, E extends ApiError = ApiError> =
   | { ok: true; value: T; meta?: ResponseMeta }
   | { ok: false; error: E };
@@ -702,6 +706,32 @@ function collectTask10Schemas(rootNames) {
   return ordered
 }
 
+// Collect Task 4 revision-diff schemas in dependency order (enums before the
+// objects that reference them). These schemas are external to the Task 10 set;
+// UUIDv7/ISODateTime are predeclared aliases and are not re-emitted.
+function collectDiffSchemas(rootNames) {
+  const external = new Set(['ISODateTime', 'UUIDv7'])
+  const ordered = []
+  const state = new Map()
+
+  function visit(name) {
+    if (external.has(name)) return
+    if (state.get(name) === 'complete' || state.get(name) === 'visiting') return
+
+    const schema = spec.components?.schemas?.[name]
+    if (!schema) throw new Error(`Diff schema component ${name} is required`)
+    state.set(name, 'visiting')
+    for (const dependencyName of [...referencedSchemaNames(schema)].sort()) {
+      visit(dependencyName)
+    }
+    state.set(name, 'complete')
+    ordered.push({ name, schema, kind: classifyTask10Schema(schema) })
+  }
+
+  for (const rootName of rootNames) visit(rootName)
+  return ordered
+}
+
 function generateTask10TsObjectDeclaration(name, schema) {
   const required = new Set(schema.required || [])
   const fields = Object.entries(schema.properties || {}).map(
@@ -738,6 +768,15 @@ function generateReportTsDeclarations() {
   return reportSchemas
     .map(({ name, schema }) => generateTask10TsObjectDeclaration(name, schema))
     .join('\n')
+}
+
+function generateDiffTsDeclarations() {
+  return diffSchemas.map(({ name, schema, kind }) => {
+    if (kind !== 'object') {
+      return `export type ${name} = ${schemaToTs(schema)};\n`
+    }
+    return generateTask10TsObjectDeclaration(name, schema)
+  }).join('\n')
 }
 
 function successType(operation) {
@@ -966,6 +1005,14 @@ function generatePythonModel(name, schema) {
 function generateReportPythonDeclarations() {
   return reportSchemas
     .map(({ name, schema }) => generatePythonModel(name, schema))
+    .join('\n\n')
+}
+
+function generateDiffPythonDeclarations() {
+  return diffSchemas
+    .map(({ name, schema, kind }) => kind === 'object'
+      ? generatePythonModel(name, schema)
+      : `${name} = ${schemaToPython(schema)}`)
     .join('\n\n')
 }
 
@@ -1326,6 +1373,8 @@ class ReportPreview(BaseModel):
     categories: Optional[List[Dict[str, Any]]] = None
 
 ${generateReportPythonDeclarations()}
+
+${generateDiffPythonDeclarations()}
 `
 
 function validateGeneratedOutput(label, content, header, requiredDeclaration) {

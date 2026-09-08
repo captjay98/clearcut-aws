@@ -584,3 +584,38 @@ class ReportArtifactMetadata(BaseModel):
     sizeBytes: Annotated[int, Field(ge=0)]
     status: Literal["released"]
     downloadUrl: str
+
+ScriptDiffChangeKind = Literal["unchanged", "moved", "modified", "added", "removed"]
+
+ScriptDiffConfidence = Literal["exact", "contextual", "similar", "unmatched"]
+
+class ScriptDiffElement(BaseModel):
+    beforeElementId: Optional[UUIDv7] = None
+    afterElementId: Optional[UUIDv7] = None
+    beforeOrdinal: Optional[Annotated[int, Field(ge=0)]] = None
+    afterOrdinal: Optional[Annotated[int, Field(ge=0)]] = None
+    type: str
+    text: Optional[str] = None
+    changeKind: ScriptDiffChangeKind
+    confidence: ScriptDiffConfidence
+
+class ScriptDiffSummary(BaseModel):
+    unchanged: Annotated[int, Field(ge=0)]
+    moved: Annotated[int, Field(ge=0)]
+    modified: Annotated[int, Field(ge=0)]
+    added: Annotated[int, Field(ge=0)]
+    removed: Annotated[int, Field(ge=0)]
+    affectedElementCount: Annotated[int, Field(ge=0)]
+    carriedForwardItemCount: Annotated[int, Field(ge=0)]
+    carriedForwardEvidenceCount: Annotated[int, Field(ge=0)]
+    providerWorkEstimate: Annotated[int, Field(ge=0)]
+
+class ScriptVersionDiff(BaseModel):
+    beforeVersionId: Optional[UUIDv7]
+    afterVersionId: UUIDv7
+    beforeLabel: Optional[str]
+    afterLabel: str
+    algorithmVersion: str
+    elements: List[ScriptDiffElement]
+    summary: ScriptDiffSummary
+    createdAt: ISODateTime
