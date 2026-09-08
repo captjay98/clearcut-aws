@@ -879,3 +879,368 @@ async def test_authoritative_audit_failure_rolls_back_decision_version_and_recei
     assert status_value == "unresolved"
     assert decisions == 0
     assert receipts == 0
+
+
+# --------------------------------------------------------------------------- #
+# Group 4: Carry-forward governance invariant.
+# --------------------------------------------------------------------------- #
+
+
+async def _carry_forward_evidence_to_item(
+    *,
+    org_id: UUID,
+    project_id: UUID,
+    new_item_id: UUID,
+    source_item_id: UUID,
+) -> int:
+    """Seed one carried-evidence row for ``new_item_id`` referencing the
+    predecessor's original claim provenance and return the number of rows
+    written. Uses the research evidence-lineage adapter so the invariant is
+    proven against the real carry-forward write path.
+    """
+    from clearcut.research.adapters.sql_evidence_lineage import SqlEvidenceLineageAdapter
+
+    adapter = SqlEvidenceLineageAdapter()
+    carried = await adapter.carry_forward(
+        org_id=org_id,
+        project_id=project_id,
+        new_item_id=new_item_id,
+        source_item_id=source_item_id,
+    )
+    return len(carried)
+
+
+async def _seed_carried_forward_item_with_provenance() -> tuple[UUID, UUID, UUID, UUID]:
+    """Seed a predecessor item with a full-provenance claim, a new carried
+    item bound to an after version, and return
+    ``(org_id, project_id, new_item_id, source_item_id)``.
+    """
+    from clearcut.detection.adapters.sql_rescan_lineage import SqlItemLineageAdapter
+    from clearcut.rescan.application.models import CarryableElement
+
+    org_id = uuid6.uuid7()
+    project_id = uuid6.uuid7()
+    script_id = uuid6.uuid7()
+    before_version_id = uuid6.uuid7()
+    after_version_id = uuid6.uuid7()
+    before_element_id = uuid6.uuid7()
+    after_element_id = uuid6.uuid7()
+    predecessor_item_id = uuid6.uuid7()
+    now = datetime.now(UTC)
+
+    async with session_scope() as session:
+        await session.execute(
+            sa.text(
+                "INSERT INTO organizations (id, name, slug, created_at) "
+                "VALUES (:id, :name, :slug, :created_at)"
+            ),
+            {
+                "id": str(org_id),
+                "name": f"Org {org_id}",
+                "slug": f"org-{str(org_id)[:8]}",
+                "created_at": now,
+            },
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO projects (id, org_id, title, created_at) "
+                "VALUES (:id, :org_id, 'Carry project', :created_at)"
+            ),
+            {"id": str(project_id), "org_id": str(org_id), "created_at": now},
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO scripts (id, org_id, project_id, title, created_at, current_slot) "
+                "VALUES (:id, :org_id, :project_id, 'Script', :created_at, 'current')"
+            ),
+            {
+                "id": str(script_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "created_at": now,
+            },
+        )
+        for version_id, ordinal, predecessor, predecessor_ordinal in (
+            (before_version_id, 1, None, None),
+            (after_version_id, 2, before_version_id, 1),
+        ):
+            await session.execute(
+                sa.text(
+                    "INSERT INTO script_versions "
+                    "(id, script_id, org_id, project_id, ordinal, source_hash, parser_version, "
+                    "created_at, predecessor_version_id, predecessor_ordinal) VALUES "
+                    "(:id, :script_id, :org_id, :project_id, :ordinal, :source_hash, 'v1', "
+                    ":created_at, :predecessor, :predecessor_ordinal)"
+                ),
+                {
+                    "id": str(version_id),
+                    "script_id": str(script_id),
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                    "ordinal": ordinal,
+                    "source_hash": f"{ordinal:064d}",
+                    "created_at": now,
+                    "predecessor": str(predecessor) if predecessor else None,
+                    "predecessor_ordinal": predecessor_ordinal,
+                },
+            )
+        for version_id, element_id in (
+            (before_version_id, before_element_id),
+            (after_version_id, after_element_id),
+        ):
+            await session.execute(
+                sa.text(
+                    "INSERT INTO script_elements (id, version_id, ordinal, element_type, text) "
+                    "VALUES (:id, :version_id, 1, 'action', 'Acme Corporation')"
+                ),
+                {"id": str(element_id), "version_id": str(version_id)},
+            )
+        await session.execute(
+            sa.text(
+                "INSERT INTO clearance_items "
+                "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+                "status, research_status, workflow_status, disposition_status, created_at, "
+                "version) VALUES "
+                "(:id, :org_id, :project_id, :script_id, :version_id, :element_id, "
+                "'products_and_trademarks', 'Acme Corporation', 'resolved', 'completed', "
+                "'resolved', 'approved_as_is', :created_at, 2)"
+            ),
+            {
+                "id": str(predecessor_item_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "script_id": str(script_id),
+                "version_id": str(before_version_id),
+                "element_id": str(before_element_id),
+                "created_at": now,
+            },
+        )
+        run_id = uuid6.uuid7()
+        query_id = uuid6.uuid7()
+        attempt_id = uuid6.uuid7()
+        authorization_id = uuid6.uuid7()
+        snapshot_id = uuid6.uuid7()
+        claim_id = uuid6.uuid7()
+        canonical_url = "https://register.example/trademark"
+        await session.execute(
+            sa.text(
+                "INSERT INTO research_runs "
+                "(id, org_id, project_id, item_id, version_id, status, created_at) VALUES "
+                "(:id, :org_id, :project_id, :item_id, :version_id, 'completed', :created_at)"
+            ),
+            {
+                "id": str(run_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "item_id": str(predecessor_item_id),
+                "version_id": str(before_version_id),
+                "created_at": now,
+            },
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO research_queries "
+                "(id, run_id, query, ordinal, org_id, project_id, item_id, version_id, "
+                "created_at) VALUES "
+                "(:id, :run_id, 'acme', 1, :org_id, :project_id, :item_id, :version_id, "
+                ":created_at)"
+            ),
+            {
+                "id": str(query_id),
+                "run_id": str(run_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "item_id": str(predecessor_item_id),
+                "version_id": str(before_version_id),
+                "created_at": now,
+            },
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO provider_attempts "
+                "(id, run_id, operation_kind, status, created_at, org_id, project_id, item_id, "
+                "query_id, authorizing_search_attempt_id, authorizing_operation_kind) VALUES "
+                "(:id, :run_id, 'search', 'succeeded', :created_at, :org_id, :project_id, "
+                ":item_id, :query_id, :id, 'search')"
+            ),
+            {
+                "id": str(attempt_id),
+                "run_id": str(run_id),
+                "created_at": now,
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "item_id": str(predecessor_item_id),
+                "query_id": str(query_id),
+            },
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO search_result_authorizations "
+                "(id, org_id, project_id, item_id, run_id, query_id, search_attempt_id, "
+                "search_operation_kind, ordinal, url, canonical_url, title, publisher, excerpt, "
+                "created_at) VALUES "
+                "(:id, :org_id, :project_id, :item_id, :run_id, :query_id, :search_attempt_id, "
+                "'search', 1, :url, :canonical_url, 'Register', 'USPTO', 'No conflicts.', "
+                ":created_at)"
+            ),
+            {
+                "id": str(authorization_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "item_id": str(predecessor_item_id),
+                "run_id": str(run_id),
+                "query_id": str(query_id),
+                "search_attempt_id": str(attempt_id),
+                "url": canonical_url,
+                "canonical_url": canonical_url,
+                "created_at": now,
+            },
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO source_snapshots "
+                "(id, org_id, project_id, item_id, run_id, url, title, publisher, excerpt, "
+                "origin, sha256_hash, retrieved_at, query_id, provider_attempt_id, "
+                "authorization_id, authorizing_search_attempt_id) VALUES "
+                "(:id, :org_id, :project_id, :item_id, :run_id, :url, 'Register', 'USPTO', "
+                "'No conflicts.', 'search', :sha256_hash, :retrieved_at, :query_id, "
+                ":provider_attempt_id, :authorization_id, :authorizing_search_attempt_id)"
+            ),
+            {
+                "id": str(snapshot_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "item_id": str(predecessor_item_id),
+                "run_id": str(run_id),
+                "url": canonical_url,
+                "sha256_hash": "b" * 64,
+                "retrieved_at": now,
+                "query_id": str(query_id),
+                "provider_attempt_id": str(attempt_id),
+                "authorization_id": str(authorization_id),
+                "authorizing_search_attempt_id": str(attempt_id),
+            },
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO evidence_claims "
+                "(id, org_id, project_id, item_id, snapshot_id, stance, authority_tier, "
+                "claim_text, provenance_excerpt, created_at, run_id, query_id, "
+                "provider_attempt_id) VALUES "
+                "(:id, :org_id, :project_id, :item_id, :snapshot_id, 'supports', "
+                "'primary_official', 'No conflicts.', 'No conflicts.', :created_at, :run_id, "
+                ":query_id, :provider_attempt_id)"
+            ),
+            {
+                "id": str(claim_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "item_id": str(predecessor_item_id),
+                "snapshot_id": str(snapshot_id),
+                "created_at": now,
+                "run_id": str(run_id),
+                "query_id": str(query_id),
+                "provider_attempt_id": str(attempt_id),
+            },
+        )
+
+    item_adapter = SqlItemLineageAdapter()
+    mappings = await item_adapter.materialize_carried_items(
+        org_id=org_id,
+        project_id=project_id,
+        script_id=script_id,
+        before_version_id=before_version_id,
+        after_version_id=after_version_id,
+        carryable_elements=(
+            CarryableElement(
+                before_element_id=before_element_id,
+                after_element_id=after_element_id,
+                predecessor_item_id=predecessor_item_id,
+                category="products_and_trademarks",
+                text="Acme Corporation",
+            ),
+        ),
+    )
+    return org_id, project_id, mappings[0].new_item_id, predecessor_item_id
+
+
+async def test_carried_evidence_does_not_satisfy_direct_claim_gate() -> None:
+    """Carried evidence must not satisfy the direct cited-claim gate: a new
+    carried item with only ``evidence_carry_forwards`` rows (no direct
+    ``evidence_claims``) keeps a zero direct cited-claim count, so an
+    ``accepted`` evidence decision is still rejected until a future governed
+    confirmation records direct evidence.
+    """
+    from clearcut.decisions.adapters.sql_repository import SqlDecisionRepository
+
+    await init_and_seed_db(seed_if_empty=False)
+    (
+        org_id,
+        project_id,
+        new_item_id,
+        source_item_id,
+    ) = await _seed_carried_forward_item_with_provenance()
+    carried_count = await _carry_forward_evidence_to_item(
+        org_id=org_id,
+        project_id=project_id,
+        new_item_id=new_item_id,
+        source_item_id=source_item_id,
+    )
+    assert carried_count == 1
+
+    repository = SqlDecisionRepository()
+    async with session_scope() as session:
+        scoped = await repository.load_scoped_item(
+            session,
+            org_id=org_id,
+            project_id=project_id,
+            item_id=new_item_id,
+        )
+    # The direct cited-claim gate counts only evidence_claims for the new item;
+    # carried evidence lives in evidence_carry_forwards and never counts.
+    assert scoped.cited_claim_count == 0
+
+
+async def test_carried_forward_item_rejects_accept_until_direct_evidence() -> None:
+    """End to end: a carried-forward item with only carried evidence cannot be
+    accepted. The clearance-like ``accepted`` decision requires at least one
+    direct cited evidence claim, which carried evidence never provides.
+    """
+    from clearcut.commanding.errors import CommandValidationError
+    from clearcut.decisions.adapters.sql_repository import SqlDecisionRepository
+    from clearcut.decisions.application.record_evidence_decision import (
+        EvidenceDecisionValue,
+        RecordEvidenceDecisionCommand,
+        RecordEvidenceDecisionService,
+    )
+
+    await init_and_seed_db(seed_if_empty=False)
+    (
+        org_id,
+        project_id,
+        new_item_id,
+        source_item_id,
+    ) = await _seed_carried_forward_item_with_provenance()
+    await _carry_forward_evidence_to_item(
+        org_id=org_id,
+        project_id=project_id,
+        new_item_id=new_item_id,
+        source_item_id=source_item_id,
+    )
+
+    service = RecordEvidenceDecisionService(SqlDecisionRepository())
+    command = RecordEvidenceDecisionCommand(
+        org_id=org_id,
+        project_id=project_id,
+        item_id=new_item_id,
+        actor_id=uuid6.uuid7(),
+        actor_role="reviewer",
+        decision=EvidenceDecisionValue.ACCEPTED,
+        rationale="Attempting to accept on carried evidence alone.",
+        expected_version=1,
+        intent_hash=_intent_hash("accepted", "carried", "1"),
+        idempotency_key=_idempotency_key("carried-accept"),
+    )
+    with pytest.raises(CommandValidationError):
+        async with session_scope() as session:
+            await service.record(session, command)

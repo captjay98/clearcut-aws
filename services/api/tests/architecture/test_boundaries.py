@@ -61,3 +61,45 @@ def test_feature_coverage_script_passes():
     assert script_path.exists(), f"Missing {script_path}"
     res = subprocess.run(["node", str(script_path)], capture_output=True, text=True)
     assert res.returncode == 0, f"Feature coverage check failed:\n{res.stdout}\n{res.stderr}"
+
+
+def test_rescan_application_and_ports_have_no_sqlalchemy_or_adapter_imports():
+    """The rescan orchestration layer coordinates carry-forward through typed
+    module ports only. Its ports/ and application/ packages must not import
+    SQLAlchemy (persistence belongs to owning-module adapters) nor any other
+    module's adapters package (modules never read each other's storage).
+    """
+    rescan_dirs = [
+        API_SRC / "rescan" / "ports",
+        API_SRC / "rescan" / "application",
+    ]
+    for rescan_dir in rescan_dirs:
+        assert rescan_dir.exists(), f"Missing rescan package: {rescan_dir}"
+
+    forbidden_top_level = {"sqlalchemy"}
+    for rescan_dir in rescan_dirs:
+        found = scan_module_imports(rescan_dir)
+        assert not found.intersection(forbidden_top_level), (
+            f"rescan orchestration layer must not import SQLAlchemy: "
+            f"{found.intersection(forbidden_top_level)} in {rescan_dir}"
+        )
+
+    # No import of any other module's adapters package.
+    for rescan_dir in rescan_dirs:
+        if not rescan_dir.exists():
+            continue
+        for path in rescan_dir.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                module_name = None
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    module_name = node.module
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if ".adapters" in alias.name:
+                            module_name = alias.name
+                if module_name and module_name.startswith("clearcut."):
+                    assert ".adapters" not in module_name, (
+                        f"rescan orchestration must not import module adapters: "
+                        f"{module_name} in {path}"
+                    )
