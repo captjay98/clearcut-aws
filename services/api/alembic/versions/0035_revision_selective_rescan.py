@@ -118,12 +118,19 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         )
         batch_op.create_foreign_key(
-            "fk_script_versions_committing_actor",
-            "users",
-            ["committed_by_actor_id"],
-            ["id"],
+            "fk_script_versions_committing_actor_membership",
+            "memberships",
+            ["org_id", "committed_by_actor_id"],
+            ["org_id", "user_id"],
             ondelete="RESTRICT",
         )
+
+    op.create_index(
+        "uq_script_versions_checkpoint_scope",
+        "script_versions",
+        ["id", "org_id", "project_id"],
+        unique=True,
+    )
 
     with op.batch_alter_table("script_diffs") as batch_op:
         batch_op.add_column(sa.Column("script_id", sa.UUID(as_uuid=True), nullable=True))
@@ -584,9 +591,7 @@ def upgrade() -> None:
         sa.Column("project_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("job_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("stage", sa.String(50), nullable=False),
-        sa.Column("replay_key", sa.String(255), nullable=False),
-        sa.Column("target_kind", sa.String(50), nullable=True),
-        sa.Column("target_id", sa.UUID(as_uuid=True), nullable=True),
+        sa.Column("script_version_id", sa.UUID(as_uuid=True), nullable=True),
         sa.Column("item_id", sa.UUID(as_uuid=True), nullable=True),
         sa.Column("status", sa.String(20), nullable=False),
         sa.Column("result", _JSON, nullable=True),
@@ -594,13 +599,11 @@ def upgrade() -> None:
         sa.Column("attempt_number", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint(
-            "org_id",
-            "project_id",
-            "job_id",
-            "stage",
-            "replay_key",
-            name="uq_selective_rescan_checkpoints_replay",
+        sa.CheckConstraint(
+            "stage IN ('queued', 'materializing_lineage', 'carrying_evidence', "
+            "'detecting_affected_passages', 'researching_affected_items', "
+            "'awaiting_confirmation', 'completed')",
+            name="ck_selective_rescan_checkpoints_stage",
         ),
         sa.CheckConstraint(
             "attempt_number > 0",
@@ -611,9 +614,8 @@ def upgrade() -> None:
             name="ck_selective_rescan_checkpoints_status",
         ),
         sa.CheckConstraint(
-            "(target_kind IS NULL AND target_id IS NULL) OR "
-            "(target_kind IS NOT NULL AND target_id IS NOT NULL)",
-            name="ck_selective_rescan_checkpoints_target",
+            "script_version_id IS NULL OR item_id IS NULL",
+            name="ck_selective_rescan_checkpoints_single_target",
         ),
         sa.CheckConstraint(
             "(status IN ('pending', 'running') AND result IS NULL "
@@ -637,6 +639,16 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
+            ["script_version_id", "org_id", "project_id"],
+            [
+                "script_versions.id",
+                "script_versions.org_id",
+                "script_versions.project_id",
+            ],
+            name="fk_selective_rescan_checkpoints_script_version_scope",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
             ["item_id", "org_id", "project_id"],
             [
                 "clearance_items.id",
@@ -651,6 +663,33 @@ def upgrade() -> None:
         "idx_selective_rescan_checkpoints_job",
         "selective_rescan_checkpoints",
         ["org_id", "project_id", "job_id", "stage"],
+    )
+    no_target = sa.text("script_version_id IS NULL AND item_id IS NULL")
+    script_version_target = sa.text("script_version_id IS NOT NULL AND item_id IS NULL")
+    item_target = sa.text("script_version_id IS NULL AND item_id IS NOT NULL")
+    op.create_index(
+        "uq_selective_rescan_checkpoints_job_stage",
+        "selective_rescan_checkpoints",
+        ["org_id", "project_id", "job_id", "stage"],
+        unique=True,
+        sqlite_where=no_target,
+        postgresql_where=no_target,
+    )
+    op.create_index(
+        "uq_selective_rescan_checkpoints_script_version",
+        "selective_rescan_checkpoints",
+        ["org_id", "project_id", "job_id", "stage", "script_version_id"],
+        unique=True,
+        sqlite_where=script_version_target,
+        postgresql_where=script_version_target,
+    )
+    op.create_index(
+        "uq_selective_rescan_checkpoints_item",
+        "selective_rescan_checkpoints",
+        ["org_id", "project_id", "job_id", "stage", "item_id"],
+        unique=True,
+        sqlite_where=item_target,
+        postgresql_where=item_target,
     )
 
 
@@ -736,9 +775,13 @@ def downgrade() -> None:
         batch_op.drop_column("before_ordinal")
         batch_op.drop_column("script_id")
 
+    op.drop_index(
+        "uq_script_versions_checkpoint_scope",
+        table_name="script_versions",
+    )
     with op.batch_alter_table("script_versions") as batch_op:
         batch_op.drop_constraint(
-            "fk_script_versions_committing_actor",
+            "fk_script_versions_committing_actor_membership",
             type_="foreignkey",
         )
         batch_op.drop_constraint(

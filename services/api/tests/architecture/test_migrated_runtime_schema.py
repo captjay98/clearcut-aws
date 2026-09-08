@@ -1507,10 +1507,19 @@ def test_revision_lineage_and_selective_rescan_schema_contract(tmp_path: Path) -
         "script_versions",
         ("id", "org_id", "project_id", "script_id", "ordinal"),
     )
-    assert version_foreign_keys["fk_script_versions_committing_actor"] == (
-        ("committed_by_actor_id",),
-        "users",
-        ("id",),
+    version_indexes = {
+        index["name"]: tuple(index["column_names"])
+        for index in inspector.get_indexes("script_versions")
+    }
+    assert version_indexes["uq_script_versions_checkpoint_scope"] == (
+        "id",
+        "org_id",
+        "project_id",
+    )
+    assert version_foreign_keys["fk_script_versions_committing_actor_membership"] == (
+        ("org_id", "committed_by_actor_id"),
+        "memberships",
+        ("org_id", "user_id"),
     )
 
     diff_columns = {column["name"]: column for column in inspector.get_columns("script_diffs")}
@@ -1734,9 +1743,7 @@ def test_revision_lineage_and_selective_rescan_schema_contract(tmp_path: Path) -
         "project_id",
         "job_id",
         "stage",
-        "replay_key",
-        "target_kind",
-        "target_id",
+        "script_version_id",
         "item_id",
         "status",
         "result",
@@ -1745,15 +1752,31 @@ def test_revision_lineage_and_selective_rescan_schema_contract(tmp_path: Path) -
         "created_at",
         "completed_at",
     } == set(checkpoint_columns)
-    assert checkpoint_columns["target_id"]["nullable"] is True
+    assert checkpoint_columns["script_version_id"]["nullable"] is True
     assert checkpoint_columns["item_id"]["nullable"] is True
-    checkpoint_uniques = _named_uniques(inspector, "selective_rescan_checkpoints")
-    assert checkpoint_uniques["uq_selective_rescan_checkpoints_replay"] == (
+    checkpoint_indexes = {
+        index["name"]: tuple(index["column_names"])
+        for index in inspector.get_indexes("selective_rescan_checkpoints")
+    }
+    assert checkpoint_indexes["uq_selective_rescan_checkpoints_job_stage"] == (
         "org_id",
         "project_id",
         "job_id",
         "stage",
-        "replay_key",
+    )
+    assert checkpoint_indexes["uq_selective_rescan_checkpoints_script_version"] == (
+        "org_id",
+        "project_id",
+        "job_id",
+        "stage",
+        "script_version_id",
+    )
+    assert checkpoint_indexes["uq_selective_rescan_checkpoints_item"] == (
+        "org_id",
+        "project_id",
+        "job_id",
+        "stage",
+        "item_id",
     )
     checkpoint_foreign_keys = _named_foreign_keys(
         inspector,
@@ -1762,6 +1785,11 @@ def test_revision_lineage_and_selective_rescan_schema_contract(tmp_path: Path) -
     assert checkpoint_foreign_keys["fk_selective_rescan_checkpoints_job_scope"] == (
         ("job_id", "org_id", "project_id"),
         "jobs",
+        ("id", "org_id", "project_id"),
+    )
+    assert checkpoint_foreign_keys["fk_selective_rescan_checkpoints_script_version_scope"] == (
+        ("script_version_id", "org_id", "project_id"),
+        "script_versions",
         ("id", "org_id", "project_id"),
     )
     assert checkpoint_foreign_keys["fk_selective_rescan_checkpoints_item_scope"] == (
@@ -2307,9 +2335,9 @@ def test_revision_lineage_constraints_fail_closed_and_are_replay_safe(
         connection.execute(
             sa.text(
                 "INSERT INTO selective_rescan_checkpoints "
-                "(id, org_id, project_id, job_id, stage, replay_key, item_id, status, "
+                "(id, org_id, project_id, job_id, stage, item_id, status, "
                 "attempt_number, created_at, completed_at) VALUES "
-                "(:id, :org, :project, :job, 'carry_evidence', 'item-carry', :item, "
+                "(:id, :org, :project, :job, 'carrying_evidence', :item, "
                 "'succeeded', 1, :created, :created)"
             ),
             {
@@ -2508,9 +2536,9 @@ def test_revision_lineage_constraints_fail_closed_and_are_replay_safe(
         ),
         (
             "INSERT INTO selective_rescan_checkpoints "
-            "(id, org_id, project_id, job_id, stage, replay_key, item_id, status, "
+            "(id, org_id, project_id, job_id, stage, item_id, status, "
             "attempt_number, created_at, completed_at) VALUES "
-            "(:id, :org, :project, :job, 'carry_evidence', 'item-carry', :item, "
+            "(:id, :org, :project, :job, 'carrying_evidence', :item, "
             "'succeeded', 2, :created, :created)",
             {
                 "org": org_a,
@@ -2521,10 +2549,10 @@ def test_revision_lineage_constraints_fail_closed_and_are_replay_safe(
         ),
         (
             "INSERT INTO selective_rescan_checkpoints "
-            "(id, org_id, project_id, job_id, stage, replay_key, item_id, status, "
+            "(id, org_id, project_id, job_id, stage, item_id, status, "
             "attempt_number, created_at) VALUES "
-            "(:id, :org, :project, :job, 'detect', 'foreign-job', :item, 'running', 1, "
-            ":created)",
+            "(:id, :org, :project, :job, 'detecting_affected_passages', :item, "
+            "'running', 1, :created)",
             {
                 "org": org_b,
                 "project": project_b,
@@ -2631,4 +2659,603 @@ def test_0035_refuses_duplicate_historical_diffs_before_mutation(tmp_path: Path)
         column["name"] for column in inspector.get_columns("script_versions")
     }
     assert "script_id" not in {column["name"] for column in inspector.get_columns("script_diffs")}
+    engine.dispose()
+
+
+def _seed_scoped_revision_fixture(engine: sa.Engine) -> dict[str, str]:
+    now = datetime.now(UTC)
+    names = (
+        "org_a",
+        "project_a",
+        "script_a",
+        "before_a",
+        "after_a",
+        "before_element_a",
+        "after_element_a",
+        "org_b",
+        "project_b",
+        "script_b",
+        "before_b",
+        "after_b",
+        "before_element_b",
+        "after_element_b",
+        "actor_a",
+        "actor_b",
+        "item_a",
+        "item_b",
+        "job_a",
+        "job_b",
+    )
+    values: dict[str, str] = dict(zip(names, (str(uuid4()) for _ in names), strict=True))
+
+    with engine.begin() as connection:
+        for suffix in ("a", "b"):
+            _seed_revision_project(
+                connection,
+                org_id=values[f"org_{suffix}"],
+                project_id=values[f"project_{suffix}"],
+                script_id=values[f"script_{suffix}"],
+                before_version_id=values[f"before_{suffix}"],
+                after_version_id=values[f"after_{suffix}"],
+                before_element_id=values[f"before_element_{suffix}"],
+                after_element_id=values[f"after_element_{suffix}"],
+                now=now,
+                slug=f"scoped-revision-{suffix}",
+            )
+            connection.execute(
+                sa.text("INSERT INTO users (id, email, created_at) VALUES (:id, :email, :created)"),
+                {
+                    "id": values[f"actor_{suffix}"],
+                    "email": f"actor-{suffix}@example.test",
+                    "created": now,
+                },
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO memberships "
+                    "(id, org_id, user_id, role, status, created_at) VALUES "
+                    "(:id, :org, :user, 'owner', 'active', :created)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "org": values[f"org_{suffix}"],
+                    "user": values[f"actor_{suffix}"],
+                    "created": now,
+                },
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO clearance_items "
+                    "(id, org_id, project_id, script_id, version_id, element_id, category, "
+                    "text, status, created_at) VALUES "
+                    "(:id, :org, :project, :script, :version, :element, 'brands', "
+                    "'Scoped item', 'unresolved', :created)"
+                ),
+                {
+                    "id": values[f"item_{suffix}"],
+                    "org": values[f"org_{suffix}"],
+                    "project": values[f"project_{suffix}"],
+                    "script": values[f"script_{suffix}"],
+                    "version": values[f"after_{suffix}"],
+                    "element": values[f"after_element_{suffix}"],
+                    "created": now,
+                },
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO jobs "
+                    "(id, org_id, project_id, job_type, status, idempotency_key, payload, "
+                    "progress, stage, correlation_id, attempt_count, available_at, "
+                    "created_at, updated_at) VALUES "
+                    "(:id, :org, :project, 'selective_rescan', 'running', :key, '{}', 0, "
+                    "'materializing_lineage', :id, 1, :created, :created, :created)"
+                ),
+                {
+                    "id": values[f"job_{suffix}"],
+                    "org": values[f"org_{suffix}"],
+                    "project": values[f"project_{suffix}"],
+                    "key": f"selective-rescan-{suffix}",
+                    "created": now,
+                },
+            )
+    values["created"] = now.isoformat()
+    return values
+
+
+def test_script_version_accepts_committing_actor_from_same_org(tmp_path: Path) -> None:
+    engine = _migrate(tmp_path / "same-org-committing-actor.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE script_versions SET committed_by_actor_id = :actor WHERE id = :version"
+            ),
+            {"actor": fixture["actor_a"], "version": fixture["after_a"]},
+        )
+
+    engine.dispose()
+
+
+def test_script_version_rejects_committing_actor_from_another_org(tmp_path: Path) -> None:
+    engine = _migrate(tmp_path / "cross-org-committing-actor.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE script_versions SET committed_by_actor_id = :actor WHERE id = :version"
+            ),
+            {"actor": fixture["actor_b"], "version": fixture["after_a"]},
+        )
+
+    engine.dispose()
+
+
+def _insert_checkpoint(
+    connection: sa.Connection,
+    *,
+    fixture: dict[str, str],
+    stage: str,
+    status: str = "pending",
+    script_version_id: str | None = None,
+    item_id: str | None = None,
+    completed: bool = False,
+    safe_error: str | None = None,
+) -> None:
+    connection.execute(
+        sa.text(
+            "INSERT INTO selective_rescan_checkpoints "
+            "(id, org_id, project_id, job_id, stage, script_version_id, item_id, status, "
+            "result, safe_error, attempt_number, created_at, completed_at) VALUES "
+            "(:id, :org, :project, :job, :stage, :version, :item, :status, NULL, "
+            ":safe_error, 1, :created, :completed)"
+        ),
+        {
+            "id": str(uuid4()),
+            "org": fixture["org_a"],
+            "project": fixture["project_a"],
+            "job": fixture["job_a"],
+            "stage": stage,
+            "version": script_version_id,
+            "item": item_id,
+            "status": status,
+            "safe_error": safe_error,
+            "created": fixture["created"],
+            "completed": fixture["created"] if completed else None,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "queued",
+        "materializing_lineage",
+        "carrying_evidence",
+        "detecting_affected_passages",
+        "researching_affected_items",
+        "awaiting_confirmation",
+        "completed",
+    ],
+)
+def test_selective_rescan_checkpoint_accepts_approved_stage(
+    tmp_path: Path,
+    stage: str,
+) -> None:
+    engine = _migrate(tmp_path / f"approved-checkpoint-stage-{stage}.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with engine.begin() as connection:
+        _insert_checkpoint(connection, fixture=fixture, stage=stage)
+
+    engine.dispose()
+
+
+def test_selective_rescan_checkpoint_rejects_unknown_stage(tmp_path: Path) -> None:
+    engine = _migrate(tmp_path / "unknown-checkpoint-stage.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_checkpoint(connection, fixture=fixture, stage="arbitrary_stage")
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("status", "completed", "safe_error"),
+    [
+        ("pending", False, None),
+        ("running", False, None),
+        ("succeeded", True, None),
+        ("failed", True, "{}"),
+    ],
+)
+def test_selective_rescan_checkpoint_accepts_approved_status(
+    tmp_path: Path,
+    status: str,
+    completed: bool,
+    safe_error: str | None,
+) -> None:
+    engine = _migrate(tmp_path / f"approved-checkpoint-status-{status}.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            status=status,
+            completed=completed,
+            safe_error=safe_error,
+        )
+
+    engine.dispose()
+
+
+def test_selective_rescan_checkpoint_rejects_unknown_status(tmp_path: Path) -> None:
+    engine = _migrate(tmp_path / "unknown-checkpoint-status.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            status="unknown",
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("target_column", "foreign_key"),
+    [
+        ("script_version_id", "after_b"),
+        ("item_id", "item_b"),
+    ],
+)
+def test_selective_rescan_checkpoint_rejects_cross_org_target(
+    tmp_path: Path,
+    target_column: str,
+    foreign_key: str,
+) -> None:
+    engine = _migrate(tmp_path / f"cross-org-checkpoint-{target_column}.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+    script_version_id = fixture[foreign_key] if target_column == "script_version_id" else None
+    item_id = fixture[foreign_key] if target_column == "item_id" else None
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            script_version_id=script_version_id,
+            item_id=item_id,
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize("target_column", ["script_version_id", "item_id"])
+def test_selective_rescan_checkpoint_rejects_cross_project_target_in_same_org(
+    tmp_path: Path,
+    target_column: str,
+) -> None:
+    engine = _migrate(tmp_path / f"cross-project-checkpoint-{target_column}.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+    project_id, script_id, version_id, element_id, item_id = (str(uuid4()) for _ in range(5))
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO projects (id, org_id, title, created_at) "
+                "VALUES (:id, :org, 'Peer project', :created)"
+            ),
+            {
+                "id": project_id,
+                "org": fixture["org_a"],
+                "created": fixture["created"],
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO scripts (id, org_id, project_id, title, created_at) "
+                "VALUES (:id, :org, :project, 'Peer script', :created)"
+            ),
+            {
+                "id": script_id,
+                "org": fixture["org_a"],
+                "project": project_id,
+                "created": fixture["created"],
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_versions "
+                "(id, script_id, org_id, project_id, ordinal, source_hash, parser_version, "
+                "created_at) VALUES (:id, :script, :org, :project, 1, :hash, '1', :created)"
+            ),
+            {
+                "id": version_id,
+                "script": script_id,
+                "org": fixture["org_a"],
+                "project": project_id,
+                "hash": version_id.replace("-", ""),
+                "created": fixture["created"],
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_elements "
+                "(id, version_id, ordinal, element_type, text) "
+                "VALUES (:id, :version, 1, 'action', 'Peer body')"
+            ),
+            {"id": element_id, "version": version_id},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO clearance_items "
+                "(id, org_id, project_id, script_id, version_id, element_id, category, "
+                "text, status, created_at) VALUES "
+                "(:id, :org, :project, :script, :version, :element, 'brands', "
+                "'Peer item', 'unresolved', :created)"
+            ),
+            {
+                "id": item_id,
+                "org": fixture["org_a"],
+                "project": project_id,
+                "script": script_id,
+                "version": version_id,
+                "element": element_id,
+                "created": fixture["created"],
+            },
+        )
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            script_version_id=version_id if target_column == "script_version_id" else None,
+            item_id=item_id if target_column == "item_id" else None,
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("script_version_key", "item_key"),
+    [("after_a", None), (None, "item_a")],
+)
+def test_selective_rescan_checkpoint_accepts_same_project_typed_target(
+    tmp_path: Path,
+    script_version_key: str | None,
+    item_key: str | None,
+) -> None:
+    target_name = script_version_key or item_key
+    engine = _migrate(tmp_path / f"same-project-checkpoint-{target_name}.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+
+    with engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            script_version_id=fixture[script_version_key] if script_version_key else None,
+            item_id=fixture[item_key] if item_key else None,
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize("target_kind", ["job", "script_version", "item"])
+def test_selective_rescan_checkpoint_replay_identity_is_typed_and_deterministic(
+    tmp_path: Path,
+    target_kind: str,
+) -> None:
+    engine = _migrate(tmp_path / f"checkpoint-replay-{target_kind}.db")
+    fixture = _seed_scoped_revision_fixture(engine)
+    script_version_id = fixture["after_a"] if target_kind == "script_version" else None
+    item_id = fixture["item_a"] if target_kind == "item" else None
+
+    with engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            script_version_id=script_version_id,
+            item_id=item_id,
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_checkpoint(
+            connection,
+            fixture=fixture,
+            stage="materializing_lineage",
+            script_version_id=script_version_id,
+            item_id=item_id,
+        )
+
+    engine.dispose()
+
+
+def _seed_element_lineage_fixture(engine: sa.Engine) -> dict[str, str]:
+    now = datetime.now(UTC)
+    names = (
+        "org",
+        "project",
+        "script",
+        "before_version",
+        "after_version",
+        "before_element",
+        "after_element",
+        "diff",
+    )
+    values: dict[str, str] = dict(zip(names, (str(uuid4()) for _ in names), strict=True))
+    with engine.begin() as connection:
+        _seed_revision_project(
+            connection,
+            org_id=values["org"],
+            project_id=values["project"],
+            script_id=values["script"],
+            before_version_id=values["before_version"],
+            after_version_id=values["after_version"],
+            before_element_id=values["before_element"],
+            after_element_id=values["after_element"],
+            now=now,
+            slug=f"lineage-{values['diff']}",
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_diffs "
+                "(id, org_id, project_id, script_id, before_version_id, after_version_id, "
+                "before_ordinal, after_ordinal, algorithm_version, summary_payload, "
+                "diff_payload, created_at) VALUES "
+                "(:id, :org, :project, :script, :before, :after, 1, 2, "
+                "'element-lineage-v1', '{}', '{}', :created)"
+            ),
+            {
+                "id": values["diff"],
+                "org": values["org"],
+                "project": values["project"],
+                "script": values["script"],
+                "before": values["before_version"],
+                "after": values["after_version"],
+                "created": now,
+            },
+        )
+    values["created"] = now.isoformat()
+    return values
+
+
+def _insert_element_lineage(
+    connection: sa.Connection,
+    *,
+    fixture: dict[str, str],
+    change_kind: str,
+    confidence: str,
+    before_element_id: str | None,
+    after_element_id: str | None,
+) -> None:
+    connection.execute(
+        sa.text(
+            "INSERT INTO script_element_lineage "
+            "(id, org_id, project_id, script_id, diff_id, before_version_id, "
+            "after_version_id, before_element_id, after_element_id, change_kind, "
+            "confidence, algorithm_version, created_at) VALUES "
+            "(:id, :org, :project, :script, :diff, :before_version, :after_version, "
+            ":before_element, :after_element, :change_kind, :confidence, "
+            "'element-lineage-v1', :created)"
+        ),
+        {
+            "id": str(uuid4()),
+            "org": fixture["org"],
+            "project": fixture["project"],
+            "script": fixture["script"],
+            "diff": fixture["diff"],
+            "before_version": fixture["before_version"],
+            "after_version": fixture["after_version"],
+            "before_element": before_element_id,
+            "after_element": after_element_id,
+            "change_kind": change_kind,
+            "confidence": confidence,
+            "created": fixture["created"],
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("change_kind", "confidence", "has_before", "has_after"),
+    [
+        ("unchanged", "exact", True, True),
+        ("moved", "contextual", True, True),
+        ("modified", "similar", True, True),
+        ("added", "unmatched", False, True),
+        ("removed", "unmatched", True, False),
+    ],
+)
+def test_script_element_lineage_accepts_each_kind_and_confidence(
+    tmp_path: Path,
+    change_kind: str,
+    confidence: str,
+    has_before: bool,
+    has_after: bool,
+) -> None:
+    engine = _migrate(tmp_path / f"valid-lineage-{change_kind}-{confidence}.db")
+    fixture = _seed_element_lineage_fixture(engine)
+
+    with engine.begin() as connection:
+        _insert_element_lineage(
+            connection,
+            fixture=fixture,
+            change_kind=change_kind,
+            confidence=confidence,
+            before_element_id=fixture["before_element"] if has_before else None,
+            after_element_id=fixture["after_element"] if has_after else None,
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("change_kind", "confidence"),
+    [("unknown", "exact"), ("unchanged", "unknown")],
+)
+def test_script_element_lineage_rejects_unknown_kind_or_confidence(
+    tmp_path: Path,
+    change_kind: str,
+    confidence: str,
+) -> None:
+    engine = _migrate(tmp_path / f"unknown-lineage-{change_kind}-{confidence}.db")
+    fixture = _seed_element_lineage_fixture(engine)
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_element_lineage(
+            connection,
+            fixture=fixture,
+            change_kind=change_kind,
+            confidence=confidence,
+            before_element_id=fixture["before_element"],
+            after_element_id=fixture["after_element"],
+        )
+
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("case_name", "change_kind", "confidence", "has_before", "has_after"),
+    [
+        ("added-has-before", "added", "unmatched", True, True),
+        ("added-misses-after", "added", "unmatched", False, False),
+        ("removed-misses-before", "removed", "unmatched", False, False),
+        ("removed-has-after", "removed", "unmatched", True, True),
+        ("unchanged-misses-before", "unchanged", "exact", False, True),
+        ("unchanged-misses-after", "unchanged", "exact", True, False),
+        ("moved-misses-before", "moved", "contextual", False, True),
+        ("moved-misses-after", "moved", "contextual", True, False),
+        ("modified-misses-before", "modified", "similar", False, True),
+        ("modified-misses-after", "modified", "similar", True, False),
+    ],
+)
+def test_script_element_lineage_rejects_each_invalid_endpoint_shape(
+    tmp_path: Path,
+    case_name: str,
+    change_kind: str,
+    confidence: str,
+    has_before: bool,
+    has_after: bool,
+) -> None:
+    engine = _migrate(tmp_path / f"invalid-lineage-endpoints-{case_name}.db")
+    fixture = _seed_element_lineage_fixture(engine)
+
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert_element_lineage(
+            connection,
+            fixture=fixture,
+            change_kind=change_kind,
+            confidence=confidence,
+            before_element_id=fixture["before_element"] if has_before else None,
+            after_element_id=fixture["after_element"] if has_after else None,
+        )
+
     engine.dispose()
