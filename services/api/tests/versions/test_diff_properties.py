@@ -76,9 +76,7 @@ def test_compute_script_diff_classifies_all_outcomes_with_distinct_ids():
     modified = by_after_id[modified_after.element_id]
     added = by_after_id[added_after.element_id]
     removed = next(
-        row
-        for row in diff.elements
-        if row.before_element_id == removed_before.element_id
+        row for row in diff.elements if row.before_element_id == removed_before.element_id
     )
 
     assert (unchanged.before_element_id, unchanged.after_element_id) == (
@@ -211,12 +209,10 @@ def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
     line_count = 100
     distinct_characters = "".join(chr(0x4E00 + offset) for offset in range(1_024))
     before = [
-        _element(f"B{index:03d}{distinct_characters}", index + 1)
-        for index in range(line_count)
+        _element(f"B{index:03d}{distinct_characters}", index + 1) for index in range(line_count)
     ]
     after = [
-        _element(f"A{index:03d}{distinct_characters}", index + 1)
-        for index in range(line_count)
+        _element(f"A{index:03d}{distinct_characters}", index + 1) for index in range(line_count)
     ]
     candidate_filter_call_count = 0
     ratio_call_count = 0
@@ -224,13 +220,11 @@ def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
 
     assert line_count * line_count == diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
     assert (
-        max(len(element.text) for element in before)
-        * max(len(element.text) for element in after)
+        max(len(element.text) for element in before) * max(len(element.text) for element in after)
         <= diff_domain.MAX_SIMILARITY_PAIR_CHARACTER_WORK
     )
     assert (
-        sum(len(element.text) for element in before)
-        * sum(len(element.text) for element in after)
+        sum(len(element.text) for element in before) * sum(len(element.text) for element in after)
         > diff_domain.MAX_SIMILARITY_CHARACTER_WORK
     )
 
@@ -262,8 +256,7 @@ def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
         *([ChangeClassification.REMOVED] * line_count),
     ]
     assert all(
-        (row.before_element_id is None) != (row.after_element_id is None)
-        for row in first.elements
+        (row.before_element_id is None) != (row.after_element_id is None) for row in first.elements
     )
 
 
@@ -281,14 +274,12 @@ def test_single_pair_character_work_is_rejected_before_fuzzy_work(monkeypatch):
     contextual_after_two = _element("Yes.", 4, ElementType.DIALOGUE)
     closing_after = _element("EXT. ARCHIVE - DAWN", 5, ElementType.SCENE_HEADING)
     ordinary_after = _element("Jon opens the heavy wood door.", 6, ElementType.ACTION)
-    pathological_after = _element(f'{"A" * 8_000}B', 7, ElementType.ACTION)
+    pathological_after = _element(f"{'A' * 8_000}B", 7, ElementType.ACTION)
     candidate_filter_call_count = 0
     ratio_call_count = 0
     original_candidate_filter = diff_domain._can_affect_similarity_choice
 
-    single_pair_character_work = len(pathological_before.text) * len(
-        pathological_after.text
-    )
+    single_pair_character_work = len(pathological_before.text) * len(pathological_after.text)
     assert diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS > 2 * 2
     assert single_pair_character_work > 50_000_000
     assert single_pair_character_work < diff_domain.MAX_SIMILARITY_CHARACTER_WORK
@@ -373,9 +364,7 @@ def test_distant_reordered_unique_near_edits_preserve_modified_lineage():
     diff = _compute(before, after)
 
     assert len(diff.elements) == line_count
-    assert all(
-        row.classification is ChangeClassification.MODIFIED for row in diff.elements
-    )
+    assert all(row.classification is ChangeClassification.MODIFIED for row in diff.elements)
     assert [row.before_element_id for row in diff.elements] == [
         before[index].element_id for index in after_order
     ]
@@ -392,10 +381,7 @@ def test_distant_reordered_unique_near_edits_preserve_modified_lineage():
 def test_distant_matches_just_under_similarity_budget_remain_modified():
     line_count = 99
     assert line_count * line_count < diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
-    assert (
-        (line_count + 1) * (line_count + 1)
-        == diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
-    )
+    assert (line_count + 1) * (line_count + 1) == diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
     tokens = [hashlib.sha256(str(index).encode()).hexdigest() for index in range(line_count)]
     before = [
         _element(
@@ -417,9 +403,7 @@ def test_distant_matches_just_under_similarity_budget_remain_modified():
     diff = _compute(before, after)
 
     assert len(diff.elements) == line_count
-    assert all(
-        row.classification is ChangeClassification.MODIFIED for row in diff.elements
-    )
+    assert all(row.classification is ChangeClassification.MODIFIED for row in diff.elements)
     assert [row.before_element_id for row in diff.elements] == [
         before[index].element_id for index in after_order
     ]
@@ -517,17 +501,13 @@ def test_output_order_and_repeated_calls_are_deterministic():
     )
 
     assert first == second
-    assert [
-        (row.after_ordinal, row.before_ordinal)
-        for row in first.elements
-    ] == [
+    assert [(row.after_ordinal, row.before_ordinal) for row in first.elements] == [
         (1, None),
         (5, 4),
         (7, None),
         (None, 2),
         (None, 9),
     ]
-
 
 
 def test_crossing_exact_matches_keep_the_earliest_after_line_stable():
@@ -592,10 +572,7 @@ def test_similarity_work_is_bounded_for_shared_vocabulary_screenplay_scale(
 
     assert line_count * line_count > diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
     assert first_comparison_count <= diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
-    assert (
-        comparison_count - first_comparison_count
-        <= diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
-    )
+    assert comparison_count - first_comparison_count <= diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
     assert comparison_count == len(compared_pairs) == 0
     assert first.elements == second.elements
     assert len(first.elements) == line_count * 2 + 1

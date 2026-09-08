@@ -22,9 +22,7 @@ MAX_SIMILARITY_PAIR_CHARACTER_WORK: Final = 50_000_000
 MAX_SIMILARITY_CHARACTER_WORK: Final = 150_000_000
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
-_SIMILARITY_AMBIGUITY_FLOOR: Final = (
-    _SIMILARITY_THRESHOLD - _SIMILARITY_RUNNER_UP_MARGIN
-)
+_SIMILARITY_AMBIGUITY_FLOOR: Final = _SIMILARITY_THRESHOLD - _SIMILARITY_RUNNER_UP_MARGIN
 
 
 class ChangeClassification(StrEnum):
@@ -106,8 +104,7 @@ class ScriptDiff:
             for element_diff in self.element_diffs
             if element_diff.classification
             in {ChangeClassification.UNCHANGED, ChangeClassification.MOVED}
-            and element_diff.confidence
-            in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
+            and element_diff.confidence in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
             and element_diff.before_element_id is not None
         )
 
@@ -209,25 +206,15 @@ def _contextual_exact_matches(
 
     for key, all_before_indexes in before_groups.items():
         before_indexes = [index for index in all_before_indexes if index not in matched_before]
-        after_indexes = [
-            index
-            for index in after_groups.get(key, [])
-            if index not in matched_after
-        ]
+        after_indexes = [index for index in after_groups.get(key, []) if index not in matched_after]
         if not before_indexes or not after_indexes:
             continue
 
-        before_contexts = {
-            index: _context_key(before_elements, index) for index in before_indexes
-        }
-        after_contexts = {
-            index: _context_key(after_elements, index) for index in after_indexes
-        }
+        before_contexts = {index: _context_key(before_elements, index) for index in before_indexes}
+        after_contexts = {index: _context_key(after_elements, index) for index in after_indexes}
         before_counts = Counter(before_contexts.values())
         after_counts = Counter(after_contexts.values())
-        after_by_context = {
-            context: index for index, context in after_contexts.items()
-        }
+        after_by_context = {context: index for index, context in after_contexts.items()}
 
         for before_index in before_indexes:
             context = before_contexts[before_index]
@@ -285,8 +272,7 @@ def _character_multiset_similarity_upper_bound(
     if len(source_counts) > len(target_counts):
         source_counts, target_counts = target_counts, source_counts
     shared_characters = sum(
-        min(count, target_counts.get(character, 0))
-        for character, count in source_counts.items()
+        min(count, target_counts.get(character, 0)) for character, count in source_counts.items()
     )
     return (2 * shared_characters) / combined_length
 
@@ -386,35 +372,26 @@ def _similar_matches(
         return []
 
     max_before_length_by_type = {
-        element_type: max(
-            before_elements[index].text_length for index in before_indexes
-        )
+        element_type: max(before_elements[index].text_length for index in before_indexes)
         for element_type, before_indexes in before_by_type.items()
     }
     max_after_length_by_type = {
-        element_type: max(
-            after_elements[index].text_length for index in after_indexes
-        )
+        element_type: max(after_elements[index].text_length for index in after_indexes)
         for element_type, after_indexes in after_by_type.items()
     }
     if any(
-        max_before_length
-        * max_after_length_by_type.get(element_type, 0)
+        max_before_length * max_after_length_by_type.get(element_type, 0)
         > MAX_SIMILARITY_PAIR_CHARACTER_WORK
         for element_type, max_before_length in max_before_length_by_type.items()
     ):
         return []
 
     before_length_by_type = {
-        element_type: sum(
-            before_elements[index].text_length for index in before_indexes
-        )
+        element_type: sum(before_elements[index].text_length for index in before_indexes)
         for element_type, before_indexes in before_by_type.items()
     }
     after_length_by_type = {
-        element_type: sum(
-            after_elements[index].text_length for index in after_indexes
-        )
+        element_type: sum(after_elements[index].text_length for index in after_indexes)
         for element_type, after_indexes in after_by_type.items()
     }
     raw_character_work = sum(
@@ -433,8 +410,7 @@ def _similar_matches(
         )
     )
     eligible_character_work = sum(
-        before_elements[before_index].text_length
-        * after_elements[after_index].text_length
+        before_elements[before_index].text_length * after_elements[after_index].text_length
         for before_index, after_index in candidate_pairs
     )
     if eligible_character_work > MAX_SIMILARITY_CHARACTER_WORK:
@@ -485,17 +461,16 @@ def _stable_exact_pairs(matches: list[_LineageMatch]) -> set[tuple[int, int]]:
         (
             match
             for match in matches
-            if match.confidence
-            in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
+            if match.confidence in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
         ),
         key=lambda match: (match.after_index, match.before_index),
     )
     if not exact_matches:
         return set()
 
-    tree: list[_SubsequenceEndpoint | None] = [
-        None
-    ] * (max(match.before_index for match in exact_matches) + 2)
+    tree: list[_SubsequenceEndpoint | None] = [None] * (
+        max(match.before_index for match in exact_matches) + 2
+    )
     previous: list[int | None] = [None] * len(exact_matches)
     best_endpoint: _SubsequenceEndpoint | None = None
 
@@ -651,8 +626,7 @@ def compute_script_diff(
         for element_diff in ordered_diffs
         if element_diff.classification
         in {ChangeClassification.UNCHANGED, ChangeClassification.MOVED}
-        and element_diff.confidence
-        in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
+        and element_diff.confidence in {LineageConfidence.EXACT, LineageConfidence.CONTEXTUAL}
         and element_diff.after_element_id is not None
     )
     removed_element_ids = tuple(

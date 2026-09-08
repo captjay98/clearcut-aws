@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 import uuid6
 from clearcut.detection.domain.candidates import ClearanceCategory
@@ -47,7 +49,7 @@ def _item(
     )
 
 
-def _diff_with_distinct_lineage_ids() -> tuple[ScriptDiff, dict[str, object]]:
+def _diff_with_distinct_lineage_ids() -> tuple[ScriptDiff, dict[str, UUID]]:
     ids = {
         "modified_before": uuid6.uuid7(),
         "modified_after": uuid6.uuid7(),
