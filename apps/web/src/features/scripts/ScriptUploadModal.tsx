@@ -9,10 +9,48 @@ export interface ScriptUploadModalProps {
   returnFocusRef: React.RefObject<HTMLElement>;
   successFocusRef: React.RefObject<HTMLElement>;
   onSuccess: (version: ScriptVersion) => void | Promise<void>;
+  /**
+   * "initial" imports the project's first version; "revision" imports a
+   * follow-up revision to compare and selectively rescan against. Copy is
+   * derived from this — no version number is ever hard-coded.
+   */
+  purpose?: "initial" | "revision";
 }
 
 type ImportMode = "file" | "paste";
 type ImportStep = "select" | "diagnostics";
+
+interface PurposeCopy {
+  dialogTitle: string;
+  commitIdle: string;
+  commitAccept: string;
+  commitBusy: string;
+  commitFailure: string;
+  resumeFailure: string;
+}
+
+function copyForPurpose(purpose: "initial" | "revision"): PurposeCopy {
+  if (purpose === "revision") {
+    return {
+      dialogTitle: "Import Revision",
+      commitIdle: "Commit Revision",
+      commitAccept: "Accept Warnings & Commit Revision",
+      commitBusy: "Committing Revision…",
+      commitFailure: "The revision could not be committed.",
+      resumeFailure:
+        "The revision was committed, but this view could not resume it. Close and reload to continue from the persisted version.",
+    };
+  }
+  return {
+    dialogTitle: "Import Screenplay",
+    commitIdle: "Commit Version",
+    commitAccept: "Accept Warnings & Commit Version",
+    commitBusy: "Committing Version…",
+    commitFailure: "The screenplay version could not be committed.",
+    resumeFailure:
+      "The version was committed, but this view could not resume it. Close and reload to continue from the persisted version.",
+  };
+}
 
 function contentTypeForFile(file: File): string {
   const lowerName = file.name.toLowerCase();
@@ -28,6 +66,7 @@ export function ScriptUploadModal({
   returnFocusRef,
   successFocusRef,
   onSuccess,
+  purpose = "initial",
 }: ScriptUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [pastedText, setPastedText] = useState("");
@@ -40,6 +79,7 @@ export function ScriptUploadModal({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const commitSucceededRef = useRef(false);
   const loadingRef = useRef(false);
+  const copy = copyForPurpose(purpose);
 
   const reset = () => {
     setFile(null);
@@ -229,19 +269,17 @@ export function ScriptUploadModal({
         onClose();
       } catch {
         setParseRun(null);
-        setError(
-          "Version one was committed, but this view could not resume it. Close and reload to continue from the persisted version.",
-        );
+        setError(copy.resumeFailure);
       }
     } catch {
-      setError("Version one could not be committed.");
+      setError(copy.commitFailure);
     } finally {
       setLoading(false);
     }
   };
 
   const dialogTitle =
-    step === "select" ? "Import Screenplay" : "Parser Diagnostics & Verification";
+    step === "select" ? copy.dialogTitle : "Parser Diagnostics & Verification";
 
   return (
     <div
@@ -410,10 +448,10 @@ export function ScriptUploadModal({
               className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded shadow"
             >
               {loading
-                ? "Committing Version 1..."
+                ? copy.commitBusy
                 : parseRun && parseRun.warnings.length > 0 && !parseRun.warningsAccepted
-                  ? "Accept Warnings & Commit Version 1"
-                  : "Commit Version 1"}
+                  ? copy.commitAccept
+                  : copy.commitIdle}
             </button>
           )}
         </div>

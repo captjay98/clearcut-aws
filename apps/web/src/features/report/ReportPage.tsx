@@ -29,9 +29,10 @@ export function ReportPage({
       <div className="space-y-6">
         <Banner
           title="Legal Boundary Compliance Notice"
-          variant="info"
-          message="ClearCut dossiers provide sourced factual findings and workflow coordination. ClearCut does not provide legal advice or clearance guarantees."
-        />
+          type="info"
+        >
+          ClearCut dossiers provide sourced factual findings and workflow coordination. ClearCut does not provide legal advice or clearance guarantees.
+        </Banner>
 
         <Card title="Current Report Snapshot Status">
           <div className="flex items-center justify-between">

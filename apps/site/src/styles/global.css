@@ -1,0 +1,7 @@
+/* Design-system tokens first so the theme custom properties resolve, then the
+   Tailwind utility layers the marketing pages are authored against. */
+@import "@clearcut/design-system/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -11,9 +11,10 @@ export function SettingsPage() {
       <div className="space-y-6">
         <Banner
           title="Protected Configuration Governance"
-          variant="info"
-          message="Policy updates and retention alterations require Owner authentication with multi-factor re-authorization."
-        />
+          type="info"
+        >
+          Policy updates and retention alterations require Owner authentication with multi-factor re-authorization.
+        </Banner>
 
         <Card title="Data Retention & Immutability Rules">
           <div className="space-y-3 text-xs text-slate-600 dark:text-slate-400">

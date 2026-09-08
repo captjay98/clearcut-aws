@@ -26,9 +26,10 @@ export function RecordsPage({
       <div className="space-y-6">
         <Banner
           title="Redaction Boundary Guarantee"
-          variant="info"
-          message="Records contain structured event metadata and receipt projections. Raw screenplay dialogue and third-party secrets are strictly excluded."
-        />
+          type="info"
+        >
+          Records contain structured event metadata and receipt projections. Raw screenplay dialogue and third-party secrets are strictly excluded.
+        </Banner>
 
         <Card title="Authoritative Audit Events">
           <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">

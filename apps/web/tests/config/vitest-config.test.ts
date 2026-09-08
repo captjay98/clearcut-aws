@@ -11,6 +11,7 @@ describe("Vitest collection boundary", () => {
     expect(config.test?.include).toEqual([
       "tests/unit/**/*.test.{ts,tsx}",
       "tests/config/**/*.test.ts",
+      "src/**/__tests__/**/*.test.{ts,tsx}",
     ]);
   });
 });

@@ -22,6 +22,10 @@ export default defineConfig({
     },
   },
   resolve: {
+    // The design-system package declares its own React peer; without deduping,
+    // its components would be transpiled against a second React copy and their
+    // elements would fail to render under this app's React. Force a single React.
+    dedupe: ["react", "react-dom"],
     alias: {
       "@clearcut/design-system": path.resolve(
         __dirname,
@@ -31,12 +35,15 @@ export default defineConfig({
         __dirname,
         "../../packages/contracts/generated/typescript/index.ts",
       ),
+      react: path.resolve(__dirname, "./node_modules/react"),
+      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
     },
   },
   test: {
     include: [
       "tests/unit/**/*.test.{ts,tsx}",
       "tests/config/**/*.test.ts",
+      "src/**/__tests__/**/*.test.{ts,tsx}",
     ],
   },
 });

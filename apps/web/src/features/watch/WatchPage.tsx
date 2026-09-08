@@ -24,9 +24,10 @@ export function WatchPage({
       <div className="space-y-6">
         <Banner
           title="Parallel Web Monitoring Notice"
-          variant="info"
-          message="Evidence watch performs scheduled rechecks using Parallel Search and Extract to detect source modifications."
-        />
+          type="info"
+        >
+          Evidence watch performs scheduled rechecks using Parallel Search and Extract to detect source modifications.
+        </Banner>
 
         <Card title="Monitoring Cadence Configuration">
           <div className="space-y-4 text-xs">

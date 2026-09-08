@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 @layer reset, tokens, base, layout, components, utilities, responsive, marketing;
 
 @layer reset {
@@ -42,8 +46,11 @@
     --rev-goldenrod: #e5c76b;
   }
 
-  /* ═══════ SCRIPT (default) — typewriter ink on cream stock ═══════ */
-  :root[data-theme="script"] {
+  /* ═══════ DAY SHOOT (default) — typewriter ink on cream stock ═══════
+     Applied to bare :root as well so the core tokens resolve before the
+     theme boot script runs and for any surface that never sets data-theme. */
+  :root,
+  :root[data-theme="day-shoot"] {
     color-scheme: light;
     --canvas: #f6f3ea;
     --canvas-deep: #e8e4d6;
@@ -91,7 +98,7 @@
   }
 
   /* ═══════ NIGHT SHOOT — amber flags on charcoal pages ═══════ */
-  :root[data-theme="night"] {
+  :root[data-theme="night-shoot"] {
     color-scheme: dark;
     /* Revision stock muted for dark pages */
     --rev-white: #6b7280;
@@ -149,6 +156,60 @@
     --lp-flag-bg-hover: rgb(232 163 61 / 26%);
     --lp-flag-ink: #e8a33d;
     --lp-end-bg: #0c0d10;
+  }
+
+  /* ═══════ HIGH CONTRAST — maximum legibility, pure ink on true black ═══════
+     A dark-family theme (ThemeProvider also adds the `dark` class), tuned so
+     every foreground clears WCAG AAA against its surface. */
+  :root[data-theme="high-contrast"] {
+    color-scheme: dark;
+    --rev-white: #ffffff;
+    --rev-blue: #7fb8ff;
+    --rev-pink: #ff9ec2;
+    --rev-yellow: #ffe066;
+    --rev-green: #7fe0a0;
+    --rev-goldenrod: #ffcf4d;
+    --canvas: #000000;
+    --canvas-deep: #000000;
+    --surface: #0a0a0a;
+    --surface-2: #141414;
+    --ink: #ffffff;
+    --ink-soft: #f0f0f0;
+    --ink-faint: #d4d4d4;
+    --rule: #6a6a6a;
+    --rule-strong: #9a9a9a;
+    --accent: #ffd200;
+    --accent-hover: #ffde40;
+    --accent-soft: rgb(255 210 0 / 22%);
+    --accent-on: #000000;
+    --success: #55e08a;
+    --success-soft: rgb(85 224 138 / 20%);
+    --warning: #ffd200;
+    --warning-soft: rgb(255 210 0 / 20%);
+    --danger: #ff8f7a;
+    --danger-soft: rgb(255 143 122 / 22%);
+    --neutral: #e0e0e0;
+    --neutral-soft: rgb(224 224 224 / 16%);
+    --shadow-sm: 0 0 0 1px rgb(255 255 255 / 30%);
+    --shadow-md: 0 0 0 1px rgb(255 255 255 / 35%);
+    --shadow-lg: 0 0 0 2px rgb(255 255 255 / 40%);
+    --radius-sm: 2px;
+    --radius: 3px;
+    --radius-lg: 5px;
+    --display: 'Courier New', Courier, monospace;
+    --sans: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+    --script: 'Courier New', Courier, monospace;
+    --display-weight: 700;
+    --mark-bg: rgb(255 210 0 / 22%);
+    --mark-border: rgb(255 210 0 / 60%);
+    --mark-ink: #ffde40;
+    --lp-hole: #000000;
+    --lp-hole-rim: #2a2a2a;
+    --lp-flag-bg: rgb(255 210 0 / 22%);
+    --lp-flag-bg-hover: rgb(255 210 0 / 34%);
+    --lp-flag-ink: #ffd200;
+    --lp-end-bg: #000000;
   }
 }
 
@@ -965,8 +1026,10 @@
       var(--ink) 5px 10px);
   }
   .slate-mark span { position: relative; margin-top: 7px; }
-  :root[data-theme="night"] .slate-mark { background: var(--accent); color: #0a0a0f; }
-  :root[data-theme="night"] .slate-mark::before { background: repeating-linear-gradient(115deg, #0a0a0f 0 5px, var(--accent) 5px 10px); }
+  :root[data-theme="night-shoot"] .slate-mark,
+  :root[data-theme="high-contrast"] .slate-mark { background: var(--accent); color: #0a0a0f; }
+  :root[data-theme="night-shoot"] .slate-mark::before,
+  :root[data-theme="high-contrast"] .slate-mark::before { background: repeating-linear-gradient(115deg, #0a0a0f 0 5px, var(--accent) 5px 10px); }
 
   /* ── Revision bar (header bottom edge, current stock) ── */
   .revision-bar {

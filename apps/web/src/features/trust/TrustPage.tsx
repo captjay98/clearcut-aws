@@ -33,9 +33,10 @@ export function TrustPage({
         {!hasData ? (
           <Banner
             title="Evaluation not yet available"
-            variant="info"
-            message="No judge evaluation has been run for this organization yet. Rubric scores appear here once an evaluation run completes."
-          />
+            type="info"
+          >
+            No judge evaluation has been run for this organization yet. Rubric scores appear here once an evaluation run completes.
+          </Banner>
         ) : (
           <>
             <StatGrid
