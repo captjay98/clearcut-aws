@@ -1,4 +1,5 @@
 """Persistent screenplay import application service."""
+
 import hashlib
 import hmac
 import json
@@ -15,6 +16,8 @@ from clearcut.scripts.adapters.fdx_parser import FdxParser
 from clearcut.scripts.adapters.fountain_parser import FountainParser
 from clearcut.scripts.adapters.paste_parser import PasteParser
 from clearcut.scripts.adapters.sql_import_repository import (
+    AdjacentDiffRecord,
+    ElementLineageRecord,
     ImportArtifactRecord,
     ImportRecordConflictError,
     ParseDiagnosticRecord,
@@ -116,6 +119,35 @@ class ScriptVersionView:
     scene_count: int
     element_count: int
     created_at: datetime
+    predecessor_version_id: UUID | None = None
+    committed_by_user_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class ElementChangeView:
+    before_element_id: UUID | None
+    after_element_id: UUID | None
+    before_ordinal: int | None
+    after_ordinal: int | None
+    before_text: str | None
+    after_text: str | None
+    change_kind: str
+    confidence: str
+
+
+@dataclass(frozen=True)
+class AdjacentDiffView:
+    diff_id: UUID
+    project_id: UUID
+    script_id: UUID
+    before_version_id: UUID
+    after_version_id: UUID
+    before_version_number: int
+    after_version_number: int
+    algorithm_version: str
+    changes: tuple[ElementChangeView, ...]
+    impact_counts: dict[str, int]
+    created_at: datetime
 
 
 class ImportScriptService:
@@ -182,9 +214,7 @@ class ImportScriptService:
         content_type: str | None,
         data: bytes,
     ) -> ImportArtifactView:
-        capability = await self._repository.get_upload_capability(
-            org_id, project_id, capability_id
-        )
+        capability = await self._repository.get_upload_capability(org_id, project_id, capability_id)
         if capability is None or capability.actor_id != actor_id:
             raise ImportNotFoundError("Upload capability was not found.")
         if capability.used_at is not None:
@@ -226,9 +256,7 @@ class ImportScriptService:
         )
         await self._storage.put_object(storage_path, data, capability.content_type)
         try:
-            persisted = await self._repository.finalize_upload_capability(
-                capability, artifact, now
-            )
+            persisted = await self._repository.finalize_upload_capability(capability, artifact, now)
         except ImportRecordConflictError as error:
             await self._delete_staged_object_best_effort(
                 storage_path=storage_path,
@@ -316,9 +344,7 @@ class ImportScriptService:
         artifact = await self._repository.get_artifact(org_id, project_id, artifact_id)
         if artifact is None:
             raise ImportNotFoundError("Import artifact was not found.")
-        existing = await self._repository.get_parse_run_by_artifact(
-            org_id, project_id, artifact_id
-        )
+        existing = await self._repository.get_parse_run_by_artifact(org_id, project_id, artifact_id)
         if existing is not None:
             return self._parse_run_view(existing)
 
@@ -328,17 +354,13 @@ class ImportScriptService:
         if len(data) != artifact.size_bytes or not hmac.compare_digest(
             compute_sha256(data), artifact.sha256_hash
         ):
-            raise ImportUnavailableError(
-                "Imported screenplay bytes failed integrity verification."
-            )
+            raise ImportUnavailableError("Imported screenplay bytes failed integrity verification.")
         try:
             parsed = self._parser_for(artifact).parse(data, artifact.filename)
         except ValueError as error:
             raise ImportValidationError(str(error)) from error
 
-        scene_count = sum(
-            element.element_type == "scene_heading" for element in parsed.elements
-        )
+        scene_count = sum(element.element_type == "scene_heading" for element in parsed.elements)
         if not parsed.elements or scene_count == 0:
             raise ImportValidationError(
                 "A screenplay must contain at least one valid scene heading."
@@ -406,6 +428,7 @@ class ImportScriptService:
         org_id: UUID,
         project_id: UUID,
         run_id: UUID,
+        actor_id: UUID,
     ) -> ScriptVersionView:
         record = await self._repository.get_parse_run(org_id, project_id, run_id)
         if record is None:
@@ -413,12 +436,20 @@ class ImportScriptService:
         if record.status != "succeeded":
             raise ImportConflictError("Only a successful parse run can be committed.")
         try:
-            version = await self._repository.commit_version_one(
-                org_id, project_id, run_id
-            )
+            version = await self._repository.commit_version(org_id, project_id, run_id, actor_id)
         except ImportRecordConflictError as error:
             raise ImportConflictError(str(error)) from error
         return self._version_view(version)
+
+    async def get_adjacent_diff(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+    ) -> AdjacentDiffView | None:
+        record = await self._repository.get_adjacent_diff(org_id, project_id, after_version_id)
+        return self._adjacent_diff_view(record) if record is not None else None
 
     async def get_current_script(
         self,
@@ -472,10 +503,7 @@ class ImportScriptService:
                 "PDF import is unavailable until a deterministic PDF parser is configured.",
                 status_code=415,
             )
-        if (
-            lower_filename.endswith((".fountain", ".txt"))
-            or content_type.startswith("text/")
-        ):
+        if lower_filename.endswith((".fountain", ".txt")) or content_type.startswith("text/"):
             try:
                 data.decode("utf-8")
             except UnicodeDecodeError as error:
@@ -600,4 +628,41 @@ class ImportScriptService:
             scene_count=record.scene_count,
             element_count=record.element_count,
             created_at=record.created_at,
+            predecessor_version_id=record.predecessor_version_id,
+            committed_by_user_id=record.committed_by_actor_id,
+        )
+
+    @staticmethod
+    def _adjacent_diff_view(record: AdjacentDiffRecord) -> AdjacentDiffView:
+        changes = tuple(
+            ImportScriptService._element_change_view(change) for change in record.changes
+        )
+        impact_counts: dict[str, int] = {}
+        for change in changes:
+            impact_counts[change.change_kind] = impact_counts.get(change.change_kind, 0) + 1
+        return AdjacentDiffView(
+            diff_id=record.diff_id,
+            project_id=record.project_id,
+            script_id=record.script_id,
+            before_version_id=record.before_version_id,
+            after_version_id=record.after_version_id,
+            before_version_number=record.before_ordinal,
+            after_version_number=record.after_ordinal,
+            algorithm_version=record.algorithm_version,
+            changes=changes,
+            impact_counts=impact_counts,
+            created_at=record.created_at,
+        )
+
+    @staticmethod
+    def _element_change_view(record: ElementLineageRecord) -> ElementChangeView:
+        return ElementChangeView(
+            before_element_id=record.before_element_id,
+            after_element_id=record.after_element_id,
+            before_ordinal=record.before_ordinal,
+            after_ordinal=record.after_ordinal,
+            before_text=record.before_text,
+            after_text=record.after_text,
+            change_kind=record.change_kind,
+            confidence=record.confidence,
         )

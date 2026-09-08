@@ -1,4 +1,5 @@
 """SQL persistence for the screenplay import and immutable-version lifecycle."""
+
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -8,6 +9,12 @@ from uuid import UUID
 import sqlalchemy as sa
 import uuid6
 from clearcut.database import session_scope
+from clearcut.scripts.domain.diff import (
+    ChangeClassification,
+    ScriptDiff,
+    compute_script_diff,
+)
+from clearcut.scripts.domain.elements import ElementType, ScriptElement
 from sqlalchemy import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,6 +102,36 @@ class ScriptVersionRecord:
     scene_count: int
     element_count: int
     created_at: datetime
+    predecessor_version_id: UUID | None = None
+    predecessor_ordinal: int | None = None
+    committed_by_actor_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class ElementLineageRecord:
+    before_element_id: UUID | None
+    after_element_id: UUID | None
+    before_ordinal: int | None
+    after_ordinal: int | None
+    before_text: str | None
+    after_text: str | None
+    change_kind: str
+    confidence: str
+
+
+@dataclass(frozen=True)
+class AdjacentDiffRecord:
+    diff_id: UUID
+    org_id: UUID
+    project_id: UUID
+    script_id: UUID
+    before_version_id: UUID
+    after_version_id: UUID
+    before_ordinal: int
+    after_ordinal: int
+    algorithm_version: str
+    created_at: datetime
+    changes: tuple[ElementLineageRecord, ...]
 
 
 @dataclass(frozen=True)
@@ -137,6 +174,13 @@ def _require_datetime(value: datetime | str | None) -> datetime:
     if parsed is None:
         raise ValueError("Expected a non-null datetime value")
     return parsed
+
+
+def _diff_impact_counts(diff: ScriptDiff) -> dict[str, int]:
+    counts = {classification.value: 0 for classification in ChangeClassification}
+    for element_diff in diff.element_diffs:
+        counts[element_diff.classification.value] += 1
+    return counts
 
 
 def _capability_from_row(row: sa.RowMapping) -> UploadCapabilityRecord:
@@ -489,149 +533,94 @@ class SqlImportRepository:
         org_id: UUID,
         project_id: UUID,
         run_id: UUID,
+        actor_id: UUID,
     ) -> ScriptVersionRecord:
-        try:
-            return await self._commit_version_one_once(org_id, project_id, run_id)
-        except IntegrityError as error:
-            async with session_scope() as session:
-                existing = await self._get_version_by_run(
-                    session, org_id, project_id, run_id
-                )
-                if existing is not None:
-                    return existing
-                current = await session.execute(
-                    sa.text(
-                        "SELECT v.id FROM script_versions v JOIN scripts s "
-                        "ON s.id = v.script_id WHERE v.org_id = :org_id "
-                        "AND v.project_id = :project_id "
-                        "AND s.current_slot = 'current' LIMIT 1"
-                    ),
-                    {"org_id": str(org_id), "project_id": str(project_id)},
-                )
-                if current.first() is not None:
-                    raise ImportRecordConflictError(
-                        "Version one already exists for this project"
-                    ) from error
-            raise ImportRecordConflictError(
-                "Version one could not be committed concurrently"
-            ) from error
+        """Backwards-compatible alias for :meth:`commit_version`.
 
-    async def _commit_version_one_once(
+        Retained only for callers that still reference the historical name; the
+        additive next-version semantics live in :meth:`commit_version`.
+        """
+        return await self.commit_version(org_id, project_id, run_id, actor_id)
+
+    async def commit_version(
         self,
         org_id: UUID,
         project_id: UUID,
         run_id: UUID,
+        actor_id: UUID,
+    ) -> ScriptVersionRecord:
+        try:
+            return await self._commit_version_once(org_id, project_id, run_id, actor_id)
+        except IntegrityError as error:
+            # A concurrent commit won the scoped ordinal. Only a same-parse-run
+            # replay may return the winner; any other loser gets a typed conflict.
+            async with session_scope() as session:
+                existing = await self._get_version_by_run(session, org_id, project_id, run_id)
+            if existing is not None:
+                return existing
+            raise ImportRecordConflictError(
+                "A newer screenplay version was committed concurrently"
+            ) from error
+
+    async def _commit_version_once(
+        self,
+        org_id: UUID,
+        project_id: UUID,
+        run_id: UUID,
+        actor_id: UUID,
     ) -> ScriptVersionRecord:
         async with session_scope() as session:
             existing = await self._get_version_by_run(session, org_id, project_id, run_id)
             if existing is not None:
                 return existing
 
-            run_result = await session.execute(
-                sa.text(
-                    "SELECT r.*, a.sha256_hash FROM parse_runs r "
-                    "JOIN import_artifacts a ON a.id = r.artifact_id "
-                    "AND a.org_id = r.org_id AND a.project_id = r.project_id "
-                    "WHERE r.id = :run_id AND r.org_id = :org_id "
-                    "AND r.project_id = :project_id"
-                ),
-                {
-                    "run_id": str(run_id),
-                    "org_id": str(org_id),
-                    "project_id": str(project_id),
-                },
-            )
-            run = run_result.mappings().first()
-            if run is None:
-                raise ImportRecordNotFoundError("Parse run was not found")
-
-            warning_result = await session.execute(
-                sa.text(
-                    "SELECT count(*) FROM parse_diagnostics WHERE run_id = :run_id "
-                    "AND requires_acceptance = :required"
-                ),
-                {"run_id": str(run_id), "required": True},
-            )
-            if int(warning_result.scalar_one()) > 0:
-                acceptance = await session.execute(
-                    sa.text(
-                        "SELECT diagnostics_hash FROM parse_warning_acceptances "
-                        "WHERE run_id = :run_id AND org_id = :org_id "
-                        "AND project_id = :project_id"
-                    ),
-                    {
-                        "run_id": str(run_id),
-                        "org_id": str(org_id),
-                        "project_id": str(project_id),
-                    },
-                )
-                accepted_hash = acceptance.scalar_one_or_none()
-                if accepted_hash != run["diagnostics_hash"]:
-                    raise ImportRecordConflictError(
-                        "Parse warnings must be accepted before committing version one"
-                    )
-
-            script_result = await session.execute(
-                sa.text(
-                    "SELECT id FROM scripts WHERE org_id = :org_id "
-                    "AND project_id = :project_id AND current_slot = 'current'"
-                ),
-                {"org_id": str(org_id), "project_id": str(project_id)},
-            )
-            script_id = script_result.scalar_one_or_none()
+            run = await self._load_committable_run(session, org_id, project_id, run_id)
             created_at = _require_datetime(run["completed_at"])
-            if script_id is None:
-                script_id = str(uuid6.uuid7())
-                await session.execute(
-                    sa.text(
-                        "INSERT INTO scripts "
-                        "(id, org_id, project_id, title, created_at, current_slot) "
-                        "VALUES (:id, :org_id, :project_id, :title, :created_at, 'current')"
-                    ),
-                    {
-                        "id": script_id,
-                        "org_id": str(org_id),
-                        "project_id": str(project_id),
-                        "title": run["title"],
-                        "created_at": created_at,
-                    },
-                )
-            else:
-                prior_version = await session.execute(
-                    sa.text(
-                        "SELECT id FROM script_versions WHERE script_id = :script_id LIMIT 1"
-                    ),
-                    {"script_id": str(script_id)},
-                )
-                if prior_version.first() is not None:
-                    raise ImportRecordConflictError(
-                        "Version one already exists for this project"
-                    )
+
+            script_id, predecessor = await self._resolve_script_and_predecessor(
+                session, org_id, project_id, run, created_at
+            )
+            ordinal = 1 if predecessor is None else predecessor["ordinal"] + 1
+            predecessor_version_id = (
+                UUID(str(predecessor["id"])) if predecessor is not None else None
+            )
+            predecessor_ordinal = int(predecessor["ordinal"]) if predecessor is not None else None
 
             version_id = uuid6.uuid7()
             await session.execute(
                 sa.text(
                     "INSERT INTO script_versions "
                     "(id, script_id, org_id, project_id, ordinal, source_hash, "
-                    "parser_version, created_at, import_artifact_id, parse_run_id) "
-                    "VALUES (:id, :script_id, :org_id, :project_id, 1, :source_hash, "
-                    ":parser_version, :created_at, :artifact_id, :parse_run_id)"
+                    "parser_version, created_at, import_artifact_id, parse_run_id, "
+                    "predecessor_version_id, predecessor_ordinal, committed_by_actor_id) "
+                    "VALUES (:id, :script_id, :org_id, :project_id, :ordinal, "
+                    ":source_hash, :parser_version, :created_at, :artifact_id, "
+                    ":parse_run_id, :predecessor_version_id, :predecessor_ordinal, "
+                    ":committed_by_actor_id)"
                 ),
                 {
                     "id": str(version_id),
                     "script_id": str(script_id),
                     "org_id": str(org_id),
                     "project_id": str(project_id),
+                    "ordinal": ordinal,
                     "source_hash": run["sha256_hash"],
                     "parser_version": run["parser_version"],
                     "created_at": created_at,
                     "artifact_id": str(run["artifact_id"]),
                     "parse_run_id": str(run_id),
+                    "predecessor_version_id": (
+                        str(predecessor_version_id) if predecessor_version_id is not None else None
+                    ),
+                    "predecessor_ordinal": predecessor_ordinal,
+                    "committed_by_actor_id": str(actor_id),
                 },
             )
 
-            payload = json.loads(str(run["result_json"]))
-            for element in payload["elements"]:
+            after_elements = self._materialize_new_elements(
+                version_id, json.loads(str(run["result_json"]))
+            )
+            for element in after_elements:
                 await session.execute(
                     sa.text(
                         "INSERT INTO script_elements "
@@ -640,14 +629,33 @@ class SqlImportRepository:
                         ":text, :scene_number, :page_number)"
                     ),
                     {
-                        "id": str(uuid6.uuid7()),
+                        "id": str(element.element_id),
                         "version_id": str(version_id),
-                        "ordinal": element["ordinal"],
-                        "element_type": element["elementType"],
-                        "text": element["text"],
-                        "scene_number": element["sceneNumber"],
-                        "page_number": element["pageNumber"],
+                        "ordinal": element.ordinal,
+                        "element_type": element.element_type.value,
+                        "text": element.text,
+                        "scene_number": element.scene_number,
+                        "page_number": element.page_number,
                     },
+                )
+
+            if predecessor_version_id is not None and predecessor_ordinal is not None:
+                before_elements = await self._load_elements(session, predecessor_version_id)
+                diff = compute_script_diff(
+                    before_version_id=predecessor_version_id,
+                    after_version_id=version_id,
+                    before_elements=before_elements,
+                    after_elements=list(after_elements),
+                )
+                await self._insert_diff_and_lineage(
+                    session,
+                    org_id=org_id,
+                    project_id=project_id,
+                    script_id=UUID(str(script_id)),
+                    before_ordinal=predecessor_ordinal,
+                    after_ordinal=ordinal,
+                    diff=diff,
+                    created_at=created_at,
                 )
 
             return ScriptVersionRecord(
@@ -657,14 +665,333 @@ class SqlImportRepository:
                 project_id=project_id,
                 import_artifact_id=UUID(str(run["artifact_id"])),
                 parse_run_id=run_id,
-                ordinal=1,
+                ordinal=ordinal,
                 title=str(run["title"]),
                 source_hash=str(run["sha256_hash"]),
                 parser_version=str(run["parser_version"]),
                 scene_count=int(run["scene_count"]),
                 element_count=int(run["element_count"]),
                 created_at=created_at,
+                predecessor_version_id=predecessor_version_id,
+                predecessor_ordinal=predecessor_ordinal,
+                committed_by_actor_id=actor_id,
             )
+
+    async def _load_committable_run(
+        self,
+        session: AsyncSession,
+        org_id: UUID,
+        project_id: UUID,
+        run_id: UUID,
+    ) -> sa.RowMapping:
+        run_result = await session.execute(
+            sa.text(
+                "SELECT r.*, a.sha256_hash FROM parse_runs r "
+                "JOIN import_artifacts a ON a.id = r.artifact_id "
+                "AND a.org_id = r.org_id AND a.project_id = r.project_id "
+                "WHERE r.id = :run_id AND r.org_id = :org_id "
+                "AND r.project_id = :project_id"
+            ),
+            {
+                "run_id": str(run_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+            },
+        )
+        run = run_result.mappings().first()
+        if run is None:
+            raise ImportRecordNotFoundError("Parse run was not found")
+
+        warning_result = await session.execute(
+            sa.text(
+                "SELECT count(*) FROM parse_diagnostics WHERE run_id = :run_id "
+                "AND requires_acceptance = :required"
+            ),
+            {"run_id": str(run_id), "required": True},
+        )
+        if int(warning_result.scalar_one()) > 0:
+            acceptance = await session.execute(
+                sa.text(
+                    "SELECT diagnostics_hash FROM parse_warning_acceptances "
+                    "WHERE run_id = :run_id AND org_id = :org_id "
+                    "AND project_id = :project_id"
+                ),
+                {
+                    "run_id": str(run_id),
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                },
+            )
+            accepted_hash = acceptance.scalar_one_or_none()
+            if accepted_hash != run["diagnostics_hash"]:
+                raise ImportRecordConflictError(
+                    "Parse warnings must be accepted before committing this version"
+                )
+        return run
+
+    async def _resolve_script_and_predecessor(
+        self,
+        session: AsyncSession,
+        org_id: UUID,
+        project_id: UUID,
+        run: sa.RowMapping,
+        created_at: datetime,
+    ) -> tuple[str, sa.RowMapping | None]:
+        script_result = await session.execute(
+            sa.text(
+                "SELECT id FROM scripts WHERE org_id = :org_id "
+                "AND project_id = :project_id AND current_slot = 'current'"
+            ),
+            {"org_id": str(org_id), "project_id": str(project_id)},
+        )
+        script_id = script_result.scalar_one_or_none()
+        if script_id is None:
+            script_id = str(uuid6.uuid7())
+            await session.execute(
+                sa.text(
+                    "INSERT INTO scripts "
+                    "(id, org_id, project_id, title, created_at, current_slot) "
+                    "VALUES (:id, :org_id, :project_id, :title, :created_at, 'current')"
+                ),
+                {
+                    "id": script_id,
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                    "title": run["title"],
+                    "created_at": created_at,
+                },
+            )
+            return script_id, None
+
+        predecessor_result = await session.execute(
+            sa.text(
+                "SELECT id, ordinal FROM script_versions "
+                "WHERE script_id = :script_id AND org_id = :org_id "
+                "AND project_id = :project_id "
+                "ORDER BY ordinal DESC LIMIT 1"
+            ),
+            {
+                "script_id": str(script_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+            },
+        )
+        predecessor = predecessor_result.mappings().first()
+        return str(script_id), predecessor
+
+    @staticmethod
+    def _materialize_new_elements(
+        version_id: UUID,
+        payload: dict[str, Any],
+    ) -> tuple[ScriptElement, ...]:
+        return tuple(
+            ScriptElement.create(
+                element_id=uuid6.uuid7(),
+                version_id=version_id,
+                ordinal=int(element["ordinal"]),
+                element_type=ElementType(str(element["elementType"])),
+                text=str(element["text"]),
+                scene_number=element["sceneNumber"],
+                page_number=element["pageNumber"],
+            )
+            for element in payload["elements"]
+        )
+
+    async def _load_elements(
+        self,
+        session: AsyncSession,
+        version_id: UUID,
+    ) -> list[ScriptElement]:
+        result = await session.execute(
+            sa.text(
+                "SELECT id, ordinal, element_type, text, scene_number, page_number "
+                "FROM script_elements WHERE version_id = :version_id ORDER BY ordinal"
+            ),
+            {"version_id": str(version_id)},
+        )
+        return [
+            ScriptElement.create(
+                element_id=UUID(str(row["id"])),
+                version_id=version_id,
+                ordinal=int(row["ordinal"]),
+                element_type=ElementType(str(row["element_type"])),
+                text=str(row["text"]),
+                scene_number=(
+                    int(row["scene_number"]) if row["scene_number"] is not None else None
+                ),
+                page_number=(int(row["page_number"]) if row["page_number"] is not None else None),
+            )
+            for row in result.mappings()
+        ]
+
+    async def _insert_diff_and_lineage(
+        self,
+        session: AsyncSession,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        script_id: UUID,
+        before_ordinal: int,
+        after_ordinal: int,
+        diff: ScriptDiff,
+        created_at: datetime,
+    ) -> None:
+        diff_id = uuid6.uuid7()
+        summary = _diff_impact_counts(diff)
+        await session.execute(
+            sa.text(
+                "INSERT INTO script_diffs "
+                "(id, org_id, project_id, script_id, before_version_id, "
+                "after_version_id, before_ordinal, after_ordinal, algorithm_version, "
+                "diff_payload, summary_payload, created_at) VALUES "
+                "(:id, :org_id, :project_id, :script_id, :before_version_id, "
+                ":after_version_id, :before_ordinal, :after_ordinal, :algorithm_version, "
+                ":diff_payload, :summary_payload, :created_at)"
+            ),
+            {
+                "id": str(diff_id),
+                "org_id": str(org_id),
+                "project_id": str(project_id),
+                "script_id": str(script_id),
+                "before_version_id": str(diff.before_version_id),
+                "after_version_id": str(diff.after_version_id),
+                "before_ordinal": before_ordinal,
+                "after_ordinal": after_ordinal,
+                "algorithm_version": diff.algorithm_version,
+                "diff_payload": json.dumps(summary, sort_keys=True, separators=(",", ":")),
+                "summary_payload": json.dumps(summary, sort_keys=True, separators=(",", ":")),
+                "created_at": created_at,
+            },
+        )
+        for element_diff in diff.element_diffs:
+            change_kind = element_diff.classification.value
+            confidence = (
+                element_diff.confidence.value
+                if element_diff.confidence is not None
+                else "unmatched"
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO script_element_lineage "
+                    "(id, org_id, project_id, script_id, diff_id, before_version_id, "
+                    "after_version_id, before_element_id, after_element_id, change_kind, "
+                    "confidence, algorithm_version, created_at) VALUES "
+                    "(:id, :org_id, :project_id, :script_id, :diff_id, "
+                    ":before_version_id, :after_version_id, :before_element_id, "
+                    ":after_element_id, :change_kind, :confidence, :algorithm_version, "
+                    ":created_at)"
+                ),
+                {
+                    "id": str(uuid6.uuid7()),
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                    "script_id": str(script_id),
+                    "diff_id": str(diff_id),
+                    "before_version_id": str(diff.before_version_id),
+                    "after_version_id": str(diff.after_version_id),
+                    "before_element_id": (
+                        str(element_diff.before_element_id)
+                        if element_diff.before_element_id is not None
+                        else None
+                    ),
+                    "after_element_id": (
+                        str(element_diff.after_element_id)
+                        if element_diff.after_element_id is not None
+                        else None
+                    ),
+                    "change_kind": change_kind,
+                    "confidence": confidence,
+                    "algorithm_version": diff.algorithm_version,
+                    "created_at": created_at,
+                },
+            )
+
+    async def get_adjacent_diff(
+        self,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+    ) -> AdjacentDiffRecord | None:
+        async with session_scope() as session:
+            diff_result = await session.execute(
+                sa.text(
+                    "SELECT id, script_id, before_version_id, after_version_id, "
+                    "before_ordinal, after_ordinal, algorithm_version, created_at "
+                    "FROM script_diffs WHERE org_id = :org_id "
+                    "AND project_id = :project_id AND after_version_id = :after_version_id"
+                ),
+                {
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                    "after_version_id": str(after_version_id),
+                },
+            )
+            diff_row = diff_result.mappings().first()
+            if diff_row is None:
+                return None
+
+            lineage_result = await session.execute(
+                sa.text(
+                    "SELECT l.change_kind, l.confidence, "
+                    "l.before_element_id, l.after_element_id, "
+                    "before_e.ordinal AS before_ordinal, before_e.text AS before_text, "
+                    "after_e.ordinal AS after_ordinal, after_e.text AS after_text "
+                    "FROM script_element_lineage l "
+                    "LEFT JOIN script_elements before_e "
+                    "ON before_e.id = l.before_element_id "
+                    "LEFT JOIN script_elements after_e "
+                    "ON after_e.id = l.after_element_id "
+                    "WHERE l.diff_id = :diff_id AND l.org_id = :org_id "
+                    "AND l.project_id = :project_id "
+                    "ORDER BY after_e.ordinal, before_e.ordinal"
+                ),
+                {
+                    "diff_id": str(diff_row["id"]),
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                },
+            )
+            changes = tuple(
+                ElementLineageRecord(
+                    before_element_id=(
+                        UUID(str(row["before_element_id"]))
+                        if row["before_element_id"] is not None
+                        else None
+                    ),
+                    after_element_id=(
+                        UUID(str(row["after_element_id"]))
+                        if row["after_element_id"] is not None
+                        else None
+                    ),
+                    before_ordinal=(
+                        int(row["before_ordinal"]) if row["before_ordinal"] is not None else None
+                    ),
+                    after_ordinal=(
+                        int(row["after_ordinal"]) if row["after_ordinal"] is not None else None
+                    ),
+                    before_text=(
+                        str(row["before_text"]) if row["before_text"] is not None else None
+                    ),
+                    after_text=(str(row["after_text"]) if row["after_text"] is not None else None),
+                    change_kind=str(row["change_kind"]),
+                    confidence=str(row["confidence"]),
+                )
+                for row in lineage_result.mappings()
+            )
+
+        return AdjacentDiffRecord(
+            diff_id=UUID(str(diff_row["id"])),
+            org_id=org_id,
+            project_id=project_id,
+            script_id=UUID(str(diff_row["script_id"])),
+            before_version_id=UUID(str(diff_row["before_version_id"])),
+            after_version_id=UUID(str(diff_row["after_version_id"])),
+            before_ordinal=int(diff_row["before_ordinal"]),
+            after_ordinal=int(diff_row["after_ordinal"]),
+            algorithm_version=str(diff_row["algorithm_version"]),
+            created_at=_require_datetime(diff_row["created_at"]),
+            changes=changes,
+        )
 
     async def get_version(
         self,
@@ -692,9 +1019,7 @@ class SqlImportRepository:
             )
             records = []
             for version_id in result.scalars():
-                record = await self._get_version(
-                    session, org_id, project_id, UUID(str(version_id))
-                )
+                record = await self._get_version(session, org_id, project_id, UUID(str(version_id)))
                 if record is not None:
                     records.append(record)
             return tuple(records)
@@ -739,9 +1064,7 @@ class SqlImportRepository:
                     {
                         "slug": f"SCENE {scene_number}",
                         "page": (
-                            int(row["page_number"])
-                            if row["page_number"] is not None
-                            else None
+                            int(row["page_number"]) if row["page_number"] is not None else None
                         ),
                         "lines": [],
                     },
@@ -849,9 +1172,7 @@ class SqlImportRepository:
         version_id = result.scalar_one_or_none()
         if version_id is None:
             return None
-        return await self._get_version(
-            session, org_id, project_id, UUID(str(version_id))
-        )
+        return await self._get_version(session, org_id, project_id, UUID(str(version_id)))
 
     async def _get_version(
         self,
@@ -884,6 +1205,9 @@ class SqlImportRepository:
             return None
         import_artifact_id = row["import_artifact_id"]
         parse_run_id = row["parse_run_id"]
+        predecessor_version_id = row["predecessor_version_id"]
+        predecessor_ordinal = row["predecessor_ordinal"]
+        committed_by_actor_id = row["committed_by_actor_id"]
         return ScriptVersionRecord(
             version_id=UUID(str(row["id"])),
             script_id=UUID(str(row["script_id"])),
@@ -900,4 +1224,13 @@ class SqlImportRepository:
             scene_count=int(row["scene_count"]),
             element_count=int(row["element_count"]),
             created_at=_require_datetime(row["created_at"]),
+            predecessor_version_id=(
+                UUID(str(predecessor_version_id)) if predecessor_version_id is not None else None
+            ),
+            predecessor_ordinal=(
+                int(predecessor_ordinal) if predecessor_ordinal is not None else None
+            ),
+            committed_by_actor_id=(
+                UUID(str(committed_by_actor_id)) if committed_by_actor_id is not None else None
+            ),
         )

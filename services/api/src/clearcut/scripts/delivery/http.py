@@ -1,4 +1,5 @@
 """Canonical screenplay import and read HTTP boundaries."""
+
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from clearcut.organizations.delivery.http import verify_csrf_origin
 from clearcut.scripts.adapters.sql_import_repository import ProjectScriptProjection
 from clearcut.scripts.application.import_script import (
     MAX_SCRIPT_SIZE_BYTES,
+    AdjacentDiffView,
     ImportArtifactView,
     ImportConflictError,
     ImportNotFoundError,
@@ -156,7 +158,45 @@ def _version_data(version: ScriptVersionView) -> dict[str, object]:
         "parserVersion": version.parser_version,
         "sceneCount": version.scene_count,
         "elementCount": version.element_count,
+        "predecessorVersionId": (
+            str(version.predecessor_version_id) if version.predecessor_version_id else None
+        ),
+        "committedByUserId": (
+            str(version.committed_by_user_id) if version.committed_by_user_id else None
+        ),
         "createdAt": version.created_at.isoformat(),
+    }
+
+
+def _adjacent_diff_data(diff: AdjacentDiffView) -> dict[str, object]:
+    return {
+        "diffId": str(diff.diff_id),
+        "projectId": str(diff.project_id),
+        "scriptId": str(diff.script_id),
+        "beforeVersionId": str(diff.before_version_id),
+        "afterVersionId": str(diff.after_version_id),
+        "beforeVersionNumber": diff.before_version_number,
+        "afterVersionNumber": diff.after_version_number,
+        "algorithmVersion": diff.algorithm_version,
+        "impactCounts": dict(diff.impact_counts),
+        "changes": [
+            {
+                "beforeElementId": (
+                    str(change.before_element_id) if change.before_element_id else None
+                ),
+                "afterElementId": (
+                    str(change.after_element_id) if change.after_element_id else None
+                ),
+                "beforeOrdinal": change.before_ordinal,
+                "afterOrdinal": change.after_ordinal,
+                "beforeText": change.before_text,
+                "afterText": change.after_text,
+                "changeKind": change.change_kind,
+                "confidence": change.confidence,
+            }
+            for change in diff.changes
+        ],
+        "createdAt": diff.created_at.isoformat(),
     }
 
 
@@ -360,12 +400,13 @@ async def commit_script_version(
     run_id: RunIdParam,
 ):
     verify_csrf_origin(request)
-    _, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    scope, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
     try:
         version = await _service(request).commit_version_one(
             org_id=scope_org_id,
             project_id=scope_project_id,
             run_id=run_id,
+            actor_id=scope.user_id,
         )
     except (ImportNotFoundError, ImportConflictError) as error:
         return _expected_error(error)
@@ -415,3 +456,31 @@ async def get_project_version(
             message="Script version was not found.",
         )
     return {"data": _version_data(version), "meta": _meta()}
+
+
+@router.get(
+    "/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}/diff",
+    operation_id="getScriptVersionDiff",
+)
+async def get_script_version_diff(
+    request: Request,
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    version_id: VersionIdParam,
+):
+    _, scope_org_id, scope_project_id = await _project_scope(request, org_id, project_id)
+    diff = await _service(request).get_adjacent_diff(
+        org_id=scope_org_id,
+        project_id=scope_project_id,
+        after_version_id=version_id,
+    )
+    if diff is None:
+        # Neutral 404 for a foreign project/version, v1, or any version without an
+        # adjacent predecessor diff. The scope check above already denied cross-tenant
+        # access; here a missing diff is indistinguishable from a missing version.
+        return error_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="not_found",
+            message="No adjacent diff exists for this script version.",
+        )
+    return {"data": _adjacent_diff_data(diff), "meta": _meta()}
