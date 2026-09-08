@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 API_ROOT = Path(__file__).resolve().parents[2]
 
-HEAD_REVISION = "0034_report_artifacts"
+HEAD_REVISION = "0035_revision_selective_rescan"
 PREVIOUS_REVISION = "0029_job_list_pagination"
 
 
@@ -521,8 +521,7 @@ def test_populated_0030_upgrades_through_0032_and_downgrades(
     engine = _engine(database_path)
     inspector = sa.inspect(engine)
     columns = {
-        column["name"]: column
-        for column in inspector.get_columns("governed_comment_revisions")
+        column["name"]: column for column in inspector.get_columns("governed_comment_revisions")
     }
     assert columns["author_id"]["nullable"] is False
     foreign_keys = _foreign_keys(inspector, "governed_comment_revisions")
@@ -549,8 +548,7 @@ def test_populated_0030_upgrades_through_0032_and_downgrades(
     engine = _engine(database_path)
     inspector = sa.inspect(engine)
     mention_columns = {
-        column["name"]: column
-        for column in inspector.get_columns("governed_comment_mentions")
+        column["name"]: column for column in inspector.get_columns("governed_comment_mentions")
     }
     assert mention_columns["revision_id"]["nullable"] is False
     mention_uniques = _uniques(inspector, "governed_comment_mentions")
@@ -569,9 +567,7 @@ def test_populated_0030_upgrades_through_0032_and_downgrades(
     )
     with engine.connect() as connection:
         revision_id = connection.execute(
-            sa.text(
-                "SELECT revision_id FROM governed_comment_mentions WHERE id = :id"
-            ),
+            sa.text("SELECT revision_id FROM governed_comment_mentions WHERE id = :id"),
             {"id": mention_id},
         ).scalar_one()
     assert str(revision_id) == latest_revision_id
@@ -581,8 +577,7 @@ def test_populated_0030_upgrades_through_0032_and_downgrades(
     engine = _engine(database_path)
     inspector = sa.inspect(engine)
     downgraded_revision_columns = {
-        column["name"]
-        for column in inspector.get_columns("governed_comment_revisions")
+        column["name"] for column in inspector.get_columns("governed_comment_revisions")
     }
     downgraded_mention_columns = {
         column["name"] for column in inspector.get_columns("governed_comment_mentions")
@@ -590,13 +585,17 @@ def test_populated_0030_upgrades_through_0032_and_downgrades(
     assert "author_id" not in downgraded_revision_columns
     assert "revision_id" not in downgraded_mention_columns
     with engine.connect() as connection:
-        bodies = connection.execute(
-            sa.text(
-                "SELECT body FROM governed_comment_revisions "
-                "WHERE comment_id = :comment ORDER BY ordinal"
-            ),
-            {"comment": comment_id},
-        ).scalars().all()
+        bodies = (
+            connection.execute(
+                sa.text(
+                    "SELECT body FROM governed_comment_revisions "
+                    "WHERE comment_id = :comment ORDER BY ordinal"
+                ),
+                {"comment": comment_id},
+            )
+            .scalars()
+            .all()
+        )
         mention_count = connection.execute(
             sa.text("SELECT count(*) FROM governed_comment_mentions WHERE id = :id"),
             {"id": mention_id},
@@ -1075,7 +1074,6 @@ def _seed_item(
     )
 
 
-
 def test_0032_downgrade_deduplicates_repeated_recipient_by_latest_revision(
     tmp_path: Path,
 ) -> None:
@@ -1160,17 +1158,20 @@ def test_0032_downgrade_deduplicates_repeated_recipient_by_latest_revision(
     command.downgrade(_config(database_path), "0031_comment_revision_author")
     engine = _engine(database_path)
     with engine.connect() as connection:
-        remaining_ids = connection.execute(
-            sa.text(
-                "SELECT id FROM governed_comment_mentions "
-                "WHERE comment_id = :comment AND recipient_user_id = :recipient"
-            ),
-            {"comment": comment_id, "recipient": recipient_id},
-        ).scalars().all()
+        remaining_ids = (
+            connection.execute(
+                sa.text(
+                    "SELECT id FROM governed_comment_mentions "
+                    "WHERE comment_id = :comment AND recipient_user_id = :recipient"
+                ),
+                {"comment": comment_id, "recipient": recipient_id},
+            )
+            .scalars()
+            .all()
+        )
     assert [str(mention_id) for mention_id in remaining_ids] == [latest_mention_id]
     assert "revision_id" not in {
-        column["name"]
-        for column in sa.inspect(engine).get_columns("governed_comment_mentions")
+        column["name"] for column in sa.inspect(engine).get_columns("governed_comment_mentions")
     }
     engine.dispose()
 

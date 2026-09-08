@@ -48,7 +48,7 @@ def test_empty_database_migrates_to_canonical_runtime_schema(tmp_path: Path) -> 
         revision = connection.execute(
             sa.text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert revision == "0034_report_artifacts"
+    assert revision == "0035_revision_selective_rescan"
 
     project_columns = {column["name"]: column for column in inspector.get_columns("projects")}
     for column_name in (
@@ -1437,4 +1437,1198 @@ def test_0027_preserves_legacy_completed_run_and_downgrades_symmetrically(
     assert "uq_research_runs_scope" in {
         constraint["name"] for constraint in inspector.get_unique_constraints("research_runs")
     }
+    engine.dispose()
+
+
+def _named_uniques(inspector: sa.Inspector, table_name: str) -> dict[str | None, tuple[str, ...]]:
+    return {
+        constraint["name"]: tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints(table_name)
+    }
+
+
+def _named_foreign_keys(
+    inspector: sa.Inspector,
+    table_name: str,
+) -> dict[str | None, tuple[tuple[str, ...], str, tuple[str | None, ...]]]:
+    return {
+        foreign_key["name"]: (
+            tuple(foreign_key["constrained_columns"]),
+            foreign_key["referred_table"],
+            tuple(foreign_key["referred_columns"]),
+        )
+        for foreign_key in inspector.get_foreign_keys(table_name)
+    }
+
+
+def test_revision_lineage_and_selective_rescan_schema_contract(tmp_path: Path) -> None:
+    engine = _migrate(tmp_path / "revision-lineage-schema.db")
+    inspector = sa.inspect(engine)
+
+    assert {
+        "script_element_lineage",
+        "evidence_carry_forwards",
+        "selective_rescan_checkpoints",
+    } <= set(inspector.get_table_names())
+
+    version_columns = {
+        column["name"]: column for column in inspector.get_columns("script_versions")
+    }
+    assert {
+        "predecessor_version_id",
+        "predecessor_ordinal",
+        "committed_by_actor_id",
+    } <= set(version_columns)
+    assert version_columns["predecessor_version_id"]["nullable"] is True
+    assert version_columns["committed_by_actor_id"]["nullable"] is True
+    version_uniques = _named_uniques(inspector, "script_versions")
+    assert version_uniques["uq_script_versions_ordinal"] == (
+        "org_id",
+        "project_id",
+        "script_id",
+        "ordinal",
+    )
+    assert version_uniques["uq_script_versions_revision_provenance"] == (
+        "id",
+        "org_id",
+        "project_id",
+        "script_id",
+        "ordinal",
+    )
+    version_foreign_keys = _named_foreign_keys(inspector, "script_versions")
+    assert version_foreign_keys["fk_script_versions_predecessor_scope"] == (
+        (
+            "predecessor_version_id",
+            "org_id",
+            "project_id",
+            "script_id",
+            "predecessor_ordinal",
+        ),
+        "script_versions",
+        ("id", "org_id", "project_id", "script_id", "ordinal"),
+    )
+    assert version_foreign_keys["fk_script_versions_committing_actor"] == (
+        ("committed_by_actor_id",),
+        "users",
+        ("id",),
+    )
+
+    diff_columns = {column["name"]: column for column in inspector.get_columns("script_diffs")}
+    assert {
+        "script_id",
+        "before_ordinal",
+        "after_ordinal",
+        "algorithm_version",
+        "summary_payload",
+        "diff_payload",
+    } <= set(diff_columns)
+    for column_name in (
+        "script_id",
+        "before_ordinal",
+        "after_ordinal",
+        "algorithm_version",
+        "summary_payload",
+        "diff_payload",
+    ):
+        assert diff_columns[column_name]["nullable"] is False
+    diff_uniques = _named_uniques(inspector, "script_diffs")
+    assert diff_uniques["uq_script_diffs_adjacent"] == (
+        "org_id",
+        "project_id",
+        "script_id",
+        "before_version_id",
+        "after_version_id",
+    )
+    assert diff_uniques["uq_script_diffs_after_version"] == (
+        "org_id",
+        "project_id",
+        "script_id",
+        "after_version_id",
+    )
+    diff_foreign_keys = _named_foreign_keys(inspector, "script_diffs")
+    assert diff_foreign_keys["fk_script_diffs_before_version_scope"] == (
+        (
+            "before_version_id",
+            "org_id",
+            "project_id",
+            "script_id",
+            "before_ordinal",
+        ),
+        "script_versions",
+        ("id", "org_id", "project_id", "script_id", "ordinal"),
+    )
+    assert diff_foreign_keys["fk_script_diffs_after_version_scope"] == (
+        (
+            "after_version_id",
+            "org_id",
+            "project_id",
+            "script_id",
+            "after_ordinal",
+        ),
+        "script_versions",
+        ("id", "org_id", "project_id", "script_id", "ordinal"),
+    )
+
+    lineage_columns = {
+        column["name"]: column for column in inspector.get_columns("script_element_lineage")
+    }
+    assert {
+        "id",
+        "org_id",
+        "project_id",
+        "script_id",
+        "diff_id",
+        "before_version_id",
+        "after_version_id",
+        "before_element_id",
+        "after_element_id",
+        "change_kind",
+        "confidence",
+        "algorithm_version",
+        "created_at",
+    } == set(lineage_columns)
+    assert lineage_columns["before_element_id"]["nullable"] is True
+    assert lineage_columns["after_element_id"]["nullable"] is True
+    lineage_uniques = _named_uniques(inspector, "script_element_lineage")
+    assert lineage_uniques["uq_script_element_lineage_before"] == (
+        "diff_id",
+        "before_element_id",
+    )
+    assert lineage_uniques["uq_script_element_lineage_after"] == (
+        "diff_id",
+        "after_element_id",
+    )
+    lineage_checks = {
+        constraint["name"]
+        for constraint in inspector.get_check_constraints("script_element_lineage")
+    }
+    assert {
+        "ck_script_element_lineage_change_kind",
+        "ck_script_element_lineage_confidence",
+        "ck_script_element_lineage_endpoints",
+    } <= lineage_checks
+
+    item_columns = {column["name"]: column for column in inspector.get_columns("clearance_items")}
+    assert {
+        "predecessor_item_id",
+        "predecessor_version_id",
+        "lineage_kind",
+        "carried_forward_confirmation_required",
+    } <= set(item_columns)
+    assert item_columns["predecessor_item_id"]["nullable"] is True
+    assert item_columns["predecessor_version_id"]["nullable"] is True
+    assert item_columns["lineage_kind"]["nullable"] is True
+    assert item_columns["carried_forward_confirmation_required"]["nullable"] is False
+    item_uniques = _named_uniques(inspector, "clearance_items")
+    assert item_uniques["uq_clearance_items_successor_projection"] == (
+        "org_id",
+        "project_id",
+        "predecessor_item_id",
+        "version_id",
+    )
+    item_foreign_keys = _named_foreign_keys(inspector, "clearance_items")
+    assert item_foreign_keys["fk_clearance_items_predecessor_item_scope"] == (
+        (
+            "predecessor_item_id",
+            "org_id",
+            "project_id",
+            "script_id",
+            "predecessor_version_id",
+        ),
+        "clearance_items",
+        ("id", "org_id", "project_id", "script_id", "version_id"),
+    )
+    assert item_foreign_keys["fk_clearance_items_predecessor_version_scope"] == (
+        (
+            "version_id",
+            "org_id",
+            "project_id",
+            "script_id",
+            "predecessor_version_id",
+        ),
+        "script_versions",
+        (
+            "id",
+            "org_id",
+            "project_id",
+            "script_id",
+            "predecessor_version_id",
+        ),
+    )
+
+    carry_columns = {
+        column["name"]: column for column in inspector.get_columns("evidence_carry_forwards")
+    }
+    assert {
+        "id",
+        "org_id",
+        "project_id",
+        "new_item_id",
+        "source_item_id",
+        "original_claim_id",
+        "snapshot_id",
+        "run_id",
+        "query_id",
+        "provider_attempt_id",
+        "new_item_lineage_kind",
+        "confirmation_required",
+        "created_at",
+    } == set(carry_columns)
+    carry_uniques = _named_uniques(inspector, "evidence_carry_forwards")
+    assert carry_uniques["uq_evidence_carry_forwards_item_claim"] == (
+        "org_id",
+        "project_id",
+        "new_item_id",
+        "original_claim_id",
+    )
+    carry_foreign_keys = _named_foreign_keys(inspector, "evidence_carry_forwards")
+    assert carry_foreign_keys["fk_evidence_carry_forwards_new_item_lineage"] == (
+        (
+            "new_item_id",
+            "org_id",
+            "project_id",
+            "source_item_id",
+            "new_item_lineage_kind",
+            "confirmation_required",
+        ),
+        "clearance_items",
+        (
+            "id",
+            "org_id",
+            "project_id",
+            "predecessor_item_id",
+            "lineage_kind",
+            "carried_forward_confirmation_required",
+        ),
+    )
+    assert carry_foreign_keys["fk_evidence_carry_forwards_claim_provenance"] == (
+        (
+            "original_claim_id",
+            "org_id",
+            "project_id",
+            "source_item_id",
+            "snapshot_id",
+            "run_id",
+            "query_id",
+            "provider_attempt_id",
+        ),
+        "evidence_claims",
+        (
+            "id",
+            "org_id",
+            "project_id",
+            "item_id",
+            "snapshot_id",
+            "run_id",
+            "query_id",
+            "provider_attempt_id",
+        ),
+    )
+
+    checkpoint_columns = {
+        column["name"]: column for column in inspector.get_columns("selective_rescan_checkpoints")
+    }
+    assert {
+        "id",
+        "org_id",
+        "project_id",
+        "job_id",
+        "stage",
+        "replay_key",
+        "target_kind",
+        "target_id",
+        "item_id",
+        "status",
+        "result",
+        "safe_error",
+        "attempt_number",
+        "created_at",
+        "completed_at",
+    } == set(checkpoint_columns)
+    assert checkpoint_columns["target_id"]["nullable"] is True
+    assert checkpoint_columns["item_id"]["nullable"] is True
+    checkpoint_uniques = _named_uniques(inspector, "selective_rescan_checkpoints")
+    assert checkpoint_uniques["uq_selective_rescan_checkpoints_replay"] == (
+        "org_id",
+        "project_id",
+        "job_id",
+        "stage",
+        "replay_key",
+    )
+    checkpoint_foreign_keys = _named_foreign_keys(
+        inspector,
+        "selective_rescan_checkpoints",
+    )
+    assert checkpoint_foreign_keys["fk_selective_rescan_checkpoints_job_scope"] == (
+        ("job_id", "org_id", "project_id"),
+        "jobs",
+        ("id", "org_id", "project_id"),
+    )
+    assert checkpoint_foreign_keys["fk_selective_rescan_checkpoints_item_scope"] == (
+        ("item_id", "org_id", "project_id"),
+        "clearance_items",
+        ("id", "org_id", "project_id"),
+    )
+
+    evidence_claim_foreign_keys = _named_foreign_keys(inspector, "evidence_claims")
+    assert evidence_claim_foreign_keys["fk_evidence_claims_snapshot_research_provenance"] == (
+        (
+            "snapshot_id",
+            "org_id",
+            "project_id",
+            "item_id",
+            "run_id",
+            "query_id",
+            "provider_attempt_id",
+        ),
+        "source_snapshots",
+        (
+            "id",
+            "org_id",
+            "project_id",
+            "item_id",
+            "run_id",
+            "query_id",
+            "provider_attempt_id",
+        ),
+    )
+    assert {column["name"] for column in inspector.get_columns("rescan_jobs")} == {
+        "id",
+        "org_id",
+        "project_id",
+        "after_version_id",
+        "affected_count",
+        "saved_calls_count",
+        "status",
+        "created_at",
+    }
+    engine.dispose()
+
+
+def test_0035_backfills_existing_diff_without_fabricating_lineage(tmp_path: Path) -> None:
+    database_path = tmp_path / "revision-lineage-backfill.db"
+    engine = _migrate(database_path, "0034_report_artifacts")
+    now = datetime.now(UTC)
+    org_id, project_id, script_id, before_id, after_id, diff_id = (str(uuid4()) for _ in range(6))
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO organizations (id, name, slug, created_at) "
+                "VALUES (:id, 'Revision Org', 'revision-org', :created)"
+            ),
+            {"id": org_id, "created": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO projects (id, org_id, title, created_at) "
+                "VALUES (:id, :org, 'Revision Project', :created)"
+            ),
+            {"id": project_id, "org": org_id, "created": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO scripts (id, org_id, project_id, title, created_at) "
+                "VALUES (:id, :org, :project, 'Revision Script', :created)"
+            ),
+            {
+                "id": script_id,
+                "org": org_id,
+                "project": project_id,
+                "created": now,
+            },
+        )
+        for version_id, ordinal in ((before_id, 1), (after_id, 2)):
+            connection.execute(
+                sa.text(
+                    "INSERT INTO script_versions "
+                    "(id, script_id, org_id, project_id, ordinal, source_hash, "
+                    "parser_version, created_at) VALUES "
+                    "(:id, :script, :org, :project, :ordinal, :hash, 'legacy', :created)"
+                ),
+                {
+                    "id": version_id,
+                    "script": script_id,
+                    "org": org_id,
+                    "project": project_id,
+                    "ordinal": ordinal,
+                    "hash": version_id.replace("-", ""),
+                    "created": now,
+                },
+            )
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_diffs "
+                "(id, org_id, project_id, before_version_id, after_version_id, "
+                "diff_payload, created_at) VALUES "
+                "(:id, :org, :project, :before, :after, '{}', :created)"
+            ),
+            {
+                "id": diff_id,
+                "org": org_id,
+                "project": project_id,
+                "before": before_id,
+                "after": after_id,
+                "created": now,
+            },
+        )
+    engine.dispose()
+
+    command.upgrade(_config(database_path), "head")
+    engine = _engine(database_path)
+    with engine.connect() as connection:
+        diff = (
+            connection.execute(
+                sa.text(
+                    "SELECT script_id, before_ordinal, after_ordinal, algorithm_version, "
+                    "summary_payload FROM script_diffs WHERE id = :id"
+                ),
+                {"id": diff_id},
+            )
+            .mappings()
+            .one()
+        )
+        version_rows = connection.execute(
+            sa.text(
+                "SELECT predecessor_version_id, committed_by_actor_id "
+                "FROM script_versions WHERE script_id = :script"
+            ),
+            {"script": script_id},
+        ).all()
+        lineage_count = connection.execute(
+            sa.text("SELECT count(*) FROM script_element_lineage")
+        ).scalar_one()
+    assert diff["script_id"] == script_id
+    assert (diff["before_ordinal"], diff["after_ordinal"]) == (1, 2)
+    assert diff["algorithm_version"] == "legacy"
+    assert diff["summary_payload"] is not None
+    assert version_rows == [(None, None), (None, None)]
+    assert lineage_count == 0
+    engine.dispose()
+
+    command.downgrade(_config(database_path), "0034_report_artifacts")
+    engine = _engine(database_path)
+    inspector = sa.inspect(engine)
+    assert "script_element_lineage" not in inspector.get_table_names()
+    assert "predecessor_version_id" not in {
+        column["name"] for column in inspector.get_columns("script_versions")
+    }
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM script_diffs WHERE id = :id"),
+                {"id": diff_id},
+            ).scalar_one()
+            == 1
+        )
+    engine.dispose()
+
+
+def _seed_revision_project(
+    connection: sa.Connection,
+    *,
+    org_id: str,
+    project_id: str,
+    script_id: str,
+    before_version_id: str,
+    after_version_id: str,
+    before_element_id: str,
+    after_element_id: str,
+    now: datetime,
+    slug: str,
+) -> None:
+    connection.execute(
+        sa.text(
+            "INSERT INTO organizations (id, name, slug, created_at) "
+            "VALUES (:id, :slug, :slug, :created)"
+        ),
+        {"id": org_id, "slug": slug, "created": now},
+    )
+    connection.execute(
+        sa.text(
+            "INSERT INTO projects (id, org_id, title, created_at) "
+            "VALUES (:id, :org, :slug, :created)"
+        ),
+        {"id": project_id, "org": org_id, "slug": slug, "created": now},
+    )
+    connection.execute(
+        sa.text(
+            "INSERT INTO scripts (id, org_id, project_id, title, created_at) "
+            "VALUES (:id, :org, :project, :slug, :created)"
+        ),
+        {
+            "id": script_id,
+            "org": org_id,
+            "project": project_id,
+            "slug": slug,
+            "created": now,
+        },
+    )
+    connection.execute(
+        sa.text(
+            "INSERT INTO script_versions "
+            "(id, script_id, org_id, project_id, ordinal, source_hash, parser_version, "
+            "created_at) VALUES (:id, :script, :org, :project, 1, :hash, '1', :created)"
+        ),
+        {
+            "id": before_version_id,
+            "script": script_id,
+            "org": org_id,
+            "project": project_id,
+            "hash": before_version_id.replace("-", ""),
+            "created": now,
+        },
+    )
+    connection.execute(
+        sa.text(
+            "INSERT INTO script_versions "
+            "(id, script_id, org_id, project_id, ordinal, source_hash, parser_version, "
+            "predecessor_version_id, predecessor_ordinal, created_at) VALUES "
+            "(:id, :script, :org, :project, 2, :hash, '1', :before, 1, :created)"
+        ),
+        {
+            "id": after_version_id,
+            "script": script_id,
+            "org": org_id,
+            "project": project_id,
+            "hash": after_version_id.replace("-", ""),
+            "before": before_version_id,
+            "created": now,
+        },
+    )
+    for element_id, version_id in (
+        (before_element_id, before_version_id),
+        (after_element_id, after_version_id),
+    ):
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_elements "
+                "(id, version_id, ordinal, element_type, text) "
+                "VALUES (:id, :version, 1, 'action', 'Body')"
+            ),
+            {"id": element_id, "version": version_id},
+        )
+
+
+def test_revision_lineage_constraints_fail_closed_and_are_replay_safe(
+    tmp_path: Path,
+) -> None:
+    engine = _migrate(tmp_path / "revision-lineage-integrity.db")
+    now = datetime.now(UTC)
+    ids = [str(uuid4()) for _ in range(25)]
+    (
+        org_a,
+        project_a,
+        script_a,
+        before_a,
+        after_a,
+        before_element_a,
+        after_element_a,
+        org_b,
+        project_b,
+        script_b,
+        before_b,
+        after_b,
+        before_element_b,
+        after_element_b,
+        diff_a,
+        old_item_a,
+        new_item_a,
+        item_b,
+        job_a,
+        run_a,
+        query_a,
+        attempt_a,
+        authorization_a,
+        snapshot_a,
+        claim_a,
+    ) = ids
+
+    with engine.begin() as connection:
+        _seed_revision_project(
+            connection,
+            org_id=org_a,
+            project_id=project_a,
+            script_id=script_a,
+            before_version_id=before_a,
+            after_version_id=after_a,
+            before_element_id=before_element_a,
+            after_element_id=after_element_a,
+            now=now,
+            slug="revision-a",
+        )
+        _seed_revision_project(
+            connection,
+            org_id=org_b,
+            project_id=project_b,
+            script_id=script_b,
+            before_version_id=before_b,
+            after_version_id=after_b,
+            before_element_id=before_element_b,
+            after_element_id=after_element_b,
+            now=now,
+            slug="revision-b",
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_diffs "
+                "(id, org_id, project_id, script_id, before_version_id, after_version_id, "
+                "before_ordinal, after_ordinal, algorithm_version, summary_payload, "
+                "diff_payload, created_at) VALUES "
+                "(:id, :org, :project, :script, :before, :after, 1, 2, "
+                "'element-lineage-v1', '{}', '{}', :created)"
+            ),
+            {
+                "id": diff_a,
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "before": before_a,
+                "after": after_a,
+                "created": now,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO script_element_lineage "
+                "(id, org_id, project_id, script_id, diff_id, before_version_id, "
+                "after_version_id, before_element_id, after_element_id, change_kind, "
+                "confidence, algorithm_version, created_at) VALUES "
+                "(:id, :org, :project, :script, :diff, :before_version, :after_version, "
+                ":before_element, :after_element, 'unchanged', 'exact', "
+                "'element-lineage-v1', :created)"
+            ),
+            {
+                "id": str(uuid4()),
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "diff": diff_a,
+                "before_version": before_a,
+                "after_version": after_a,
+                "before_element": before_element_a,
+                "after_element": after_element_a,
+                "created": now,
+            },
+        )
+        for item_id, version_id, element_id, predecessor_id, lineage_kind, confirmation in (
+            (old_item_a, before_a, before_element_a, None, None, 0),
+            (new_item_a, after_a, after_element_a, old_item_a, "carried_forward", 1),
+        ):
+            connection.execute(
+                sa.text(
+                    "INSERT INTO clearance_items "
+                    "(id, org_id, project_id, script_id, version_id, element_id, category, "
+                    "text, status, predecessor_item_id, predecessor_version_id, lineage_kind, "
+                    "carried_forward_confirmation_required, created_at) VALUES "
+                    "(:id, :org, :project, :script, :version, :element, 'brands', 'Brand', "
+                    "'unresolved', :predecessor, :predecessor_version, :lineage, "
+                    ":confirmation, :created)"
+                ),
+                {
+                    "id": item_id,
+                    "org": org_a,
+                    "project": project_a,
+                    "script": script_a,
+                    "version": version_id,
+                    "element": element_id,
+                    "predecessor": predecessor_id,
+                    "predecessor_version": before_a if predecessor_id else None,
+                    "lineage": lineage_kind,
+                    "confirmation": confirmation,
+                    "created": now,
+                },
+            )
+        connection.execute(
+            sa.text(
+                "INSERT INTO clearance_items "
+                "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+                "status, created_at) VALUES "
+                "(:id, :org, :project, :script, :version, :element, 'brands', 'Brand', "
+                "'unresolved', :created)"
+            ),
+            {
+                "id": item_b,
+                "org": org_b,
+                "project": project_b,
+                "script": script_b,
+                "version": after_b,
+                "element": after_element_b,
+                "created": now,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO jobs "
+                "(id, org_id, project_id, job_type, status, idempotency_key, payload, "
+                "progress, stage, correlation_id, attempt_count, available_at, created_at, "
+                "updated_at) VALUES "
+                "(:id, :org, :project, 'selective_rescan', 'running', 'revision-rescan', "
+                "'{}', 0, 'lineage', :id, 1, :created, :created, :created)"
+            ),
+            {"id": job_a, "org": org_a, "project": project_a, "created": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO research_runs "
+                "(id, org_id, project_id, item_id, version_id, status, created_at) VALUES "
+                "(:id, :org, :project, :item, :version, 'running', :created)"
+            ),
+            {
+                "id": run_a,
+                "org": org_a,
+                "project": project_a,
+                "item": old_item_a,
+                "version": before_a,
+                "created": now,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO research_queries "
+                "(id, run_id, query, ordinal, org_id, project_id, item_id, version_id, "
+                "created_at) VALUES "
+                "(:id, :run, 'query', 1, :org, :project, :item, :version, :created)"
+            ),
+            {
+                "id": query_a,
+                "run": run_a,
+                "org": org_a,
+                "project": project_a,
+                "item": old_item_a,
+                "version": before_a,
+                "created": now,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO provider_attempts "
+                "(id, run_id, operation_kind, status, receipt_id, created_at, org_id, "
+                "project_id, item_id, query_id, job_attempt_number, "
+                "authorizing_search_attempt_id, authorizing_operation_kind) VALUES "
+                "(:id, :run, 'search', 'succeeded', 'receipt', :created, :org, :project, "
+                ":item, :query, 1, :id, 'search')"
+            ),
+            {
+                "id": attempt_a,
+                "run": run_a,
+                "created": now,
+                "org": org_a,
+                "project": project_a,
+                "item": old_item_a,
+                "query": query_a,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO search_result_authorizations "
+                "(id, org_id, project_id, item_id, run_id, query_id, search_attempt_id, "
+                "ordinal, url, canonical_url, title, publisher, excerpt, created_at) VALUES "
+                "(:id, :org, :project, :item, :run, :query, :attempt, 1, "
+                "'https://example.test/source', 'https://example.test/source', 'Title', "
+                "'Publisher', 'Attributable excerpt', :created)"
+            ),
+            {
+                "id": authorization_a,
+                "org": org_a,
+                "project": project_a,
+                "item": old_item_a,
+                "run": run_a,
+                "query": query_a,
+                "attempt": attempt_a,
+                "created": now,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO source_snapshots "
+                "(id, org_id, project_id, item_id, run_id, url, title, publisher, excerpt, "
+                "origin, sha256_hash, retrieved_at, query_id, provider_attempt_id, "
+                "authorization_id, authorizing_search_attempt_id) VALUES "
+                "(:id, :org, :project, :item, :run, 'https://example.test/source', 'Title', "
+                "'Publisher', 'Attributable excerpt', 'parallel', :hash, :retrieved, :query, "
+                ":attempt, :authorization, :attempt)"
+            ),
+            {
+                "id": snapshot_a,
+                "org": org_a,
+                "project": project_a,
+                "item": old_item_a,
+                "run": run_a,
+                "hash": "a" * 64,
+                "retrieved": now,
+                "query": query_a,
+                "attempt": attempt_a,
+                "authorization": authorization_a,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO evidence_claims "
+                "(id, org_id, project_id, item_id, snapshot_id, stance, authority_tier, "
+                "claim_text, provenance_excerpt, created_at, run_id, query_id, "
+                "provider_attempt_id) VALUES "
+                "(:id, :org, :project, :item, :snapshot, 'supports', 'primary', 'Claim', "
+                "'Attributable excerpt', :created, :run, :query, :attempt)"
+            ),
+            {
+                "id": claim_a,
+                "org": org_a,
+                "project": project_a,
+                "item": old_item_a,
+                "snapshot": snapshot_a,
+                "created": now,
+                "run": run_a,
+                "query": query_a,
+                "attempt": attempt_a,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO evidence_carry_forwards "
+                "(id, org_id, project_id, new_item_id, source_item_id, original_claim_id, "
+                "snapshot_id, run_id, query_id, provider_attempt_id, created_at) VALUES "
+                "(:id, :org, :project, :new_item, :source_item, :claim, :snapshot, :run, "
+                ":query, :attempt, :created)"
+            ),
+            {
+                "id": str(uuid4()),
+                "org": org_a,
+                "project": project_a,
+                "new_item": new_item_a,
+                "source_item": old_item_a,
+                "claim": claim_a,
+                "snapshot": snapshot_a,
+                "run": run_a,
+                "query": query_a,
+                "attempt": attempt_a,
+                "created": now,
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO selective_rescan_checkpoints "
+                "(id, org_id, project_id, job_id, stage, replay_key, item_id, status, "
+                "attempt_number, created_at, completed_at) VALUES "
+                "(:id, :org, :project, :job, 'carry_evidence', 'item-carry', :item, "
+                "'succeeded', 1, :created, :created)"
+            ),
+            {
+                "id": str(uuid4()),
+                "org": org_a,
+                "project": project_a,
+                "job": job_a,
+                "item": new_item_a,
+                "created": now,
+            },
+        )
+
+    invalid_statements = (
+        (
+            "INSERT INTO script_versions "
+            "(id, script_id, org_id, project_id, ordinal, source_hash, parser_version, "
+            "predecessor_version_id, predecessor_ordinal, created_at) VALUES "
+            "(:id, :script, :org, :project, 3, :hash, '1', :foreign, 2, :created)",
+            {"script": script_b, "org": org_b, "project": project_b, "foreign": after_a},
+        ),
+        (
+            "INSERT INTO script_versions "
+            "(id, script_id, org_id, project_id, ordinal, source_hash, parser_version, "
+            "created_at) VALUES "
+            "(:id, :script, :org, :project, 2, :hash, '1', :created)",
+            {"script": script_a, "org": org_a, "project": project_a},
+        ),
+        (
+            "INSERT INTO script_diffs "
+            "(id, org_id, project_id, script_id, before_version_id, after_version_id, "
+            "before_ordinal, after_ordinal, algorithm_version, summary_payload, diff_payload, "
+            "created_at) VALUES "
+            "(:id, :org, :project, :script, :before, :after, 1, 2, 'v1', '{}', '{}', :created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "before": before_a,
+                "after": after_a,
+            },
+        ),
+        (
+            "INSERT INTO script_diffs "
+            "(id, org_id, project_id, script_id, before_version_id, after_version_id, "
+            "before_ordinal, after_ordinal, algorithm_version, summary_payload, diff_payload, "
+            "created_at) VALUES "
+            "(:id, :org, :project, :script, :before, :after, 1, 2, 'v1', '{}', '{}', :created)",
+            {
+                "org": org_b,
+                "project": project_b,
+                "script": script_b,
+                "before": before_a,
+                "after": after_b,
+            },
+        ),
+        (
+            "INSERT INTO script_element_lineage "
+            "(id, org_id, project_id, script_id, diff_id, before_version_id, "
+            "after_version_id, before_element_id, after_element_id, change_kind, confidence, "
+            "algorithm_version, created_at) VALUES "
+            "(:id, :org, :project, :script, :diff, :before_version, :after_version, "
+            ":before_element, :after_element, 'added', 'unmatched', 'v1', :created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "diff": diff_a,
+                "before_version": before_a,
+                "after_version": after_a,
+                "before_element": before_element_b,
+                "after_element": str(uuid4()),
+            },
+        ),
+        (
+            "INSERT INTO clearance_items "
+            "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+            "status, predecessor_item_id, predecessor_version_id, lineage_kind, "
+            "carried_forward_confirmation_required, created_at) VALUES "
+            "(:id, :org, :project, :script, :version, :element, 'brands', 'Brand', "
+            "'unresolved', :foreign, :predecessor_version, 'carried_forward', 1, :created)",
+            {
+                "org": org_b,
+                "project": project_b,
+                "script": script_b,
+                "version": after_b,
+                "element": after_element_b,
+                "foreign": old_item_a,
+                "predecessor_version": before_a,
+            },
+        ),
+        (
+            "INSERT INTO clearance_items "
+            "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+            "status, predecessor_item_id, predecessor_version_id, lineage_kind, "
+            "carried_forward_confirmation_required, created_at) VALUES "
+            "(:id, :org, :project, :script, :version, :element, 'brands', 'Brand', "
+            "'unresolved', :predecessor, :predecessor_version, 'carried_forward', 1, "
+            ":created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "version": after_a,
+                "element": after_element_a,
+                "predecessor": old_item_a,
+                "predecessor_version": before_a,
+            },
+        ),
+        (
+            "INSERT INTO clearance_items "
+            "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+            "status, predecessor_item_id, predecessor_version_id, lineage_kind, "
+            "carried_forward_confirmation_required, created_at) VALUES "
+            "(:id, :org, :project, :script, :version, :element, 'brands', 'Brand', "
+            "'unresolved', :id, :predecessor_version, 'carried_forward', 1, :created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "version": after_a,
+                "element": after_element_a,
+                "predecessor_version": before_a,
+            },
+        ),
+        (
+            "INSERT INTO clearance_items "
+            "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+            "status, predecessor_item_id, predecessor_version_id, lineage_kind, "
+            "carried_forward_confirmation_required, created_at) VALUES "
+            "(:id, :org, :project, :script, :version, :element, 'brands', 'Brand', "
+            "'unresolved', :predecessor, :predecessor_version, 'carried_forward', 1, "
+            ":created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "script": script_a,
+                "version": before_a,
+                "element": before_element_a,
+                "predecessor": old_item_a,
+                "predecessor_version": before_a,
+            },
+        ),
+        (
+            "INSERT INTO evidence_carry_forwards "
+            "(id, org_id, project_id, new_item_id, source_item_id, original_claim_id, "
+            "snapshot_id, run_id, query_id, provider_attempt_id, created_at) VALUES "
+            "(:id, :org, :project, :new_item, :source_item, :claim, :snapshot, :run, "
+            ":query, :attempt, :created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "new_item": old_item_a,
+                "source_item": old_item_a,
+                "claim": claim_a,
+                "snapshot": snapshot_a,
+                "run": run_a,
+                "query": query_a,
+                "attempt": attempt_a,
+            },
+        ),
+        (
+            "INSERT INTO evidence_carry_forwards "
+            "(id, org_id, project_id, new_item_id, source_item_id, original_claim_id, "
+            "snapshot_id, run_id, query_id, provider_attempt_id, created_at) VALUES "
+            "(:id, :org, :project, :new_item, :source_item, :claim, :snapshot, :run, "
+            ":query, :attempt, :created)",
+            {
+                "org": org_b,
+                "project": project_b,
+                "new_item": item_b,
+                "source_item": old_item_a,
+                "claim": claim_a,
+                "snapshot": snapshot_a,
+                "run": run_a,
+                "query": query_a,
+                "attempt": attempt_a,
+            },
+        ),
+        (
+            "INSERT INTO evidence_carry_forwards "
+            "(id, org_id, project_id, new_item_id, source_item_id, original_claim_id, "
+            "snapshot_id, run_id, query_id, provider_attempt_id, created_at) VALUES "
+            "(:id, :org, :project, :new_item, :source_item, :claim, :snapshot, :run, "
+            ":query, :attempt, :created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "new_item": new_item_a,
+                "source_item": old_item_a,
+                "claim": claim_a,
+                "snapshot": snapshot_a,
+                "run": run_a,
+                "query": query_a,
+                "attempt": attempt_a,
+            },
+        ),
+        (
+            "INSERT INTO selective_rescan_checkpoints "
+            "(id, org_id, project_id, job_id, stage, replay_key, item_id, status, "
+            "attempt_number, created_at, completed_at) VALUES "
+            "(:id, :org, :project, :job, 'carry_evidence', 'item-carry', :item, "
+            "'succeeded', 2, :created, :created)",
+            {
+                "org": org_a,
+                "project": project_a,
+                "job": job_a,
+                "item": new_item_a,
+            },
+        ),
+        (
+            "INSERT INTO selective_rescan_checkpoints "
+            "(id, org_id, project_id, job_id, stage, replay_key, item_id, status, "
+            "attempt_number, created_at) VALUES "
+            "(:id, :org, :project, :job, 'detect', 'foreign-job', :item, 'running', 1, "
+            ":created)",
+            {
+                "org": org_b,
+                "project": project_b,
+                "job": job_a,
+                "item": item_b,
+            },
+        ),
+    )
+    for statement, values in invalid_statements:
+        parameters = {
+            "id": str(uuid4()),
+            "hash": uuid4().hex,
+            "created": now,
+            **values,
+        }
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(sa.text(statement), parameters)
+
+    engine.dispose()
+
+
+def test_0035_refuses_duplicate_historical_diffs_before_mutation(tmp_path: Path) -> None:
+    database_path = tmp_path / "duplicate-historical-diffs.db"
+    engine = _migrate(database_path, "0034_report_artifacts")
+    now = datetime.now(UTC)
+    org_id, project_id, script_id, before_id, after_id = (str(uuid4()) for _ in range(5))
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO organizations (id, name, slug, created_at) "
+                "VALUES (:id, 'Duplicate Diff Org', 'duplicate-diff-org', :created)"
+            ),
+            {"id": org_id, "created": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO projects (id, org_id, title, created_at) "
+                "VALUES (:id, :org, 'Duplicate Diff', :created)"
+            ),
+            {"id": project_id, "org": org_id, "created": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO scripts (id, org_id, project_id, title, created_at) "
+                "VALUES (:id, :org, :project, 'Duplicate Diff', :created)"
+            ),
+            {
+                "id": script_id,
+                "org": org_id,
+                "project": project_id,
+                "created": now,
+            },
+        )
+        for version_id, ordinal in ((before_id, 1), (after_id, 2)):
+            connection.execute(
+                sa.text(
+                    "INSERT INTO script_versions "
+                    "(id, script_id, org_id, project_id, ordinal, source_hash, "
+                    "parser_version, created_at) VALUES "
+                    "(:id, :script, :org, :project, :ordinal, :hash, 'legacy', :created)"
+                ),
+                {
+                    "id": version_id,
+                    "script": script_id,
+                    "org": org_id,
+                    "project": project_id,
+                    "ordinal": ordinal,
+                    "hash": version_id.replace("-", ""),
+                    "created": now,
+                },
+            )
+        for diff_id in (str(uuid4()), str(uuid4())):
+            connection.execute(
+                sa.text(
+                    "INSERT INTO script_diffs "
+                    "(id, org_id, project_id, before_version_id, after_version_id, "
+                    "diff_payload, created_at) VALUES "
+                    "(:id, :org, :project, :before, :after, '{}', :created)"
+                ),
+                {
+                    "id": diff_id,
+                    "org": org_id,
+                    "project": project_id,
+                    "before": before_id,
+                    "after": after_id,
+                    "created": now,
+                },
+            )
+    engine.dispose()
+
+    with pytest.raises(RuntimeError, match="duplicate adjacent script_diffs"):
+        command.upgrade(_config(database_path), "head")
+
+    engine = _engine(database_path)
+    inspector = sa.inspect(engine)
+    with engine.connect() as connection:
+        revision = connection.execute(
+            sa.text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+        diff_count = connection.execute(sa.text("SELECT count(*) FROM script_diffs")).scalar_one()
+    assert revision == "0034_report_artifacts"
+    assert diff_count == 2
+    assert "predecessor_version_id" not in {
+        column["name"] for column in inspector.get_columns("script_versions")
+    }
+    assert "script_id" not in {column["name"] for column in inspector.get_columns("script_diffs")}
     engine.dispose()
