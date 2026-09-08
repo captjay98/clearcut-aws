@@ -246,8 +246,12 @@ class _SelectiveRescanItemLineageCoordinator:
     The scripts diff yields element-only carryable pairs; the orchestration passes
     the ``before_element_id`` as the join key. This coordinator resolves the real
     predecessor clearance item bound to that before element/version within scope,
-    then delegates to the detection-owned :class:`SqlItemLineageAdapter`. An
-    unresolved predecessor is a typed, safe failure — never a synthesized item.
+    then delegates to the detection-owned :class:`SqlItemLineageAdapter`. A
+    carryable-by-lineage element with no predecessor item in scope is an
+    unchanged/moved narrative passage that never held a clearance item (detection
+    only creates items on brand/entity lines): there is nothing to carry, so it is
+    skipped — never a synthesized item and never a fatal failure. Only
+    item-bearing carryable elements are passed to ``materialize_carried_items``.
     """
 
     def __init__(self, adapter: SqlItemLineageAdapter) -> None:
@@ -290,11 +294,14 @@ class _SelectiveRescanItemLineageCoordinator:
                     .first()
                 )
                 if row is None:
-                    raise RescanSafeError(
-                        code="predecessor_item_not_found",
-                        message=("A carryable element has no predecessor clearance item in scope."),
-                        retryable=False,
-                    )
+                    # A carryable-by-lineage element is an exact/contextual
+                    # unchanged or moved passage. Detection only creates clearance
+                    # items on brand/entity lines, so an unchanged NARRATIVE line
+                    # legitimately has no predecessor item in the correct scope:
+                    # there is simply nothing to carry, so skip it. This is NOT a
+                    # scope violation (the org/project/script/before-version scope
+                    # is enforced in the query above); the row just does not exist.
+                    continue
                 resolved.append(
                     CarryableElement(
                         before_element_id=element.before_element_id,
@@ -304,6 +311,11 @@ class _SelectiveRescanItemLineageCoordinator:
                         text=str(row["text"]),
                     )
                 )
+        if not resolved:
+            # No carryable element carried a predecessor item: nothing to
+            # materialize. Return an empty mapping rather than calling the adapter
+            # with an empty set.
+            return ()
         return await self._adapter.materialize_carried_items(
             org_id=org_id,
             project_id=project_id,

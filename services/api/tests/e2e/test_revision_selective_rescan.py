@@ -266,6 +266,11 @@ class SeededRevision:
     modified_after: UUID
     added_after: UUID
     removed_before: UUID
+    # An unchanged NARRATIVE line that legitimately never held a clearance item
+    # (detection only creates items on brand/entity lines). It is carryable by
+    # lineage but item-less, so it must be skipped by carry-forward, never fatal.
+    narrative_unchanged_before: UUID
+    narrative_unchanged_after: UUID
     # predecessor items + evidence
     cited_item_id: UUID
     zero_evidence_item_id: UUID
@@ -672,6 +677,7 @@ async def _seed_full_revision(client: AsyncClient) -> SeededRevision:
     modified_before, modified_after = uuid6.uuid7(), uuid6.uuid7()
     added_after = uuid6.uuid7()
     removed_before = uuid6.uuid7()
+    narrative_unchanged_before, narrative_unchanged_after = uuid6.uuid7(), uuid6.uuid7()
 
     cited_item_id = uuid6.uuid7()
     zero_evidence_item_id = uuid6.uuid7()
@@ -724,6 +730,12 @@ async def _seed_full_revision(client: AsyncClient) -> SeededRevision:
         ordinal=4,
         text="A Ferrari idles at the pier as its engine cools.",
     )
+    await _seed_element(
+        version_id=before_version_id,
+        element_id=narrative_unchanged_before,
+        ordinal=5,
+        text="Rain hammers the tin roof, relentless and cold.",
+    )
 
     # After-version elements.
     await _seed_element(
@@ -749,6 +761,12 @@ async def _seed_full_revision(client: AsyncClient) -> SeededRevision:
         element_id=added_after,
         ordinal=4,
         text="A courier drops a crate stamped with a faded Nike logo.",
+    )
+    await _seed_element(
+        version_id=after_version_id,
+        element_id=narrative_unchanged_after,
+        ordinal=5,
+        text="Rain hammers the tin roof, relentless and cold.",
     )
 
     # Predecessor clearance items on v1.
@@ -842,6 +860,14 @@ async def _seed_full_revision(client: AsyncClient) -> SeededRevision:
             (modified_before, modified_after, "modified", "similar"),
             (None, added_after, "added", "unmatched"),
             (removed_before, None, "removed", "unmatched"),
+            # A second unchanged (carryable) element that never held a clearance
+            # item: carry-forward must skip it, not fail the rescan.
+            (
+                narrative_unchanged_before,
+                narrative_unchanged_after,
+                "unchanged",
+                "exact",
+            ),
         ],
     )
 
@@ -860,6 +886,8 @@ async def _seed_full_revision(client: AsyncClient) -> SeededRevision:
         modified_after=modified_after,
         added_after=added_after,
         removed_before=removed_before,
+        narrative_unchanged_before=narrative_unchanged_before,
+        narrative_unchanged_after=narrative_unchanged_after,
         cited_item_id=cited_item_id,
         zero_evidence_item_id=zero_evidence_item_id,
         modified_item_id=modified_item_id,
@@ -910,10 +938,7 @@ class _ItemLineageCoordinator:
         after_version_id,
         carryable_elements,
     ):
-        from clearcut.rescan.application.models import (
-            CarryableElement,
-            RescanSafeError,
-        )
+        from clearcut.rescan.application.models import CarryableElement
 
         resolved: list[CarryableElement] = []
         async with session_scope() as session:
@@ -940,11 +965,12 @@ class _ItemLineageCoordinator:
                     .first()
                 )
                 if row is None:
-                    raise RescanSafeError(
-                        code="predecessor_item_not_found",
-                        message="A carryable element has no predecessor clearance item.",
-                        retryable=False,
-                    )
+                    # An unchanged/moved narrative passage legitimately has no
+                    # predecessor clearance item (detection only creates items on
+                    # brand/entity lines): nothing to carry, so skip it. Scope is
+                    # still enforced by the query above; the row simply does not
+                    # exist. Mirrors the production coordinator.
+                    continue
                 resolved.append(
                     CarryableElement(
                         before_element_id=element.before_element_id,
@@ -1514,6 +1540,23 @@ async def test_full_journey_carries_forward_and_scopes_child_work() -> None:
             )
         ).scalar_one()
         assert int(removed_successor) == 0
+
+        # An unchanged NARRATIVE carryable element that never held a clearance
+        # item is SKIPPED, not fatal: it produces no carried successor and does
+        # not fail the rescan (regression guard for predecessor_item_not_found).
+        narrative_successor = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM clearance_items "
+                    "WHERE version_id = :after AND element_id = :narrative"
+                ),
+                {
+                    "after": str(seed.after_version_id),
+                    "narrative": str(seed.narrative_unchanged_after),
+                },
+            )
+        ).scalar_one()
+        assert int(narrative_successor) == 0
 
 
 async def test_added_passage_gets_fresh_detection_and_reaches_research() -> None:

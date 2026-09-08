@@ -57,7 +57,6 @@ class LineageKind(StrEnum):
     RESCANNED = "rescanned"
 
 
-@dataclass(frozen=True)
 class RescanSafeError(Exception):
     """A typed, safe rescan error crossing a port boundary.
 
@@ -65,14 +64,44 @@ class RescanSafeError(Exception):
     leaks tenant data; ``retryable`` tells the caller whether a later attempt may
     succeed. A missing tenant/project scope surfaces as this error, never as a
     raw ``None`` or a leaked persistence exception.
+
+    This is a plain (non-frozen) :class:`Exception` on purpose: Python assigns
+    ``__traceback__`` on an exception as it unwinds through a context manager's
+    ``__aexit__`` (e.g. ``async with session_scope()``). A frozen dataclass
+    rejects that assignment with ``FrozenInstanceError``, which would replace the
+    typed error and mask it as an opaque failure. It still behaves as a typed
+    value: its public attributes and constructor signature are stable, and two
+    errors with the same ``code``/``message``/``retryable`` compare equal.
     """
 
-    code: str
-    message: str
-    retryable: bool = False
+    __slots__ = ()
+
+    def __init__(self, code: str, message: str, retryable: bool = False) -> None:
+        super().__init__(f"{code}: {message}")
+        self.code = code
+        self.message = message
+        self.retryable = retryable
 
     def __str__(self) -> str:
         return f"{self.code}: {self.message}"
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(code={self.code!r}, "
+            f"message={self.message!r}, retryable={self.retryable!r})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, RescanSafeError):
+            return NotImplemented
+        return (
+            self.code == other.code
+            and self.message == other.message
+            and self.retryable == other.retryable
+        )
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.code, self.message, self.retryable))
 
 
 @dataclass(frozen=True)
