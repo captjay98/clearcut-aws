@@ -10,13 +10,14 @@ from uuid import UUID
 from clearcut.scripts.domain.elements import ElementType, ScriptElement
 
 MATCHING_ALGORITHM_VERSION: Final = "element-lineage-v1"
-# Fuzzy scoring is synchronous. Before scoring any otherwise eligible candidate,
-# enforce both the same-type pair count and a conservative quadratic character-work
-# estimate. Fifty million permits 9,801 short screenplay-line pairs while rejecting
-# one repetitive 8,001-character pair. Exceeding either per-diff budget skips the
-# entire fuzzy phase rather than creating arbitrary partial lineage.
+# Fuzzy scoring is synchronous. Before candidate filtering or scoring, enforce
+# the same-type pair count and a conservative raw Cartesian character-work
+# estimate. One hundred fifty million permits 9,801 typical screenplay-line
+# pairs while rejecting long high-distinct-character Cartesian inputs. Exceeding
+# either per-diff budget skips the entire fuzzy phase rather than creating
+# arbitrary partial lineage.
 MAX_SIMILARITY_PAIR_EVALUATIONS: Final = 10_000
-MAX_SIMILARITY_CHARACTER_WORK: Final = 50_000_000
+MAX_SIMILARITY_CHARACTER_WORK: Final = 150_000_000
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
 _SIMILARITY_AMBIGUITY_FLOOR: Final = (
@@ -382,6 +383,25 @@ def _similar_matches(
     if pair_evaluations > MAX_SIMILARITY_PAIR_EVALUATIONS:
         return []
 
+    before_length_by_type = {
+        element_type: sum(
+            before_elements[index].text_length for index in before_indexes
+        )
+        for element_type, before_indexes in before_by_type.items()
+    }
+    after_length_by_type = {
+        element_type: sum(
+            after_elements[index].text_length for index in after_indexes
+        )
+        for element_type, after_indexes in after_by_type.items()
+    }
+    raw_character_work = sum(
+        before_length * after_length_by_type.get(element_type, 0)
+        for element_type, before_length in before_length_by_type.items()
+    )
+    if raw_character_work > MAX_SIMILARITY_CHARACTER_WORK:
+        return []
+
     candidate_pairs = tuple(
         _similarity_candidate_pairs(
             unmatched_before,
@@ -390,12 +410,12 @@ def _similar_matches(
             after_elements,
         )
     )
-    character_work = sum(
+    eligible_character_work = sum(
         before_elements[before_index].text_length
         * after_elements[after_index].text_length
         for before_index, after_index in candidate_pairs
     )
-    if character_work > MAX_SIMILARITY_CHARACTER_WORK:
+    if eligible_character_work > MAX_SIMILARITY_CHARACTER_WORK:
         return []
 
     before_candidates: dict[int, _TopCandidates] = {}

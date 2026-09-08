@@ -207,13 +207,61 @@ def test_conservative_same_type_similarity_is_modified_not_carryable():
     assert diff.carry_forward_element_ids == ()
 
 
+def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
+    line_count = 100
+    distinct_characters = "".join(chr(0x4E00 + offset) for offset in range(1_024))
+    before = [
+        _element(f"B{index:03d}{distinct_characters}", index + 1)
+        for index in range(line_count)
+    ]
+    after = [
+        _element(f"A{index:03d}{distinct_characters}", index + 1)
+        for index in range(line_count)
+    ]
+    candidate_filter_call_count = 0
+    original_candidate_filter = diff_domain._can_affect_similarity_choice
+
+    assert line_count * line_count == diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
+    assert (
+        sum(len(element.text) for element in before)
+        * sum(len(element.text) for element in after)
+        > diff_domain.MAX_SIMILARITY_CHARACTER_WORK
+    )
+
+    def counted_candidate_filter(before_element, after_element):
+        nonlocal candidate_filter_call_count
+        candidate_filter_call_count += 1
+        return original_candidate_filter(before_element, after_element)
+
+    monkeypatch.setattr(
+        diff_domain,
+        "_can_affect_similarity_choice",
+        counted_candidate_filter,
+    )
+
+    first = _compute(before, after)
+    second = _compute(before, after)
+
+    assert candidate_filter_call_count == 0
+    assert first.elements == second.elements
+    assert len(first.elements) == line_count * 2
+    assert [row.classification for row in first.elements] == [
+        *([ChangeClassification.ADDED] * line_count),
+        *([ChangeClassification.REMOVED] * line_count),
+    ]
+    assert all(
+        (row.before_element_id is None) != (row.after_element_id is None)
+        for row in first.elements
+    )
+
+
 def test_pathological_similarity_work_is_rejected_before_ratio(monkeypatch):
     exact_before = _element("INT. ARCHIVE - NIGHT", 1, ElementType.SCENE_HEADING)
     ordinary_before = _element("Jon opens the heavy wooden door.", 2, ElementType.ACTION)
-    pathological_before = _element("A" * 8_001, 3, ElementType.ACTION)
+    pathological_before = _element("A" * 13_001, 3, ElementType.ACTION)
     exact_after = _element("INT. ARCHIVE - NIGHT", 1, ElementType.SCENE_HEADING)
     ordinary_after = _element("Jon opens the heavy wood door.", 2, ElementType.ACTION)
-    pathological_after = _element(f'{"A" * 8_000}B', 3, ElementType.ACTION)
+    pathological_after = _element(f'{"A" * 13_000}B', 3, ElementType.ACTION)
     ratio_call_count = 0
 
     assert diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS > 2 * 2
