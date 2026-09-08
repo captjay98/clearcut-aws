@@ -30,7 +30,8 @@ ProviderAttemptId = UUID
 
 
 class RescanStage(StrEnum):
-    """The seven approved selective-rescan stages, in workflow order.
+    """The selective-rescan stages, in workflow order: the initial ``QUEUED``
+    state plus the six processed stages the durable processor advances through.
 
     The values are aligned exactly with the ``selective_rescan_checkpoints``
     stage check constraint so a stage never drifts from the persisted contract.

@@ -2,8 +2,9 @@
 
 Mounts ``POST .../script-versions/{versionId}:startSelectiveRescan``. The route
 enforces CSRF and a required ``Idempotency-Key`` header, resolves the request
-scope (authentication and organization/project membership) before any repository
-access, and delegates the governed decision to
+scope (authentication and organization/project membership) and requires an
+accountable role (owner/admin/reviewer) before any repository access, and
+delegates the governed decision to
 :class:`~clearcut.rescan.application.start_rescan.StartSelectiveRescanService`.
 
 Client-supplied ``itemIds`` are accepted syntactically but never used: the
@@ -41,6 +42,16 @@ router = APIRouter(
     tags=["rescan"],
 )
 
+_ACCOUNTABLE_RESCAN_ROLES = frozenset({"owner", "admin", "reviewer"})
+
+
+def _require_accountable_rescan_role(scope: object) -> None:
+    if getattr(scope, "role", None) not in _ACCOUNTABLE_RESCAN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Starting a selective rescan requires an authorized accountable reviewer",
+        )
+
 
 @router.post(
     ":startSelectiveRescan",
@@ -62,6 +73,7 @@ async def start_selective_rescan(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Selective rescan requires organization and project scope.",
         )
+    _require_accountable_rescan_role(scope)
 
     try:
         parsed_version_id = UUID(version_id)

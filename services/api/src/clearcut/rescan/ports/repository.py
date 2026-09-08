@@ -1,7 +1,8 @@
 """Typed ports for durable selective-rescan checkpoint persistence and work.
 
-The durable rescan processor advances through the seven approved
-:class:`~clearcut.rescan.application.models.RescanStage` values and persists a
+The durable rescan processor advances through the six processed
+:class:`~clearcut.rescan.application.models.RescanStage` values (the ordered
+stages after the initial persisted ``QUEUED`` state) and persists a
 checkpoint per stage *before* the next stage runs, so a reload through a fresh
 process replays only the stages that have not yet succeeded. All values crossing
 these boundaries are immutable dataclasses or typed errors — no booleans,

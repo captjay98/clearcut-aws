@@ -1,8 +1,9 @@
 """Durable, checkpointed selective-rescan staged execution.
 
 :class:`RunSelectiveRescanJobService` is a job processor for the ``selective_rescan``
-job kind. It advances through the seven approved
-:class:`~clearcut.rescan.application.models.RescanStage` values in exact order,
+job kind. It advances through the six processed
+:class:`~clearcut.rescan.application.models.RescanStage` values (the ordered
+stages after the initial persisted ``QUEUED`` state) in exact order,
 persisting a succeeded checkpoint for each stage *before* the next stage runs so a
 reload through a fresh process replays only stages that have not yet succeeded.
 

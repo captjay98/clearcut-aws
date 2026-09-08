@@ -88,6 +88,11 @@ async def _seed_active_policy(org_id: UUID) -> None:
 
 
 async def _register_owner(client: AsyncClient) -> tuple[UUID, UUID]:
+    org_id, project_id, _actor_id = await _register_owner_with_actor(client)
+    return org_id, project_id
+
+
+async def _register_owner_with_actor(client: AsyncClient) -> tuple[UUID, UUID, UUID]:
     registration = await client.post(
         "/api/v1/users",
         json={
@@ -97,6 +102,7 @@ async def _register_owner(client: AsyncClient) -> tuple[UUID, UUID]:
         },
     )
     assert registration.status_code == 201, registration.text
+    actor_id = UUID(registration.json()["data"]["userId"])
     organization = await client.post(
         "/api/v1/organizations",
         json={"name": "Rescan HTTP Studio", "slug": f"rescan-http-{uuid4().hex[:8]}"},
@@ -108,7 +114,17 @@ async def _register_owner(client: AsyncClient) -> tuple[UUID, UUID]:
         json={"title": "Rescan HTTP Project"},
     )
     assert project.status_code == 201, project.text
-    return org_id, UUID(project.json()["data"]["projectId"])
+    return org_id, UUID(project.json()["data"]["projectId"]), actor_id
+
+
+async def _set_membership_role(*, org_id: UUID, user_id: UUID, role: str) -> None:
+    async with session_scope() as session:
+        await session.execute(
+            sa.text(
+                "UPDATE memberships SET role = :role WHERE org_id = :org_id AND user_id = :user_id"
+            ),
+            {"role": role, "org_id": str(org_id), "user_id": str(user_id)},
+        )
 
 
 def _path(org_id: UUID, project_id: UUID, version_id: UUID) -> str:
@@ -165,9 +181,7 @@ async def test_start_enqueues_one_durable_job_and_dispatches_only_when_created(
         org_id, project_id = await _register_owner(client)
         await _seed_active_policy(org_id)
 
-        first = await client.post(
-            _path(org_id, project_id, version_id), headers=_IDEMPOTENCY
-        )
+        first = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
         assert first.status_code == 202, first.text
         data = first.json()["data"]
         assert data["jobType"] == "selective_rescan"
@@ -176,9 +190,7 @@ async def test_start_enqueues_one_durable_job_and_dispatches_only_when_created(
         job_id = data["jobId"]
 
         # Idempotent replay: same version returns the same durable job.
-        second = await client.post(
-            _path(org_id, project_id, version_id), headers=_IDEMPOTENCY
-        )
+        second = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
         assert second.status_code == 202, second.text
         assert second.json()["data"]["jobId"] == job_id
 
@@ -243,9 +255,7 @@ async def test_start_rejects_missing_revision_plan(enabled_service) -> None:
     ) as client:
         org_id, project_id = await _register_owner(client)
         await _seed_active_policy(org_id)
-        response = await client.post(
-            _path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY
-        )
+        response = await client.post(_path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY)
     assert response.status_code == 404
 
 
@@ -257,9 +267,7 @@ async def test_start_rejects_disabled_provider_without_calling_provider(enabled_
     ) as client:
         org_id, project_id = await _register_owner(client)
         await _seed_active_policy(org_id)
-        response = await client.post(
-            _path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY
-        )
+        response = await client.post(_path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY)
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "capability_unavailable"
 
@@ -271,9 +279,7 @@ async def test_start_requires_active_policy(enabled_service) -> None:
     ) as client:
         org_id, project_id = await _register_owner(client)
         # No active policy seeded.
-        response = await client.post(
-            _path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY
-        )
+        response = await client.post(_path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY)
     assert response.status_code == 409
 
 
@@ -289,3 +295,61 @@ async def test_start_fails_closed_on_foreign_project(enabled_service) -> None:
             _path(org_id, foreign_project, uuid6.uuid7()), headers=_IDEMPOTENCY
         )
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("role", ["owner", "admin", "reviewer"])
+@pytest.mark.asyncio
+async def test_start_allows_accountable_roles(enabled_service, role: str) -> None:
+    version_id = uuid6.uuid7()
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
+    ) as client:
+        org_id, project_id, actor_id = await _register_owner_with_actor(client)
+        await _seed_active_policy(org_id)
+        await _set_membership_role(org_id=org_id, user_id=actor_id, role=role)
+        response = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
+    assert response.status_code == 202, response.text
+    assert response.json()["data"]["jobType"] == "selective_rescan"
+
+
+@pytest.mark.parametrize("role", ["editor", "viewer"])
+@pytest.mark.asyncio
+async def test_start_denies_non_accountable_roles_before_enqueue(
+    enabled_service, role: str
+) -> None:
+    version_id = uuid6.uuid7()
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
+    ) as client:
+        org_id, project_id, actor_id = await _register_owner_with_actor(client)
+        await _seed_active_policy(org_id)
+        await _set_membership_role(org_id=org_id, user_id=actor_id, role=role)
+        response = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "permission_denied"
+
+    # A denied actor triggers no durable job and no start audit event: the
+    # role gate runs before any repository access or enqueue.
+    async with session_scope() as session:
+        job_rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM jobs WHERE org_id = :org_id "
+                    "AND project_id = :project_id AND job_type = 'selective_rescan'"
+                ),
+                {"org_id": str(org_id), "project_id": str(project_id)},
+            )
+        ).scalar_one()
+        audit_rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM authoritative_audit_events "
+                    "WHERE org_id = :org_id AND project_id = :project_id "
+                    "AND action = 'selective_rescan.started'"
+                ),
+                {"org_id": str(org_id), "project_id": str(project_id)},
+            )
+        ).scalar_one()
+    assert int(job_rows) == 0
+    assert int(audit_rows) == 0

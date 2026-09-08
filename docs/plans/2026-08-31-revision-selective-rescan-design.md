@@ -74,6 +74,10 @@ Each stage persists its result and idempotency marker. Retries resume from the l
 
 Detection runs only on changed and added passages. Research runs only for resulting affected items. Provider calls use the existing paid-provider acknowledgement and bounded-concurrency gates. Typed provider failures create visible unresolved review outcomes; no fallback evidence is invented.
 
+### Runtime dependency: durable child-job progression requires a queue drainer
+
+Durable rescan child-job progression requires Cloud Tasks (GCP) or a background queue-draining worker. The rescan orchestration is enqueue-only: `request_detection` and `request_research` persist durable child jobs but do not execute them inline, and local recovery only reclaims expired leases — it does not drain fresh `queued` rows. In the production/hosted profile Cloud Tasks dispatches those queued child jobs, so rescans complete. The local single-container profile has no such dispatcher by default: it needs Cloud Tasks, a background queue-draining worker, or (for E2E tests only) the test-only drain endpoint for modified-passage rescans to progress past the initial enqueue to completion. This is an operational dependency of the local profile, not a limitation of the production path.
+
 ## API and UI
 
 The API adds or completes typed operations for:
