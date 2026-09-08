@@ -65,6 +65,7 @@ from clearcut.operations.application.reconcile_jobs import (
 from clearcut.operations.application.run_job import RunJobService
 from clearcut.operations.delivery.http import router as operations_router
 from clearcut.operations.delivery.tasks_http import router as tasks_router
+from clearcut.operations.domain.jobs import RunStatus
 from clearcut.operations.ports.job_repository import EnqueueJob
 from clearcut.organizations.adapters.sql_repository import DatabaseOrganizationRepository
 from clearcut.organizations.application.bootstrap import OrganizationBootstrapService
@@ -327,9 +328,11 @@ class _SelectiveRescanChildWorkCoordinator:
         *,
         item_lineage: SqlItemLineageAdapter,
         job_repository: SqlJobRepository,
+        detection_processor: RunDetectionJobService,
     ) -> None:
         self._item_lineage = item_lineage
         self._job_repository = job_repository
+        self._detection_processor = detection_processor
 
     async def list_affected_items(
         self,
@@ -345,6 +348,96 @@ class _SelectiveRescanChildWorkCoordinator:
             before_version_id=before_version_id,
             affected_element_ids=affected_element_ids,
         )
+
+    async def detect_added_items(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+        added_after_element_ids: tuple[UUID, ...],
+        actor_id: UUID,
+    ) -> tuple[UUID, ...]:
+        if not added_after_element_ids:
+            return ()
+        # Enqueue a detection child scoped to EXACTLY the added after-version
+        # elements (never the whole version) with a stable idempotency key, then
+        # run it to completion so the resulting brand-new unresolved items exist
+        # before research is requested. Replays reuse the same durable job and the
+        # detection fingerprint unique constraint, so no duplicate item is
+        # created and the same item ids are returned.
+        key = f"selective_rescan:detect-added:{after_version_id}"
+        enqueued = await self._job_repository.enqueue(
+            EnqueueJob(
+                org_id=org_id,
+                project_id=project_id,
+                actor_id=actor_id,
+                job_type="detection",
+                idempotency_key=key,
+                payload={
+                    "schemaVersion": 1,
+                    "target": {"type": "script_version", "id": str(after_version_id)},
+                    "elementIds": sorted(str(element_id) for element_id in added_after_element_ids),
+                },
+                audit_action="detection.started",
+                target_type="script_version",
+                target_id=after_version_id,
+            )
+        )
+        completed = await RunJobService(
+            repository=self._job_repository,
+            processors={"detection": self._detection_processor},
+            lease_owner=f"local-rescan-added:{socket.gethostname()}:{os.getpid()}",
+        ).run(enqueued.job.job_id, org_id, project_id)
+        # A failed scoped detection must surface as a visible, typed rescan
+        # failure — never a silent "0 added items" that advances the rescan to
+        # completion and drops the added passages from clearance and research.
+        if completed.status is not RunStatus.SUCCEEDED:
+            error = completed.error
+            raise RescanSafeError(
+                code=error.code if error is not None else "added_detection_failed",
+                message=(
+                    error.message
+                    if error is not None
+                    else "Fresh detection of added passages did not complete."
+                ),
+                retryable=error.retryable if error is not None else True,
+            )
+        return await self._added_item_ids(
+            org_id=org_id,
+            project_id=project_id,
+            after_version_id=after_version_id,
+            added_after_element_ids=added_after_element_ids,
+        )
+
+    @staticmethod
+    async def _added_item_ids(
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+        added_after_element_ids: tuple[UUID, ...],
+    ) -> tuple[UUID, ...]:
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM clearance_items "
+                        "WHERE org_id = :org_id AND project_id = :project_id "
+                        "AND version_id = :version_id "
+                        "AND element_id IN :element_ids "
+                        "AND predecessor_item_id IS NULL "
+                        "ORDER BY created_at, id"
+                    ).bindparams(sa.bindparam("element_ids", expanding=True)),
+                    {
+                        "org_id": str(org_id),
+                        "project_id": str(project_id),
+                        "version_id": str(after_version_id),
+                        "element_ids": [str(element_id) for element_id in added_after_element_ids],
+                    },
+                )
+            ).scalars()
+            return tuple(UUID(str(item_id)) for item_id in rows)
 
     async def request_detection(
         self,
@@ -612,6 +705,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     rescan_child_work = _SelectiveRescanChildWorkCoordinator(
         item_lineage=item_lineage_adapter,
         job_repository=job_repository,
+        detection_processor=run_detection_job,
     )
     run_rescan_job = RunSelectiveRescanJobService(
         revision_plan=revision_plan_adapter,

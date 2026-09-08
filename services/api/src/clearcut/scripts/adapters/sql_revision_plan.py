@@ -30,9 +30,9 @@ _CARRYABLE_CONFIDENCES = frozenset({"exact", "contextual"})
 # A modified element has a predecessor clearance item on the BEFORE version, so
 # it is routed to affected-item detection/research by its BEFORE element id — the
 # key the item-lineage lookup resolves the predecessor item from. An ADDED
-# element has no predecessor item (and no before element id); it is represented
-# in the diff and left for fresh after-version detection, which is a separate
-# path outside this predecessor-resolution lookup.
+# element has no predecessor item (and no before element id); it is routed by its
+# AFTER element id to fresh after-version detection, which materializes a
+# brand-new unresolved item with no predecessor and no carried evidence.
 _AFFECTED_CHANGE_KINDS = frozenset({"modified"})
 
 
@@ -67,6 +67,7 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
         carryable: list[CarryableElementPair] = []
         affected: set = set()
         removed: set = set()
+        added: set = set()
         for change in record.changes:
             change_kind = change.change_kind
             if (
@@ -90,6 +91,12 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
                 # miss the predecessor (globally unique element ids) and silently
                 # drop the modified passage from detection/research.
                 affected.add(change.before_element_id)
+            elif change_kind == "added" and change.after_element_id is not None:
+                # An added passage has no predecessor item, so it is routed by its
+                # AFTER element id to fresh after-version detection. That fresh
+                # detection materializes a brand-new unresolved item (no
+                # predecessor, no carried evidence, no copied decision).
+                added.add(change.after_element_id)
             elif change_kind == "removed" and change.before_element_id is not None:
                 removed.add(change.before_element_id)
 
@@ -103,6 +110,7 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
             carryable_elements=tuple(carryable),
             affected_element_ids=frozenset(affected),
             removed_element_ids=frozenset(removed),
+            added_after_element_ids=frozenset(added),
         )
 
 

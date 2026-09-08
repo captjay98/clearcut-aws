@@ -9,7 +9,10 @@ reload through a fresh process replays only stages that have not yet succeeded.
 Governance invariants:
 
 * only modified/added elements reach child detection, and only the resulting
-  affected items reach child research;
+  affected items reach child research; added passages are freshly detected on the
+  after version into brand-new unresolved items (no predecessor, no carried
+  evidence, no copied decision) and then reach research like any newly detected
+  item;
 * evidence is carried forward only for exact/contextual unchanged or moved
   elements, referencing the original claim provenance — never synthesized, and
   zero results never become clearance;
@@ -189,7 +192,6 @@ class RunSelectiveRescanJobService:
                 before_version_id=plan.before_version_id,
                 affected_element_ids=tuple(plan.affected_element_ids),
             )
-            summary["affectedItemCount"] = len(affected_item_ids)
             if affected_item_ids:
                 await self._child_work.request_detection(
                     org_id=job.org_id,
@@ -198,8 +200,29 @@ class RunSelectiveRescanJobService:
                     affected_item_ids=affected_item_ids,
                     actor_id=self._actor_id(job),
                 )
+            # Added passages have no predecessor item, so they are freshly
+            # detected on the after version, producing brand-new unresolved items
+            # (no predecessor, no carried evidence, no copied decision). Their ids
+            # join the affected set so they flow into research like any newly
+            # detected item. Detection is scoped to exactly the added elements, so
+            # the whole version is never re-detected.
+            added_item_ids: tuple[UUID, ...] = ()
+            if plan.added_after_element_ids:
+                added_item_ids = await self._child_work.detect_added_items(
+                    org_id=job.org_id,
+                    project_id=job.project_id,
+                    after_version_id=after_version_id,
+                    added_after_element_ids=tuple(plan.added_after_element_ids),
+                    actor_id=self._actor_id(job),
+                )
+            affected_item_ids = tuple(dict.fromkeys((*affected_item_ids, *added_item_ids)))
+            summary["affectedItemCount"] = len(affected_item_ids)
+            summary["addedItemCount"] = len(added_item_ids)
             return (
-                {"affectedItemCount": len(affected_item_ids)},
+                {
+                    "affectedItemCount": len(affected_item_ids),
+                    "addedItemCount": len(added_item_ids),
+                },
                 carried_mappings,
                 affected_item_ids,
             )

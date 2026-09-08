@@ -57,7 +57,15 @@ def validated_persisted_job_target(
     """Project only fully validated, versioned job payloads into public targets."""
     legacy = JobTarget(type="legacy_unknown", id=fallback_id)
     expected_target_type = _EXPECTED_TARGET_TYPE_BY_JOB_TYPE.get(job_type)
-    if expected_target_type is None or set(payload) != {"schemaVersion", "target"}:
+    # A detection payload may carry an optional ``elementIds`` allowlist that
+    # scopes a selective rescan to changed/added passages; it does not change the
+    # public target (still the script version), so tolerate that one extra key.
+    allowed_keys = {"schemaVersion", "target"}
+    if job_type == "detection":
+        allowed_keys = allowed_keys | {"elementIds"}
+    if expected_target_type is None or not (
+        {"schemaVersion", "target"} <= set(payload) <= allowed_keys
+    ):
         return legacy
     schema_version = payload["schemaVersion"]
     if type(schema_version) is not int or schema_version != _SUPPORTED_JOB_PAYLOAD_SCHEMA_VERSION:

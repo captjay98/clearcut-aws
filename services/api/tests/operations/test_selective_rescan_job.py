@@ -200,10 +200,17 @@ class _FakeCarryEvidence:
 class _FakeChildWork:
     """Records affected-item child rescan requests and proves idempotency."""
 
-    def __init__(self, *, affected_item_ids: tuple[UUID, ...] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        affected_item_ids: tuple[UUID, ...] | None = None,
+        added_item_ids: tuple[UUID, ...] | None = None,
+    ) -> None:
         self._affected_item_ids = affected_item_ids
+        self._added_item_ids = added_item_ids
         self.detect_calls: list[frozenset[UUID]] = []
         self.research_calls: list[frozenset[UUID]] = []
+        self.added_detect_calls: list[frozenset[UUID]] = []
         self._issued: dict[UUID, RescanChildWorkTicket] = {}
 
     async def list_affected_items(
@@ -212,6 +219,12 @@ class _FakeChildWork:
         if self._affected_item_ids is not None:
             return self._affected_item_ids
         return tuple(uuid6.uuid7() for _ in affected_element_ids)
+
+    async def detect_added_items(
+        self, *, org_id, project_id, after_version_id, added_after_element_ids, actor_id
+    ) -> tuple[UUID, ...]:
+        self.added_detect_calls.append(frozenset(added_after_element_ids))
+        return self._added_item_ids or ()
 
     async def request_detection(
         self, *, org_id, project_id, after_version_id, affected_item_ids, actor_id

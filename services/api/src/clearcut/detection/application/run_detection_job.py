@@ -55,6 +55,7 @@ class RunDetectionJobService:
 
     async def __call__(self, job: JobRecord) -> JobExecutionResult:
         version_id = self._version_id(job)
+        element_scope = self._element_scope(job)
         lease_owner = job.lease_owner
         if lease_owner is None:
             raise JobExecutionError(
@@ -70,6 +71,7 @@ class RunDetectionJobService:
                 org_id=job.org_id,
                 project_id=job.project_id,
                 version_id=version_id,
+                element_ids=element_scope,
             )
             policy_version, prompt_version = await self._repository.load_active_judge_configuration(
                 org_id=job.org_id,
@@ -341,13 +343,15 @@ class RunDetectionJobService:
             job.job_type == "detection"
             and job.status is RunStatus.RUNNING
             and job.attempt_count > 0
-            and set(payload) == {"schemaVersion", "target"}
+            and set(payload) <= {"schemaVersion", "target", "elementIds"}
+            and {"schemaVersion", "target"} <= set(payload)
             and payload.get("schemaVersion") == 1
             and not isinstance(payload.get("schemaVersion"), bool)
             and isinstance(target, dict)
             and set(target) == {"type", "id"}
             and target.get("type") == "script_version"
             and isinstance(target_id, str)
+            and RunDetectionJobService._element_ids_shape_valid(payload.get("elementIds"))
         )
         if not valid_payload:
             raise JobExecutionError(
@@ -367,6 +371,32 @@ class RunDetectionJobService:
                     retryable=False,
                 )
             ) from error
+
+    @staticmethod
+    def _element_ids_shape_valid(element_ids: Any) -> bool:
+        # ``elementIds`` is optional. When present it must be a non-empty list of
+        # UUID strings scoping detection to explicit after-version elements (a
+        # selective rescan detecting only changed/added passages). Its absence
+        # preserves whole-version detection.
+        if element_ids is None:
+            return True
+        if not isinstance(element_ids, list) or not element_ids:
+            return False
+        for element_id in element_ids:
+            if not isinstance(element_id, str):
+                return False
+            try:
+                UUID(element_id)
+            except ValueError:
+                return False
+        return True
+
+    @staticmethod
+    def _element_scope(job: JobRecord) -> tuple[UUID, ...] | None:
+        raw = job.payload.get("elementIds")
+        if raw is None:
+            return None
+        return tuple(UUID(str(element_id)) for element_id in raw)
 
     @staticmethod
     def _element_input_hash(element: ScriptElement) -> str:

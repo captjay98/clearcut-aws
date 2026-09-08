@@ -64,7 +64,14 @@ class SqlCandidateRepository:
         org_id: UUID,
         project_id: UUID,
         version_id: UUID,
+        element_ids: tuple[UUID, ...] | None = None,
     ) -> DetectionInput:
+        # ``element_ids`` scopes detection to an explicit after-version element
+        # allowlist so a selective rescan detects ONLY the changed/added passages
+        # rather than re-detecting the whole version. ``None`` preserves the
+        # whole-version behavior the standalone detection endpoint relies on. An
+        # empty tuple is an explicit empty scope (no elements) and is honored as
+        # such rather than silently widening to the whole version.
         async with session_scope() as session:
             version = (
                 await session.execute(
@@ -84,15 +91,31 @@ class SqlCandidateRepository:
                 raise DetectionPersistenceError(
                     "The script version was not found in the scoped project."
                 )
-            rows = (
-                await session.execute(
-                    sa.text(
-                        "SELECT * FROM script_elements WHERE version_id = :version_id "
-                        "ORDER BY ordinal, id"
-                    ),
-                    {"version_id": str(version_id)},
-                )
-            ).mappings().all()
+            if element_ids is None:
+                rows = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT * FROM script_elements WHERE version_id = :version_id "
+                            "ORDER BY ordinal, id"
+                        ),
+                        {"version_id": str(version_id)},
+                    )
+                ).mappings().all()
+            elif not element_ids:
+                rows = []
+            else:
+                rows = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT * FROM script_elements WHERE version_id = :version_id "
+                            "AND id IN :element_ids ORDER BY ordinal, id"
+                        ).bindparams(sa.bindparam("element_ids", expanding=True)),
+                        {
+                            "version_id": str(version_id),
+                            "element_ids": [str(element_id) for element_id in element_ids],
+                        },
+                    )
+                ).mappings().all()
         return DetectionInput(
             script_id=self._uuid(version["script_id"]),
             version_id=version_id,

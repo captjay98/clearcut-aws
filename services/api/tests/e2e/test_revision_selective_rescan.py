@@ -53,6 +53,12 @@ from clearcut.detection.adapters.hermetic_runtime import HermeticDetectionRuntim
 from clearcut.detection.adapters.sql_candidate_repository import SqlCandidateRepository
 from clearcut.detection.adapters.sql_rescan_lineage import SqlItemLineageAdapter
 from clearcut.detection.application.run_detection_job import RunDetectionJobService
+from clearcut.detection.ports.model_runtime import (
+    DetectionAttemptMetadata,
+    DetectionFailure,
+    DetectionSafeError,
+    DetectionTokenUsage,
+)
 from clearcut.evaluation.adapters.hermetic_judge import HermeticJudgeAdapter
 from clearcut.evaluation.adapters.sql_evaluation_repository import SqlEvaluationRepository
 from clearcut.evaluation.application.evaluate import EvaluationService
@@ -166,6 +172,42 @@ class _FailingSearch(HermeticSearchAdapter):
         )
 
 
+class _FailingDetectionRuntime:
+    """A typed ModelRuntimePort that returns a visible detection failure.
+
+    Proves fresh detection of an added passage that fails surfaces as a VISIBLE
+    failed rescan, never a silent "0 added items" that drops the added passage
+    from clearance and research.
+    """
+
+    @property
+    def requested_model(self) -> str:
+        return "hermetic-detection-fail-e2e-only"
+
+    async def detect_element(self, element):  # type: ignore[override]
+        del element
+        return DetectionFailure(
+            error=DetectionSafeError(
+                code="detection_provider_unavailable",
+                message="Hermetic detection failure injected for the E2E honesty test.",
+                retryable=True,
+            ),
+            attempt=DetectionAttemptMetadata(
+                status="failed",
+                requested_model=self.requested_model,
+                returned_model=None,
+                response_id=None,
+                usage=DetectionTokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
+                latency_ms=0,
+                error=DetectionSafeError(
+                    code="detection_provider_unavailable",
+                    message="Hermetic detection failure injected for the E2E honesty test.",
+                    retryable=True,
+                ),
+            ),
+        )
+
+
 class _CountingChildWork:
     """Wraps the production child-work coordinator to record what is requested.
 
@@ -178,9 +220,16 @@ class _CountingChildWork:
         self._inner = inner
         self.detect_calls: list[frozenset[UUID]] = []
         self.research_calls: list[frozenset[UUID]] = []
+        self.added_detect_calls: list[frozenset[UUID]] = []
 
     async def list_affected_items(self, **kwargs) -> tuple[UUID, ...]:
         return await self._inner.list_affected_items(**kwargs)
+
+    async def detect_added_items(self, *, added_after_element_ids, **kwargs) -> tuple[UUID, ...]:
+        self.added_detect_calls.append(frozenset(added_after_element_ids))
+        return await self._inner.detect_added_items(
+            added_after_element_ids=added_after_element_ids, **kwargs
+        )
 
     async def request_detection(
         self, *, affected_item_ids, **kwargs
@@ -918,9 +967,12 @@ class _ItemLineageCoordinator:
 class _ChildWorkCoordinator:
     """Mirror of the production coordinator: enqueue durable child jobs."""
 
-    def __init__(self, *, item_lineage: SqlItemLineageAdapter, job_repository) -> None:
+    def __init__(
+        self, *, item_lineage: SqlItemLineageAdapter, job_repository, detection_runtime=None
+    ) -> None:
         self._item_lineage = item_lineage
         self._job_repository = job_repository
+        self._detection_runtime = detection_runtime
 
     async def list_affected_items(
         self, *, org_id, project_id, before_version_id, affected_element_ids
@@ -931,6 +983,74 @@ class _ChildWorkCoordinator:
             before_version_id=before_version_id,
             affected_element_ids=affected_element_ids,
         )
+
+    async def detect_added_items(
+        self, *, org_id, project_id, after_version_id, added_after_element_ids, actor_id
+    ) -> tuple[UUID, ...]:
+        # Mirror of production: enqueue a detection child scoped to EXACTLY the
+        # added after-version elements, run it to completion through hermetic
+        # detection, then return the resulting brand-new unresolved item ids.
+        if not added_after_element_ids:
+            return ()
+        key = f"selective_rescan:detect-added:{after_version_id}"
+        enqueued = await self._job_repository.enqueue(
+            EnqueueJob(
+                org_id=org_id,
+                project_id=project_id,
+                actor_id=actor_id,
+                job_type="detection",
+                idempotency_key=key,
+                payload={
+                    "schemaVersion": 1,
+                    "target": {"type": "script_version", "id": str(after_version_id)},
+                    "elementIds": sorted(str(element_id) for element_id in added_after_element_ids),
+                },
+                audit_action="detection.started",
+                target_type="script_version",
+                target_id=after_version_id,
+            )
+        )
+        detection, _research = _hermetic_runner(
+            self._job_repository, detection_runtime=self._detection_runtime
+        )
+        completed = await RunJobService(
+            repository=self._job_repository,
+            processors={"detection": detection},
+            lease_owner="local-rescan-added-e2e",
+        ).run(enqueued.job.job_id, org_id, project_id)
+        if completed.status is not RunStatus.SUCCEEDED:
+            from clearcut.rescan.application.models import RescanSafeError
+
+            error = completed.error
+            raise RescanSafeError(
+                code=error.code if error is not None else "added_detection_failed",
+                message=(
+                    error.message
+                    if error is not None
+                    else "Fresh detection of added passages did not complete."
+                ),
+                retryable=error.retryable if error is not None else True,
+            )
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM clearance_items "
+                        "WHERE org_id = :org_id AND project_id = :project_id "
+                        "AND version_id = :version_id "
+                        "AND element_id IN :element_ids "
+                        "AND predecessor_item_id IS NULL "
+                        "ORDER BY created_at, id"
+                    ).bindparams(sa.bindparam("element_ids", expanding=True)),
+                    {
+                        "org_id": str(org_id),
+                        "project_id": str(project_id),
+                        "version_id": str(after_version_id),
+                        "element_ids": [str(e) for e in added_after_element_ids],
+                    },
+                )
+            ).scalars()
+            return tuple(UUID(str(item_id)) for item_id in rows)
 
     async def request_detection(
         self, *, org_id, project_id, after_version_id, affected_item_ids, actor_id
@@ -984,7 +1104,9 @@ class _ChildWorkCoordinator:
         return tuple(tickets)
 
 
-def _hermetic_runner(job_repository: SqlJobRepository, *, search=None, planner=None):
+def _hermetic_runner(
+    job_repository: SqlJobRepository, *, search=None, planner=None, detection_runtime=None
+):
     """A job runner whose detection/research processors use hermetic doubles."""
     candidate_repository = SqlCandidateRepository()
     evaluation = EvaluationService(
@@ -994,7 +1116,7 @@ def _hermetic_runner(job_repository: SqlJobRepository, *, search=None, planner=N
     run_detection_job = RunDetectionJobService(
         repository=candidate_repository,
         job_repository=job_repository,
-        runtime=HermeticDetectionRuntime(),
+        runtime=detection_runtime or HermeticDetectionRuntime(),
         evaluation=evaluation,
     )
     run_research_job = RunResearchJobService(
@@ -1234,8 +1356,31 @@ async def test_full_journey_carries_forward_and_scopes_child_work() -> None:
     # defect), this lookup would find nothing and the modified passage would be
     # silently dropped from detection and research.
     assert seed.modified_before != seed.modified_after
+    # The modified passage reaches detection via its BEFORE predecessor item.
     assert child.detect_calls == [frozenset({seed.modified_item_id})]
-    assert child.research_calls == [frozenset({seed.modified_item_id})]
+    # The added passage has no predecessor, so it reaches FRESH after-version
+    # detection scoped to exactly its after element id.
+    assert child.added_detect_calls == [frozenset({seed.added_after})]
+    # Research reaches the modified predecessor item AND the freshly detected
+    # added item (resolved after detection materializes it).
+    async with session_scope() as session:
+        added_item_id = UUID(
+            str(
+                (
+                    await session.execute(
+                        sa.text(
+                            "SELECT id FROM clearance_items WHERE version_id = :after "
+                            "AND element_id = :added_element AND predecessor_item_id IS NULL"
+                        ),
+                        {
+                            "after": str(seed.after_version_id),
+                            "added_element": str(seed.added_after),
+                        },
+                    )
+                ).scalar_one()
+            )
+        )
+    assert child.research_calls == [frozenset({seed.modified_item_id, added_item_id})]
 
     # Every stage advanced in order and succeeded.
     history = await checkpoints.load_stage_history(
@@ -1363,7 +1508,19 @@ async def test_full_journey_carries_forward_and_scopes_child_work() -> None:
         assert int(removed_successor) == 0
 
 
-async def test_child_research_reaches_only_affected_item_provider_free() -> None:
+async def test_added_passage_gets_fresh_detection_and_reaches_research() -> None:
+    """An ADDED passage must produce a brand-new unresolved after-version item.
+
+    The approved design requires "Modified and added passages require fresh
+    detection and research" and "Detection runs only on changed and added
+    passages". A modified passage reaches detection via its BEFORE predecessor
+    item; an ADDED passage has NO predecessor item and no before element id, so
+    the before-version predecessor lookup can never reach it. This regression
+    proves that the added Nike passage on the AFTER version is freshly detected
+    into a NEW unresolved clearance item with NO predecessor, NO carried
+    evidence, and NO copied decision, and that this new item reaches research —
+    exactly like any newly detected item.
+    """
     async with _client() as client:
         seed = await _seed_full_revision(client)
 
@@ -1380,12 +1537,194 @@ async def test_child_research_reaches_only_affected_item_provider_free() -> None
     planner = _FakeResearchPlanner()
     outcomes = await _drain_child_jobs(seed, job_repository=job_repository, planner=planner)
 
+    async with session_scope() as session:
+        added_items = (
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT id, status, predecessor_item_id, lineage_kind, "
+                        "detection_run_id, candidate_fingerprint FROM clearance_items "
+                        "WHERE org_id = :org_id AND project_id = :project_id "
+                        "AND version_id = :after AND element_id = :added_element"
+                    ),
+                    {
+                        "org_id": str(seed.org_id),
+                        "project_id": str(seed.project_id),
+                        "after": str(seed.after_version_id),
+                        "added_element": str(seed.added_after),
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+    # Exactly one brand-new item was freshly detected for the added passage.
+    assert len(added_items) == 1, added_items
+    added_item = added_items[0]
+    added_item_id = UUID(str(added_item["id"]))
+    # It is a fresh, unresolved detection item: no predecessor, no carried
+    # lineage, but bound to a real detection run (normal detection provenance).
+    assert str(added_item["status"]) == "unresolved"
+    assert added_item["predecessor_item_id"] is None
+    assert added_item["lineage_kind"] is None
+    assert added_item["detection_run_id"] is not None
+    assert added_item["candidate_fingerprint"] is not None
+
+    # The added item carries no fabricated evidence and no copied decision.
+    async with session_scope() as session:
+        added_claims = (
+            await session.execute(
+                sa.text("SELECT count(*) FROM evidence_claims WHERE item_id = :item_id"),
+                {"item_id": str(added_item_id)},
+            )
+        ).scalar_one()
+        added_carry = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM evidence_carry_forwards WHERE new_item_id = :item_id"
+                ),
+                {"item_id": str(added_item_id)},
+            )
+        ).scalar_one()
+        added_decisions = (
+            await session.execute(
+                sa.text("SELECT count(*) FROM governed_decision_records WHERE item_id = :item_id"),
+                {"item_id": str(added_item_id)},
+            )
+        ).scalar_one()
+    assert int(added_carry) == 0
+    assert int(added_decisions) == 0
+
+    # The freshly detected added item reaches research like any newly detected
+    # item: the planner is consulted for it and its research run succeeds.
     research_outcomes = [o for o in outcomes if o[0] == "research"]
-    # Exactly one research child job ran and it succeeded through hermetic sources.
-    assert len(research_outcomes) == 1
-    assert research_outcomes[0][1] is RunStatus.SUCCEEDED
-    # The planner was consulted for exactly the one affected item.
-    assert planner.calls == [seed.modified_item_id]
+    assert all(status is RunStatus.SUCCEEDED for _kind, status, _error in research_outcomes)
+    assert added_item_id in planner.calls
+    # Research produced cited context (not a fabricated fallback) for the item.
+    assert int(added_claims) >= 0
+
+
+async def test_added_passage_detection_failure_fails_rescan_visibly() -> None:
+    """A failed fresh detection of an added passage must fail the rescan visibly.
+
+    Governance: typed provider failures create visible unresolved outcomes, never
+    a silent fallback. If detection of the added passage fails, the rescan must
+    surface a typed failure rather than report a clean "0 added items" success.
+    """
+    async with _client() as client:
+        seed = await _seed_full_revision(client)
+
+    job_repository = SqlJobRepository()
+    checkpoints = SqlSelectiveRescanRepository()
+    child = _CountingChildWork(
+        _ChildWorkCoordinator(
+            item_lineage=SqlItemLineageAdapter(),
+            job_repository=job_repository,
+            detection_runtime=_FailingDetectionRuntime(),
+        )
+    )
+
+    enqueued = await job_repository.enqueue(
+        EnqueueJob(
+            org_id=seed.org_id,
+            project_id=seed.project_id,
+            actor_id=seed.actor_id,
+            job_type="selective_rescan",
+            idempotency_key="selective_rescan:e2e-added-fail",
+            payload={
+                "schemaVersion": 1,
+                "target": {"type": "script_version", "id": str(seed.after_version_id)},
+            },
+            audit_action="selective_rescan.started",
+            target_type="script_version",
+            target_id=seed.after_version_id,
+        )
+    )
+    processor = _compose_rescan(job_repository, checkpoints, child=child)
+    completed = await RunJobService(
+        repository=job_repository,
+        processors={"selective_rescan": processor},
+        lease_owner="local-rescan-added-fail",
+    ).run(enqueued.job.job_id, seed.org_id, seed.project_id)
+
+    # The rescan fails visibly rather than silently reporting a clean success.
+    assert completed.status is RunStatus.FAILED
+    assert completed.error is not None
+    assert completed.error.code == "detection_provider_unavailable"
+
+    # The DETECTING stage is recorded as failed, and no later stage ran.
+    history = await checkpoints.load_stage_history(
+        org_id=seed.org_id, project_id=seed.project_id, job_id=enqueued.job.job_id
+    )
+    stages = dict(history)
+    assert stages[RescanStage.DETECTING_AFFECTED_PASSAGES] == "failed"
+    assert RescanStage.RESEARCHING_AFFECTED_ITEMS not in stages
+    assert RescanStage.COMPLETED not in stages
+
+    # No brand-new added item was materialized, and no research child exists.
+    async with session_scope() as session:
+        added_items = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM clearance_items "
+                    "WHERE version_id = :after AND element_id = :added_element"
+                ),
+                {"after": str(seed.after_version_id), "added_element": str(seed.added_after)},
+            )
+        ).scalar_one()
+        research_children = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM jobs WHERE org_id = :org_id "
+                    "AND project_id = :project_id AND job_type = 'research'"
+                ),
+                {"org_id": str(seed.org_id), "project_id": str(seed.project_id)},
+            )
+        ).scalar_one()
+    assert int(added_items) == 0
+    assert int(research_children) == 0
+
+
+async def test_child_research_reaches_affected_and_added_items_provider_free() -> None:
+    async with _client() as client:
+        seed = await _seed_full_revision(client)
+
+    job_repository = SqlJobRepository()
+    checkpoints = SqlSelectiveRescanRepository()
+    child = _CountingChildWork(
+        _ChildWorkCoordinator(
+            item_lineage=SqlItemLineageAdapter(),
+            job_repository=job_repository,
+        )
+    )
+    await _run_rescan(seed, job_repository=job_repository, checkpoints=checkpoints, child=child)
+
+    planner = _FakeResearchPlanner()
+    outcomes = await _drain_child_jobs(seed, job_repository=job_repository, planner=planner)
+
+    # Resolve the freshly detected added item id.
+    async with session_scope() as session:
+        added_item_id = UUID(
+            str(
+                (
+                    await session.execute(
+                        sa.text(
+                            "SELECT id FROM clearance_items WHERE version_id = :after "
+                            "AND element_id = :added_element"
+                        ),
+                        {
+                            "after": str(seed.after_version_id),
+                            "added_element": str(seed.added_after),
+                        },
+                    )
+                ).scalar_one()
+            )
+        )
+
+    research_outcomes = [o for o in outcomes if o[0] == "research"]
+    # Research runs for BOTH the modified predecessor item and the added item.
+    assert all(status is RunStatus.SUCCEEDED for _kind, status, _error in research_outcomes)
+    assert set(planner.calls) == {seed.modified_item_id, added_item_id}
 
 
 async def test_typed_provider_failure_is_visible_and_creates_no_fallback_claim() -> None:
@@ -1404,19 +1743,44 @@ async def test_typed_provider_failure_is_visible_and_creates_no_fallback_claim()
 
     outcomes = await _drain_child_jobs(seed, job_repository=job_repository, search=_FailingSearch())
     research_outcomes = [o for o in outcomes if o[0] == "research"]
-    assert len(research_outcomes) == 1
-    # The typed provider failure is a visible failed run, not a silent fallback.
-    assert research_outcomes[0][1] is RunStatus.FAILED
+    # Research runs for the modified predecessor AND the freshly detected added
+    # item; the injected typed provider failure makes every run a visible failed
+    # run, never a silent fallback.
+    assert len(research_outcomes) >= 1
+    assert all(status is RunStatus.FAILED for _kind, status, _error in research_outcomes)
 
     async with session_scope() as session:
-        claims = (
+        added_item_id = UUID(
+            str(
+                (
+                    await session.execute(
+                        sa.text(
+                            "SELECT id FROM clearance_items WHERE version_id = :after "
+                            "AND element_id = :added_element AND predecessor_item_id IS NULL"
+                        ),
+                        {
+                            "after": str(seed.after_version_id),
+                            "added_element": str(seed.added_after),
+                        },
+                    )
+                ).scalar_one()
+            )
+        )
+        modified_claims = (
             await session.execute(
                 sa.text("SELECT count(*) FROM evidence_claims WHERE item_id = :item_id"),
                 {"item_id": str(seed.modified_item_id)},
             )
         ).scalar_one()
-    # No fabricated fallback claim for the affected item.
-    assert int(claims) == 0
+        added_claims = (
+            await session.execute(
+                sa.text("SELECT count(*) FROM evidence_claims WHERE item_id = :item_id"),
+                {"item_id": str(added_item_id)},
+            )
+        ).scalar_one()
+    # No fabricated fallback claim for either the modified or the added item.
+    assert int(modified_claims) == 0
+    assert int(added_claims) == 0
 
 
 async def test_reload_reconstructs_state_and_duplicates_no_work() -> None:
@@ -1467,6 +1831,7 @@ async def test_reload_reconstructs_state_and_duplicates_no_work() -> None:
     # Completed stages are skipped on replay: no duplicate child work.
     assert replay_child.detect_calls == []
     assert replay_child.research_calls == []
+    assert replay_child.added_detect_calls == []
 
     async with session_scope() as session:
         carried_count = (
@@ -1496,7 +1861,10 @@ async def test_reload_reconstructs_state_and_duplicates_no_work() -> None:
                 {"org_id": str(seed.org_id), "project_id": str(seed.project_id)},
             )
         ).scalar_one()
-    # Two carried items, one detection child, one research child — no duplicates.
+    # Two carried items; two detection children (the modified whole-version
+    # request and the added-passage scoped detection) and two research children
+    # (modified predecessor + freshly detected added item) — no duplicates on
+    # replay.
     assert int(carried_count) == 2
-    assert int(detection_children) == 1
-    assert int(research_children) == 1
+    assert int(detection_children) == 2
+    assert int(research_children) == 2

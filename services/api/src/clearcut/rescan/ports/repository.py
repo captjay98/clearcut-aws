@@ -156,6 +156,28 @@ class RescanChildWorkPort(Protocol):
         """List predecessor items whose elements were modified/removed."""
         ...
 
+    async def detect_added_items(
+        self,
+        *,
+        org_id: OrgId,
+        project_id: ProjectId,
+        after_version_id: VersionId,
+        added_after_element_ids: tuple[ElementId, ...],
+        actor_id: ItemId,
+    ) -> tuple[ItemId, ...]:
+        """Freshly detect the added AFTER-version passages and return new items.
+
+        Added passages have no predecessor clearance item, so they cannot be
+        reached through :meth:`list_affected_items`. This runs detection scoped to
+        EXACTLY the added after-version elements (never the whole version),
+        materializing brand-new unresolved clearance items with no predecessor, no
+        carried evidence, and no copied decision — exactly like initial detection.
+        It returns the ids of the resulting unresolved items so they can flow into
+        research like any newly detected item. It is replay-idempotent: a repeat
+        detects no duplicate item and returns the same ids.
+        """
+        ...
+
     async def request_detection(
         self,
         *,
