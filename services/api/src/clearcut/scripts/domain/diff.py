@@ -11,12 +11,14 @@ from clearcut.scripts.domain.elements import ElementType, ScriptElement
 
 MATCHING_ALGORITHM_VERSION: Final = "element-lineage-v1"
 # Fuzzy scoring is synchronous. Before candidate filtering or scoring, enforce
-# the same-type pair count and a conservative raw Cartesian character-work
-# estimate. One hundred fifty million permits 9,801 typical screenplay-line
-# pairs while rejecting long high-distinct-character Cartesian inputs. Exceeding
-# either per-diff budget skips the entire fuzzy phase rather than creating
-# arbitrary partial lineage.
+# the same-type pair count, a worst-case single-pair character-work ceiling,
+# and a conservative raw Cartesian character-work estimate. The separate
+# 50-million per-pair ceiling rejects pathological individual comparisons;
+# the 150-million aggregate ceiling still permits 9,801 typical screenplay-line
+# pairs while rejecting large Cartesian inputs. Exceeding any preflight budget
+# skips the entire fuzzy phase rather than creating arbitrary partial lineage.
 MAX_SIMILARITY_PAIR_EVALUATIONS: Final = 10_000
+MAX_SIMILARITY_PAIR_CHARACTER_WORK: Final = 50_000_000
 MAX_SIMILARITY_CHARACTER_WORK: Final = 150_000_000
 _SIMILARITY_THRESHOLD: Final = 0.9
 _SIMILARITY_RUNNER_UP_MARGIN: Final = 0.05
@@ -381,6 +383,26 @@ def _similar_matches(
         for element_type, before_indexes in before_by_type.items()
     )
     if pair_evaluations > MAX_SIMILARITY_PAIR_EVALUATIONS:
+        return []
+
+    max_before_length_by_type = {
+        element_type: max(
+            before_elements[index].text_length for index in before_indexes
+        )
+        for element_type, before_indexes in before_by_type.items()
+    }
+    max_after_length_by_type = {
+        element_type: max(
+            after_elements[index].text_length for index in after_indexes
+        )
+        for element_type, after_indexes in after_by_type.items()
+    }
+    if any(
+        max_before_length
+        * max_after_length_by_type.get(element_type, 0)
+        > MAX_SIMILARITY_PAIR_CHARACTER_WORK
+        for element_type, max_before_length in max_before_length_by_type.items()
+    ):
         return []
 
     before_length_by_type = {

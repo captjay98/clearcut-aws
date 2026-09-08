@@ -219,9 +219,15 @@ def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
         for index in range(line_count)
     ]
     candidate_filter_call_count = 0
+    ratio_call_count = 0
     original_candidate_filter = diff_domain._can_affect_similarity_choice
 
     assert line_count * line_count == diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS
+    assert (
+        max(len(element.text) for element in before)
+        * max(len(element.text) for element in after)
+        <= diff_domain.MAX_SIMILARITY_PAIR_CHARACTER_WORK
+    )
     assert (
         sum(len(element.text) for element in before)
         * sum(len(element.text) for element in after)
@@ -233,16 +239,22 @@ def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
         candidate_filter_call_count += 1
         return original_candidate_filter(before_element, after_element)
 
+    def counted_ratio(_matcher):
+        nonlocal ratio_call_count
+        ratio_call_count += 1
+        return 1.0
+
     monkeypatch.setattr(
         diff_domain,
         "_can_affect_similarity_choice",
         counted_candidate_filter,
     )
+    monkeypatch.setattr(diff_domain.SequenceMatcher, "ratio", counted_ratio)
 
     first = _compute(before, after)
     second = _compute(before, after)
 
-    assert candidate_filter_call_count == 0
+    assert candidate_filter_call_count == ratio_call_count == 0
     assert first.elements == second.elements
     assert len(first.elements) == line_count * 2
     assert [row.classification for row in first.elements] == [
@@ -255,36 +267,73 @@ def test_raw_character_work_is_rejected_before_candidate_filtering(monkeypatch):
     )
 
 
-def test_pathological_similarity_work_is_rejected_before_ratio(monkeypatch):
+def test_single_pair_character_work_is_rejected_before_fuzzy_work(monkeypatch):
     exact_before = _element("INT. ARCHIVE - NIGHT", 1, ElementType.SCENE_HEADING)
-    ordinary_before = _element("Jon opens the heavy wooden door.", 2, ElementType.ACTION)
-    pathological_before = _element("A" * 13_001, 3, ElementType.ACTION)
+    contextual_before_one = _element("Yes.", 2, ElementType.DIALOGUE)
+    boundary_before = _element("The ledger closes.", 3, ElementType.ACTION)
+    contextual_before_two = _element("Yes.", 4, ElementType.DIALOGUE)
+    closing_before = _element("EXT. ARCHIVE - DAWN", 5, ElementType.SCENE_HEADING)
+    ordinary_before = _element("Jon opens the heavy wooden door.", 6, ElementType.ACTION)
+    pathological_before = _element("A" * 8_001, 7, ElementType.ACTION)
     exact_after = _element("INT. ARCHIVE - NIGHT", 1, ElementType.SCENE_HEADING)
-    ordinary_after = _element("Jon opens the heavy wood door.", 2, ElementType.ACTION)
-    pathological_after = _element(f'{"A" * 13_000}B', 3, ElementType.ACTION)
+    contextual_after_one = _element("Yes.", 2, ElementType.DIALOGUE)
+    boundary_after = _element("The ledger closes.", 3, ElementType.ACTION)
+    contextual_after_two = _element("Yes.", 4, ElementType.DIALOGUE)
+    closing_after = _element("EXT. ARCHIVE - DAWN", 5, ElementType.SCENE_HEADING)
+    ordinary_after = _element("Jon opens the heavy wood door.", 6, ElementType.ACTION)
+    pathological_after = _element(f'{"A" * 8_000}B', 7, ElementType.ACTION)
+    candidate_filter_call_count = 0
     ratio_call_count = 0
+    original_candidate_filter = diff_domain._can_affect_similarity_choice
 
-    assert diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS > 2 * 2
-    assert (
-        len(pathological_before.text) * len(pathological_after.text)
-        > diff_domain.MAX_SIMILARITY_CHARACTER_WORK
+    single_pair_character_work = len(pathological_before.text) * len(
+        pathological_after.text
     )
+    assert diff_domain.MAX_SIMILARITY_PAIR_EVALUATIONS > 2 * 2
+    assert single_pair_character_work > 50_000_000
+    assert single_pair_character_work < diff_domain.MAX_SIMILARITY_CHARACTER_WORK
+
+    def counted_candidate_filter(before_element, after_element):
+        nonlocal candidate_filter_call_count
+        candidate_filter_call_count += 1
+        return original_candidate_filter(before_element, after_element)
 
     def counted_ratio(_matcher):
         nonlocal ratio_call_count
         ratio_call_count += 1
         return 1.0
 
+    monkeypatch.setattr(
+        diff_domain,
+        "_can_affect_similarity_choice",
+        counted_candidate_filter,
+    )
     monkeypatch.setattr(diff_domain.SequenceMatcher, "ratio", counted_ratio)
 
     diff = _compute(
-        [exact_before, ordinary_before, pathological_before],
-        [exact_after, ordinary_after, pathological_after],
+        [
+            exact_before,
+            contextual_before_one,
+            boundary_before,
+            contextual_before_two,
+            closing_before,
+            ordinary_before,
+            pathological_before,
+        ],
+        [
+            exact_after,
+            contextual_after_one,
+            boundary_after,
+            contextual_after_two,
+            closing_after,
+            ordinary_after,
+            pathological_after,
+        ],
     )
 
-    assert ratio_call_count == 0
+    assert candidate_filter_call_count == ratio_call_count == 0
     assert [row.classification for row in diff.elements] == [
-        ChangeClassification.UNCHANGED,
+        *([ChangeClassification.UNCHANGED] * 5),
         ChangeClassification.ADDED,
         ChangeClassification.ADDED,
         ChangeClassification.REMOVED,
@@ -292,6 +341,13 @@ def test_pathological_similarity_work_is_rejected_before_ratio(monkeypatch):
     ]
     assert diff.elements[0].before_element_id == exact_before.element_id
     assert diff.elements[0].after_element_id == exact_after.element_id
+    rows_by_after_id = {row.after_element_id: row for row in diff.elements}
+    assert rows_by_after_id[contextual_after_one.element_id].confidence is (
+        LineageConfidence.CONTEXTUAL
+    )
+    assert rows_by_after_id[contextual_after_two.element_id].confidence is (
+        LineageConfidence.CONTEXTUAL
+    )
 
 
 def test_distant_reordered_unique_near_edits_preserve_modified_lineage():
