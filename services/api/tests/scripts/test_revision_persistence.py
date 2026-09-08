@@ -435,29 +435,42 @@ async def test_adjacent_diff_read_returns_classified_sets() -> None:
         assert diff["afterVersionId"] == v2["versionId"]
         assert diff["algorithmVersion"] == "element-lineage-v1"
 
-        kinds = {change["changeKind"] for change in diff["changes"]}
+        kinds = {element["changeKind"] for element in diff["elements"]}
         assert kinds <= {"unchanged", "moved", "modified", "added", "removed"}
         # The revision modified an action line and added a new closing scene.
         assert "modified" in kinds
         assert "added" in kinds
 
-        counts = diff["impactCounts"]
-        assert counts["modified"] >= 1
-        assert counts["added"] >= 2
-        assert sum(counts.values()) == len(diff["changes"])
+        summary = diff["summary"]
+        assert summary["modified"] >= 1
+        assert summary["added"] >= 2
+        # Every per-kind count in the summary is reflected in the element list.
+        per_kind_total = (
+            summary["unchanged"]
+            + summary["moved"]
+            + summary["modified"]
+            + summary["added"]
+            + summary["removed"]
+        )
+        assert per_kind_total == len(diff["elements"])
+        # affectedElementCount = modified + added; providerWorkEstimate mirrors it.
+        assert summary["affectedElementCount"] == summary["modified"] + summary["added"]
+        assert summary["providerWorkEstimate"] == summary["affectedElementCount"]
 
-        for change in diff["changes"]:
-            assert change["changeKind"] in {
+        for element in diff["elements"]:
+            assert element["changeKind"] in {
                 "unchanged",
                 "moved",
                 "modified",
                 "added",
                 "removed",
             }
-            if change["changeKind"] in {"added", "removed"}:
-                assert change["confidence"] == "unmatched"
+            # Each element carries a screenplay type and single representative text.
+            assert element["type"]
+            if element["changeKind"] in {"added", "removed"}:
+                assert element["confidence"] == "unmatched"
             else:
-                assert change["confidence"] in {"exact", "contextual", "similar"}
+                assert element["confidence"] in {"exact", "contextual", "similar"}
 
 
 @pytest.mark.asyncio
@@ -476,3 +489,111 @@ async def test_adjacent_diff_read_is_project_scoped_and_returns_neutral_404() ->
         )
         assert denied.status_code == 404
         assert denied.json()["error"]["code"] == "not_found"
+
+
+def _load_contract_script_version_diff_model() -> type:
+    """Load the generated Python ``ScriptVersionDiff`` model from the published contract.
+
+    The generated client is not installed as an importable package, so we load it
+    directly from ``packages/contracts/generated/python`` by file path. This asserts
+    the server response against the SAME published contract the TypeScript client and
+    UI consume, catching any server/contract drift.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    generated = (
+        Path(__file__).resolve().parents[4]
+        / "packages"
+        / "contracts"
+        / "generated"
+        / "python"
+        / "__init__.py"
+    )
+    assert generated.is_file(), f"generated contract model not found at {generated}"
+    spec = importlib.util.spec_from_file_location("clearcut_contracts_generated", generated)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    # The generated module uses ``from __future__ import annotations``; rebuild the
+    # model against its own namespace so deferred annotations resolve for validation.
+    model = module.ScriptVersionDiff
+    model.model_rebuild(_types_namespace=vars(module))
+    return model
+
+
+@pytest.mark.asyncio
+async def test_adjacent_diff_response_matches_published_contract() -> None:
+    """RED contract guard: the diff response validates against the generated model.
+
+    getScriptVersionDiff must emit exactly the published ScriptVersionDiff contract
+    (elements[] + summary + before/after labels), not the server's ad-hoc
+    changes/impactCounts shape. Validating the response body against the generated
+    Pydantic model fails loudly on any field name/shape drift.
+    """
+    script_version_diff_model = _load_contract_script_version_diff_model()
+
+    await init_and_seed_db(seed_if_empty=False)
+    async with await _client() as client:
+        org_id, project_id, _token = await _create_project(client, "diff-contract")
+        await _commit_full_file(client, org_id, project_id, V1_TEXT)
+        v2 = await _commit_full_file(client, org_id, project_id, V2_TEXT)
+
+        response = await client.get(
+            f"/api/v1/organizations/{org_id}/projects/{project_id}/"
+            f"script-versions/{v2['versionId']}/diff"
+        )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+
+    # The response body validates against the published contract model verbatim.
+    validated = script_version_diff_model.model_validate(data)
+
+    # Top-level contract keys — no ad-hoc server keys leak through.
+    assert set(data.keys()) == {
+        "beforeVersionId",
+        "afterVersionId",
+        "beforeLabel",
+        "afterLabel",
+        "algorithmVersion",
+        "elements",
+        "summary",
+        "createdAt",
+    }
+    assert "changes" not in data
+    assert "impactCounts" not in data
+    assert "diffId" not in data
+
+    assert validated.afterVersionId == v2["versionId"]
+    assert validated.algorithmVersion == "element-lineage-v1"
+    assert validated.afterLabel == f"Version {v2['versionNumber']}"
+
+    # Each element carries the contract keys the UI consumes (type, single text).
+    assert data["elements"], "expected at least one element-level change"
+    assert set(data["elements"][0].keys()) == {
+        "beforeElementId",
+        "afterElementId",
+        "beforeOrdinal",
+        "afterOrdinal",
+        "type",
+        "text",
+        "changeKind",
+        "confidence",
+    }
+
+    # Summary carries every counted dimension the UI renders.
+    summary = data["summary"]
+    assert set(summary.keys()) == {
+        "unchanged",
+        "moved",
+        "modified",
+        "added",
+        "removed",
+        "affectedElementCount",
+        "carriedForwardItemCount",
+        "carriedForwardEvidenceCount",
+        "providerWorkEstimate",
+    }
+    # affectedElementCount = modified + added; providerWorkEstimate mirrors it.
+    assert summary["affectedElementCount"] == summary["modified"] + summary["added"]
+    assert summary["providerWorkEstimate"] == summary["affectedElementCount"]

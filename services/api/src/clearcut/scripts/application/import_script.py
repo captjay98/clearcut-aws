@@ -131,8 +131,14 @@ class ElementChangeView:
     after_ordinal: int | None
     before_text: str | None
     after_text: str | None
+    element_type: str
     change_kind: str
     confidence: str
+
+    @property
+    def text(self) -> str | None:
+        """Single representative element text: the after text when present else before."""
+        return self.after_text if self.after_text is not None else self.before_text
 
 
 @dataclass(frozen=True)
@@ -147,6 +153,7 @@ class AdjacentDiffView:
     algorithm_version: str
     changes: tuple[ElementChangeView, ...]
     impact_counts: dict[str, int]
+    carried_forward_item_count: int
     created_at: datetime
 
 
@@ -651,7 +658,27 @@ class ImportScriptService:
             algorithm_version=record.algorithm_version,
             changes=changes,
             impact_counts=impact_counts,
+            carried_forward_item_count=ImportScriptService._carried_forward_item_count(changes),
             created_at=record.created_at,
+        )
+
+    # Element classifications eligible to carry a predecessor clearance item forward,
+    # mirroring the scoped rescan revision plan (``SqlRevisionPlanAdapter``): an
+    # unchanged or moved element carries forward only when its lineage confidence is
+    # exact or contextual and both element ids are present. A similar (fuzzy) match is
+    # treated as modified and re-detected instead, so it is not carried.
+    _CARRYABLE_CHANGE_KINDS = frozenset({"unchanged", "moved"})
+    _CARRYABLE_CONFIDENCES = frozenset({"exact", "contextual"})
+
+    @staticmethod
+    def _carried_forward_item_count(changes: tuple[ElementChangeView, ...]) -> int:
+        return sum(
+            1
+            for change in changes
+            if change.change_kind in ImportScriptService._CARRYABLE_CHANGE_KINDS
+            and change.confidence in ImportScriptService._CARRYABLE_CONFIDENCES
+            and change.before_element_id is not None
+            and change.after_element_id is not None
         )
 
     @staticmethod
@@ -663,6 +690,11 @@ class ImportScriptService:
             after_ordinal=record.after_ordinal,
             before_text=record.before_text,
             after_text=record.after_text,
+            element_type=(
+                record.after_element_type
+                if record.after_element_type is not None
+                else (record.before_element_type or "unknown")
+            ),
             change_kind=record.change_kind,
             confidence=record.confidence,
         )

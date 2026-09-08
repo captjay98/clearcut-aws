@@ -115,6 +115,8 @@ class ElementLineageRecord:
     after_ordinal: int | None
     before_text: str | None
     after_text: str | None
+    before_element_type: str | None
+    after_element_type: str | None
     change_kind: str
     confidence: str
 
@@ -935,7 +937,9 @@ class SqlImportRepository:
                     "SELECT l.change_kind, l.confidence, "
                     "l.before_element_id, l.after_element_id, "
                     "before_e.ordinal AS before_ordinal, before_e.text AS before_text, "
-                    "after_e.ordinal AS after_ordinal, after_e.text AS after_text "
+                    "before_e.element_type AS before_element_type, "
+                    "after_e.ordinal AS after_ordinal, after_e.text AS after_text, "
+                    "after_e.element_type AS after_element_type "
                     "FROM script_element_lineage l "
                     "LEFT JOIN script_elements before_e "
                     "ON before_e.id = l.before_element_id "
@@ -973,6 +977,16 @@ class SqlImportRepository:
                         str(row["before_text"]) if row["before_text"] is not None else None
                     ),
                     after_text=(str(row["after_text"]) if row["after_text"] is not None else None),
+                    before_element_type=(
+                        str(row["before_element_type"])
+                        if row["before_element_type"] is not None
+                        else None
+                    ),
+                    after_element_type=(
+                        str(row["after_element_type"])
+                        if row["after_element_type"] is not None
+                        else None
+                    ),
                     change_kind=str(row["change_kind"]),
                     confidence=str(row["confidence"]),
                 )

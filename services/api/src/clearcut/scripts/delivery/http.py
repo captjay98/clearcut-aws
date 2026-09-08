@@ -31,7 +31,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(prefix="/api/v1", tags=["scripts", "uploads"])
 
@@ -50,6 +50,67 @@ class CreateCapabilityBody(BaseModel):
 class CanonicalPasteImportBody(BaseModel):
     raw_text: str = Field(alias="rawText", min_length=1)
     format: Literal["fountain", "fdx", "raw"]
+
+
+ScriptDiffChangeKind = Literal["unchanged", "moved", "modified", "added", "removed"]
+ScriptDiffConfidence = Literal["exact", "contextual", "similar", "unmatched"]
+
+
+class ScriptDiffElementModel(BaseModel):
+    """A single element-level change, matching the published ScriptDiffElement contract."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    before_element_id: str | None = Field(default=None, alias="beforeElementId")
+    after_element_id: str | None = Field(default=None, alias="afterElementId")
+    before_ordinal: int | None = Field(default=None, alias="beforeOrdinal", ge=0)
+    after_ordinal: int | None = Field(default=None, alias="afterOrdinal", ge=0)
+    type: str
+    text: str | None = None
+    change_kind: ScriptDiffChangeKind = Field(alias="changeKind")
+    confidence: ScriptDiffConfidence
+
+
+class ScriptDiffSummaryModel(BaseModel):
+    """Aggregate diff counts, matching the published ScriptDiffSummary contract."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    unchanged: int = Field(ge=0)
+    moved: int = Field(ge=0)
+    modified: int = Field(ge=0)
+    added: int = Field(ge=0)
+    removed: int = Field(ge=0)
+    affected_element_count: int = Field(alias="affectedElementCount", ge=0)
+    carried_forward_item_count: int = Field(alias="carriedForwardItemCount", ge=0)
+    carried_forward_evidence_count: int = Field(alias="carriedForwardEvidenceCount", ge=0)
+    provider_work_estimate: int = Field(alias="providerWorkEstimate", ge=0)
+
+
+class ScriptVersionDiffModel(BaseModel):
+    """Persisted adjacent diff, matching the published ScriptVersionDiff contract.
+
+    The field names/case mirror ``packages/contracts/openapi.yaml`` verbatim so the
+    generated TypeScript client and versions UI validate against the same shape.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    before_version_id: str | None = Field(alias="beforeVersionId")
+    after_version_id: str = Field(alias="afterVersionId")
+    before_label: str | None = Field(alias="beforeLabel")
+    after_label: str = Field(alias="afterLabel")
+    algorithm_version: str = Field(alias="algorithmVersion")
+    elements: list[ScriptDiffElementModel]
+    summary: ScriptDiffSummaryModel
+    created_at: str = Field(alias="createdAt")
+
+
+class ScriptVersionDiffEnvelope(BaseModel):
+    """Typed success envelope for the getScriptVersionDiff read."""
+
+    data: ScriptVersionDiffModel
+    meta: dict[str, str | int]
 
 
 def _service(request: Request) -> ImportScriptService:
@@ -168,36 +229,53 @@ def _version_data(version: ScriptVersionView) -> dict[str, object]:
     }
 
 
-def _adjacent_diff_data(diff: AdjacentDiffView) -> dict[str, object]:
-    return {
-        "diffId": str(diff.diff_id),
-        "projectId": str(diff.project_id),
-        "scriptId": str(diff.script_id),
-        "beforeVersionId": str(diff.before_version_id),
-        "afterVersionId": str(diff.after_version_id),
-        "beforeVersionNumber": diff.before_version_number,
-        "afterVersionNumber": diff.after_version_number,
-        "algorithmVersion": diff.algorithm_version,
-        "impactCounts": dict(diff.impact_counts),
-        "changes": [
-            {
-                "beforeElementId": (
-                    str(change.before_element_id) if change.before_element_id else None
-                ),
-                "afterElementId": (
-                    str(change.after_element_id) if change.after_element_id else None
-                ),
-                "beforeOrdinal": change.before_ordinal,
-                "afterOrdinal": change.after_ordinal,
-                "beforeText": change.before_text,
-                "afterText": change.after_text,
-                "changeKind": change.change_kind,
-                "confidence": change.confidence,
-            }
-            for change in diff.changes
-        ],
-        "createdAt": diff.created_at.isoformat(),
-    }
+def _adjacent_diff_data(diff: AdjacentDiffView) -> ScriptVersionDiffModel:
+    impact = diff.impact_counts
+    unchanged = impact.get("unchanged", 0)
+    moved = impact.get("moved", 0)
+    modified = impact.get("modified", 0)
+    added = impact.get("added", 0)
+    removed = impact.get("removed", 0)
+    # Elements changed enough to require fresh clearance work: modified + added.
+    affected_element_count = modified + added
+    summary = ScriptDiffSummaryModel(
+        unchanged=unchanged,
+        moved=moved,
+        modified=modified,
+        added=added,
+        removed=removed,
+        affectedElementCount=affected_element_count,
+        # Predecessor clearance items carried forward unchanged, from persisted lineage.
+        carriedForwardItemCount=diff.carried_forward_item_count,
+        # Evidence claims live in the research module, not scripts storage; the scripts
+        # boundary must not read another module's tables, so no evidence count is
+        # derivable here. Provider work is estimated from the affected element scope.
+        carriedForwardEvidenceCount=0,
+        providerWorkEstimate=affected_element_count,
+    )
+    elements = [
+        ScriptDiffElementModel(
+            beforeElementId=(str(change.before_element_id) if change.before_element_id else None),
+            afterElementId=(str(change.after_element_id) if change.after_element_id else None),
+            beforeOrdinal=change.before_ordinal,
+            afterOrdinal=change.after_ordinal,
+            type=change.element_type,
+            text=change.text,
+            changeKind=change.change_kind,  # type: ignore[arg-type]
+            confidence=change.confidence,  # type: ignore[arg-type]
+        )
+        for change in diff.changes
+    ]
+    return ScriptVersionDiffModel(
+        beforeVersionId=str(diff.before_version_id),
+        afterVersionId=str(diff.after_version_id),
+        beforeLabel=f"Version {diff.before_version_number}",
+        afterLabel=f"Version {diff.after_version_number}",
+        algorithmVersion=diff.algorithm_version,
+        elements=elements,
+        summary=summary,
+        createdAt=diff.created_at.isoformat(),
+    )
 
 
 def _script_data(script: ProjectScriptProjection) -> dict[str, object]:
@@ -461,6 +539,8 @@ async def get_project_version(
 @router.get(
     "/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}/diff",
     operation_id="getScriptVersionDiff",
+    response_model=ScriptVersionDiffEnvelope,
+    response_model_exclude_none=True,
 )
 async def get_script_version_diff(
     request: Request,

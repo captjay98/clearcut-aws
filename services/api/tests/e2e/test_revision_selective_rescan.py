@@ -1219,8 +1219,16 @@ async def test_persisted_diff_exposes_all_five_change_kinds_with_impact_counts()
     data = diff.json()["data"]
     assert data["beforeVersionId"] == str(seed.before_version_id)
     assert data["afterVersionId"] == str(seed.after_version_id)
-    change_kinds = {change["changeKind"] for change in data["changes"]}
+    # Contract shape: element-level changes surface under ``elements`` with a single
+    # ``changeKind`` each, and aggregate counts live under ``summary``.
+    change_kinds = {element["changeKind"] for element in data["elements"]}
     assert change_kinds == {"unchanged", "moved", "modified", "added", "removed"}
+    summary = data["summary"]
+    # affectedElementCount = modified + added; providerWorkEstimate mirrors it.
+    assert summary["affectedElementCount"] == summary["modified"] + summary["added"]
+    assert summary["providerWorkEstimate"] == summary["affectedElementCount"]
+    # Carried-forward items are the unchanged/moved (exact/contextual) lineage pairs.
+    assert summary["carriedForwardItemCount"] == summary["unchanged"] + summary["moved"]
 
 
 # --------------------------------------------------------------------------- #
