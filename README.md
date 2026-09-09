@@ -132,17 +132,12 @@ The demo seed is not provider evidence and must not be presented as a Gemini or 
 
 ## Manual development
 
-> After pulling changes that add or change dependencies, reinstall first: `pnpm install --frozen-lockfile`. A stale `node_modules` (for example, missing `tailwindcss`) causes the web build to fail with `Cannot find module 'tailwindcss'`.
-
-Run migrations explicitly before starting the API. Alembic configuration lives in `services/api`, so run it from there (or pass `-c services/api/alembic.ini`):
+Run migrations explicitly before starting the API:
 
 ```bash
-# from the repository root
-uv run alembic -c services/api/alembic.ini upgrade head
+uv run alembic upgrade head
 uv run uvicorn clearcut.main:app --app-dir services/api/src --reload --port 8000
 ```
-
-The API defaults to a local SQLite database at `/tmp/clearcut.db`. Override it with `DATABASE_URL` (for example `DATABASE_URL="sqlite+aiosqlite:////tmp/clearcut-dev.db"`).
 
 In another terminal:
 
