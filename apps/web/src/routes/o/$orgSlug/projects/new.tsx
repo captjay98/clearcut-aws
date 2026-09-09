@@ -320,8 +320,12 @@ export function NewProjectRoute() {
                   />
                 </label>
 
-                <label className="field" htmlFor="production-type">
-                  <span className="field-label">Production Type</span>
+                {/* Selects keep their label as a sibling: a wrapping <label>
+                    folds the chosen option's text into the accessible name. */}
+                <div className="field">
+                  <label className="field-label" htmlFor="production-type">
+                    Production Type
+                  </label>
                   <select
                     id="production-type"
                     value={productionType}
@@ -333,10 +337,12 @@ export function NewProjectRoute() {
                     <option value="Television">Television</option>
                     <option value="Digital series">Digital series</option>
                   </select>
-                </label>
+                </div>
 
-                <label className="field" htmlFor="production-stage">
-                  <span className="field-label">Production Stage</span>
+                <div className="field">
+                  <label className="field-label" htmlFor="production-stage">
+                    Production Stage
+                  </label>
                   <select
                     id="production-stage"
                     value={productionStage}
@@ -348,7 +354,7 @@ export function NewProjectRoute() {
                     <option value="Production">Production</option>
                     <option value="Post-production">Post-production</option>
                   </select>
-                </label>
+                </div>
 
                 <label className="field" htmlFor="jurisdiction">
                   <span className="field-label">Jurisdiction</span>

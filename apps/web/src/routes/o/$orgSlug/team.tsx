@@ -94,19 +94,20 @@ export function TeamRoute() {
                   aria-label="Invitee email"
                 />
               </label>
-              <label className="field" htmlFor="invitation-role">
-                <span className="field-label">Invitation role</span>
+              <div className="field">
+                <label className="field-label" htmlFor="invitation-role">
+                  Invitation role
+                </label>
                 <select
                   id="invitation-role"
                   value={role}
-                  aria-label="Invitation role"
                   onChange={(event) => setRole(event.target.value as UserRole)}
                 >
                   <option value="reviewer">Reviewer</option>
                   <option value="editor">Editor</option>
                   <option value="admin">Admin</option>
                 </select>
-              </label>
+              </div>
             </div>
             <div className="cluster gap-t-4">
               <button className="button button-primary" type="submit" disabled={inviting}>

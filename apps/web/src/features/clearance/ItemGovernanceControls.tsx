@@ -1,5 +1,6 @@
 import type { ClearanceDisposition, ItemCapability } from "@clearcut/contracts";
 import React, { useState } from "react";
+import { Banner, Card } from "../../components/ds";
 
 export interface ItemGovernanceControlsProps {
   assignedTo?: string | null;
@@ -73,93 +74,122 @@ export function ItemGovernanceControls({
   };
 
   return (
-    <section
-      aria-label="Item governance controls"
-      className="rounded-lg border border-slate-800 bg-slate-900 p-4"
-    >
-      <h2 className="text-sm font-bold text-white">Assignment & Disposition</h2>
-      <div className="mt-3 grid gap-4 md:grid-cols-2">
-        <form onSubmit={handleAssignment} className="space-y-2">
-          <p tabIndex={0} className="text-xs text-slate-400">
-            {assignmentCapability?.explanation ??
-              "Assignment capability is unavailable for this item and current role."}
-          </p>
-          <label htmlFor="assignee-member-id" className="block text-xs text-slate-300">
-            Assignee member ID
-          </label>
-          <input
-            id="assignee-member-id"
-            value={assigneeId}
-            disabled={!assignmentAllowed}
-            onChange={(event) => setAssigneeId(event.target.value)}
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white disabled:opacity-50"
-          />
-          {assignmentError ? (
-            <p role="alert" className="text-xs text-rose-300">
-              {assignmentError}
-            </p>
-          ) : null}
-          <button
-            type="submit"
-            disabled={!assignmentAllowed || !onAssign || isAssigning}
-            className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-          >
-            {isAssigning ? "Saving…" : "Save Assignment"}
-          </button>
-        </form>
+    <section className="section" aria-label="Item governance controls">
+      <div className="section-head">
+        <div>
+          <h2>Assignment &amp; disposition</h2>
+        </div>
+      </div>
 
-        <form onSubmit={handleDisposition} className="space-y-2">
-          <p tabIndex={0} className="text-xs text-slate-400">
-            {dispositionCapability?.explanation ??
-              "Disposition capability is unavailable for this item and current role."}
-          </p>
-          <label htmlFor="item-disposition" className="block text-xs text-slate-300">
-            Disposition
-          </label>
-          <select
-            id="item-disposition"
-            value={selectedDisposition}
-            disabled={!dispositionAllowed}
-            onChange={(event) =>
-              setSelectedDisposition(event.target.value as ClearanceDisposition)
-            }
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white disabled:opacity-50"
-          >
-            <option value="pending">Pending</option>
-            <option value="verified">Verified evidence state</option>
-            <option value="ruled_out">Ruled out</option>
-            <option value="fixed_in_rewrite">Fixed in rewrite</option>
-            <option value="deferred">Deferred for qualified review</option>
-          </select>
-          <label htmlFor="disposition-rationale" className="block text-xs text-slate-300">
-            Disposition rationale
-          </label>
-          <textarea
-            id="disposition-rationale"
-            rows={2}
-            value={dispositionRationale}
-            disabled={!dispositionAllowed}
-            onChange={(event) => setDispositionRationale(event.target.value)}
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white disabled:opacity-50"
-          />
-          {dispositionError ? (
-            <p role="alert" className="text-xs text-rose-300">
-              {dispositionError}
+      <div className="grid grid-2">
+        <Card>
+          <form onSubmit={handleAssignment}>
+            {/* The server's reason this action is or is not permitted, focusable
+                so a denial is reachable without a mouse. */}
+            <p className="small muted" tabIndex={0}>
+              {assignmentCapability?.explanation ??
+                "Assignment capability is unavailable for this item and current role."}
             </p>
-          ) : null}
-          <button
-            type="submit"
-            disabled={
-              !dispositionAllowed ||
-              !onSetDisposition ||
-              isSettingDisposition ||
-              !dispositionRationale.trim()
-            }
-            className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-          >
-            {isSettingDisposition ? "Saving…" : "Save Disposition"}
-          </button>
-        </form>
+
+            <label className="field gap-t-4" htmlFor="assignee-member-id">
+              <span className="field-label">Assignee member ID</span>
+              <input
+                id="assignee-member-id"
+                value={assigneeId}
+                disabled={!assignmentAllowed}
+                onChange={(event) => setAssigneeId(event.target.value)}
+              />
+            </label>
+
+            {assignmentError && (
+              <Banner
+                tone="is-danger"
+                icon="⚠"
+                message={assignmentError}
+                role="alert"
+                className="gap-t-3"
+              />
+            )}
+
+            <div className="cluster gap-t-4">
+              <button
+                className="button button-primary button-sm"
+                type="submit"
+                disabled={!assignmentAllowed || !onAssign || isAssigning}
+              >
+                {isAssigning ? "Saving…" : "Save Assignment"}
+              </button>
+            </div>
+          </form>
+        </Card>
+
+        <Card>
+          <form onSubmit={handleDisposition}>
+            <p className="small muted" tabIndex={0}>
+              {dispositionCapability?.explanation ??
+                "Disposition capability is unavailable for this item and current role."}
+            </p>
+
+            {/* The label is a sibling rather than a wrapper. A <label> that wraps
+                a <select> folds the selected option's text into the accessible
+                name, so the control would be named "Disposition Pending". */}
+            <div className="field gap-t-4">
+              <label className="field-label" htmlFor="item-disposition">
+                Disposition
+              </label>
+              <select
+                id="item-disposition"
+                value={selectedDisposition}
+                disabled={!dispositionAllowed}
+                onChange={(event) =>
+                  setSelectedDisposition(event.target.value as ClearanceDisposition)
+                }
+              >
+                <option value="pending">Pending</option>
+                <option value="verified">Verified evidence state</option>
+                <option value="ruled_out">Ruled out</option>
+                <option value="fixed_in_rewrite">Fixed in rewrite</option>
+                <option value="deferred">Deferred for qualified review</option>
+              </select>
+            </div>
+
+            <label className="field gap-t-4" htmlFor="disposition-rationale">
+              <span className="field-label">Disposition rationale</span>
+              <textarea
+                id="disposition-rationale"
+                rows={2}
+                value={dispositionRationale}
+                disabled={!dispositionAllowed}
+                onChange={(event) => setDispositionRationale(event.target.value)}
+              />
+            </label>
+
+            {dispositionError && (
+              <Banner
+                tone="is-danger"
+                icon="⚠"
+                message={dispositionError}
+                role="alert"
+                className="gap-t-3"
+              />
+            )}
+
+            <div className="cluster gap-t-4">
+              <button
+                className="button button-primary button-sm"
+                type="submit"
+                disabled={
+                  !dispositionAllowed ||
+                  !onSetDisposition ||
+                  isSettingDisposition ||
+                  !dispositionRationale.trim()
+                }
+              >
+                {isSettingDisposition ? "Saving…" : "Save Disposition"}
+              </button>
+            </div>
+          </form>
+        </Card>
       </div>
     </section>
   );
