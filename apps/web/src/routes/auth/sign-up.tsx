@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { api } from "@clearcut/contracts";
-import { AuthLayout } from "../../components/auth/AuthLayout";
+import { PublicShell } from "../../components/shell/PublicShell";
 
 export const Route = createFileRoute("/auth/sign-up")({
   component: SignUpRoute,
@@ -66,9 +66,9 @@ export function SignUpRoute() {
   };
 
   return (
-    <AuthLayout
+    <PublicShell
       eyebrow="Create an account"
-      title="Start a clearance workspace"
+      title="Create your account"
       lede="ClearCut is self-hosted. This account lives in the database you run, alongside the evidence and the audit trail it records."
     >
       <div className="auth-box">
@@ -142,7 +142,7 @@ export function SignUpRoute() {
           Already have an account? <Link to="/auth/sign-in">Sign in</Link>
         </p>
       </div>
-    </AuthLayout>
+    </PublicShell>
   );
 }
 

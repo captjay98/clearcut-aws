@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { api } from "@clearcut/contracts";
-import { AuthLayout } from "../../components/auth/AuthLayout";
+import { PublicShell } from "../../components/shell/PublicShell";
 
 export const Route = createFileRoute("/auth/sign-in")({
   component: SignInRoute,
@@ -46,7 +46,7 @@ export function SignInRoute() {
   };
 
   return (
-    <AuthLayout
+    <PublicShell
       eyebrow="Secure access"
       title="Sign in to ClearCut"
       lede="Authentication uses this deployment's configured identity provider — local PostgreSQL by default, or Firebase where selected."
@@ -105,7 +105,7 @@ export function SignInRoute() {
           <Link to="/auth/sign-up">Create an account</Link>
         </p>
       </div>
-    </AuthLayout>
+    </PublicShell>
   );
 }
 

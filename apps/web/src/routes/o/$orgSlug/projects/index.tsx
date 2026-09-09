@@ -1,104 +1,180 @@
 import React, { useEffect, useState } from "react";
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { api } from "@clearcut/contracts";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
+import { api, type Project } from "@clearcut/contracts";
+import { Banner, EmptyState, Page, Section, StatGrid, type Stat } from "../../../../components/ds";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/")({
   component: ProjectsListRoute,
 });
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function formatDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString();
+}
+
+/**
+ * Aggregates shown on the organization's project list. Every one is derived from
+ * the projects payload itself: cross-project evidence counts would need a call
+ * per project, and a number we cannot source is a number we do not show.
+ */
+function buildStats(projects: readonly Project[]): Stat[] {
+  const now = Date.now();
+  const upcomingLocks = projects.filter((project) => {
+    if (!project.targetLockDate) {
+      return false;
+    }
+    const lock = new Date(project.targetLockDate).getTime();
+    return !Number.isNaN(lock) && lock >= now && lock - now <= 30 * DAY_MS;
+  }).length;
+  const jurisdictions = new Set(
+    projects.map((project) => project.jurisdiction).filter((value): value is string => Boolean(value)),
+  );
+
+  return [
+    { label: "Active projects", value: projects.length },
+    {
+      label: "Locks within 30 days",
+      value: upcomingLocks,
+      tone: upcomingLocks ? "is-warning" : "",
+      hint: "Target lock date",
+    },
+    { label: "Jurisdictions", value: jurisdictions.size, hint: "Declared across projects" },
+  ];
+}
+
 export function ProjectsListRoute() {
   const { orgSlug } = useParams({ from: "/o/$orgSlug/projects/" });
-  const [projects, setProjects] = useState<any[]>([]);
+  const navigate = useNavigate();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError(null);
       try {
         const res = await api.listProjects({ params: { orgId: orgSlug } });
+        if (cancelled) {
+          return;
+        }
         if (res.ok) {
-          setProjects(res.value || []);
+          setProjects(res.value ?? []);
         } else {
           setError(res.error.message || "Failed to load projects");
         }
       } catch {
-        setError("Network error while loading projects");
+        if (!cancelled) {
+          setError("Network error while loading projects");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
     load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [orgSlug]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Clearance Projects</h1>
-          <p className="text-sm text-slate-400">
-            Active screenplay pre-clearance workspaces in this organization.
-          </p>
-        </div>
-        <Link
-          to="/o/$orgSlug/projects/new"
-          params={{ orgSlug }}
-          className="inline-flex items-center space-x-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500"
-        >
-          <span>+ New Project</span>
+    <Page
+      trail={[{ label: "Projects" }]}
+      eyebrow={orgSlug}
+      title="Clearance Projects"
+      lede="Active clearance work, open human gates, and delivery readiness across the organization."
+      actions={
+        <Link className="button button-primary" to="/o/$orgSlug/projects/new" params={{ orgSlug }}>
+          + New Project
         </Link>
-      </div>
+      }
+      notice={
+        error && (
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Could not load projects"
+            message={error}
+            role="alert"
+          />
+        )
+      }
+    >
+      {!loading && !error && <StatGrid stats={buildStats(projects)} columns={3} />}
 
-      {error && (
-        <div role="alert" className="p-4 bg-red-950/50 border border-red-900 rounded-md text-sm text-red-400">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="p-8 text-center text-slate-500">Loading projects...</div>
-      ) : projects.length === 0 ? (
-        <div className="p-12 text-center border border-dashed border-slate-800 rounded-lg bg-slate-900/20">
-          <div className="text-3xl mb-2">📁</div>
-          <h3 className="text-base font-semibold text-slate-200">No clearance projects yet</h3>
-          <p className="text-sm text-slate-400 mt-1 mb-4">
-            Upload your first screenplay PDF or FDX file to get started.
-          </p>
-          <Link
-            to="/o/$orgSlug/projects/new"
-            params={{ orgSlug }}
-            className="inline-flex items-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-md"
-          >
-            Create Project
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p) => (
-            <Link
-              key={p.projectId}
-              to="/o/$orgSlug/projects/$projectId/workspace"
-              params={{ orgSlug, projectId: p.projectId }}
-              className="p-5 bg-slate-900/80 border border-slate-800 hover:border-amber-500/50 rounded-lg shadow-sm transition-all flex flex-col justify-between group focus:outline-none focus:ring-2 focus:ring-amber-500"
-            >
-              <div>
-                <h3 className="text-base font-bold text-slate-100 group-hover:text-amber-400 transition-colors">
-                  {p.title}
-                </h3>
-                <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                  {p.description || "No description provided."}
-                </p>
+      <Section
+        title="Your projects"
+        description="Each project keeps its own script versions, evidence, and decisions."
+      >
+        {loading ? (
+          <div className="list" aria-busy="true">
+            <div className="list-row is-static">
+              <div className="list-main">
+                <span className="skeleton" style={{ width: "40%" }} />
               </div>
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
-                <span>Created {new Date(p.createdAt).toLocaleDateString()}</span>
-                <span className="text-amber-500 font-medium">Open Workspace →</span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
+            </div>
+          </div>
+        ) : projects.length === 0 ? (
+          <EmptyState
+            icon="▤"
+            title="No clearance projects yet"
+            description="Create a project, then import a screenplay as Fountain or Final Draft to start detection."
+            action={
+              <Link
+                className="button button-primary"
+                to="/o/$orgSlug/projects/new"
+                params={{ orgSlug }}
+              >
+                Create project
+              </Link>
+            }
+          />
+        ) : (
+          <div className="list">
+            {projects.map((project) => {
+              const lock = formatDate(project.targetLockDate);
+              return (
+                <button
+                  key={project.projectId}
+                  className="list-row"
+                  type="button"
+                  onClick={() =>
+                    navigate({
+                      to: "/o/$orgSlug/projects/$projectId",
+                      params: { orgSlug, projectId: project.projectId },
+                    })
+                  }
+                >
+                  <div className="list-main">
+                    <span className="list-title">{project.title}</span>
+                    <span className="list-meta">
+                      {project.productionType && <span>{project.productionType}</span>}
+                      {project.productionStage && <span>{project.productionStage}</span>}
+                      {project.jurisdiction && <span>{project.jurisdiction}</span>}
+                      {lock && <span>Lock {lock}</span>}
+                      <span>Created {formatDate(project.createdAt)}</span>
+                    </span>
+                  </div>
+                  <div className="list-aside">
+                    <span className="badge">Open</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+    </Page>
   );
 }
 

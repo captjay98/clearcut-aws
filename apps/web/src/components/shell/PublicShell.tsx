@@ -1,21 +1,20 @@
 import React from "react";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
-interface AuthLayoutProps {
+interface PublicShellProps {
   /** Small uppercase kicker above the heading. */
   eyebrow: string;
   title: string;
-  lede: string;
+  lede: React.ReactNode;
   children: React.ReactNode;
 }
 
 /**
- * The public shell for the credential surfaces, mirroring the canonical mock's
- * site-header plus a narrow page(). The mock's own auth screen collects no
- * credentials because its identity is simulated, so the header and page
- * furniture come from the mock while the form itself is ours.
+ * The shell for surfaces that render before an organization exists — the
+ * credential screens and onboarding — which the mock places in its public
+ * layer. Mirrors the mock's site-header plus a narrow page().
  */
-export function AuthLayout({ eyebrow, title, lede, children }: AuthLayoutProps) {
+export function PublicShell({ eyebrow, title, lede, children }: PublicShellProps) {
   return (
     <>
       <a className="skip-link" href="#main-content">
