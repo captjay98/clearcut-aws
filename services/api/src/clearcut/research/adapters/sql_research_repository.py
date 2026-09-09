@@ -647,24 +647,24 @@ class SqlResearchRepository:
             rows = (
                 await session.execute(
                     sa.text(
-                        "SELECT authorization.id, authorization.canonical_url "
-                        "FROM search_result_authorizations authorization "
+                        "SELECT authz.id, authz.canonical_url "
+                        "FROM search_result_authorizations authz "
                         "JOIN provider_attempts search_attempt "
-                        "ON search_attempt.id = authorization.search_attempt_id "
-                        "AND search_attempt.run_id = authorization.run_id "
-                        "AND search_attempt.org_id = authorization.org_id "
-                        "AND search_attempt.project_id = authorization.project_id "
-                        "AND search_attempt.item_id = authorization.item_id "
-                        "AND search_attempt.query_id = authorization.query_id "
+                        "ON search_attempt.id = authz.search_attempt_id "
+                        "AND search_attempt.run_id = authz.run_id "
+                        "AND search_attempt.org_id = authz.org_id "
+                        "AND search_attempt.project_id = authz.project_id "
+                        "AND search_attempt.item_id = authz.item_id "
+                        "AND search_attempt.query_id = authz.query_id "
                         "AND search_attempt.operation_kind = 'search' "
                         "AND search_attempt.status = 'succeeded' "
-                        "WHERE authorization.org_id = :org_id "
-                        "AND authorization.project_id = :project_id "
-                        "AND authorization.item_id = :item_id "
-                        "AND authorization.run_id = :run_id "
-                        "AND authorization.query_id = :query_id "
-                        "AND authorization.search_attempt_id = :attempt_id "
-                        "AND authorization.search_operation_kind = 'search'"
+                        "WHERE authz.org_id = :org_id "
+                        "AND authz.project_id = :project_id "
+                        "AND authz.item_id = :item_id "
+                        "AND authz.run_id = :run_id "
+                        "AND authz.query_id = :query_id "
+                        "AND authz.search_attempt_id = :attempt_id "
+                        "AND authz.search_operation_kind = 'search'"
                     ),
                     {
                         "org_id": str(org_id),
@@ -750,20 +750,20 @@ class SqlResearchRepository:
                 await session.execute(
                     sa.text(
                         """
-                        SELECT target.canonical_url, authorization.id,
-                               authorization.publisher,
+                        SELECT target.canonical_url, authz.id,
+                               authz.publisher,
                                search_attempt.provider_session_id
                         FROM extract_target_authorizations target
-                        JOIN search_result_authorizations authorization
-                          ON authorization.id = target.authorization_id
-                         AND authorization.run_id = target.run_id
-                         AND authorization.org_id = target.org_id
-                         AND authorization.project_id = target.project_id
-                         AND authorization.item_id = target.item_id
-                         AND authorization.query_id = target.query_id
-                         AND authorization.search_attempt_id =
+                        JOIN search_result_authorizations authz
+                          ON authz.id = target.authorization_id
+                         AND authz.run_id = target.run_id
+                         AND authz.org_id = target.org_id
+                         AND authz.project_id = target.project_id
+                         AND authz.item_id = target.item_id
+                         AND authz.query_id = target.query_id
+                         AND authz.search_attempt_id =
                              target.authorizing_search_attempt_id
-                         AND authorization.canonical_url = target.canonical_url
+                         AND authz.canonical_url = target.canonical_url
                         JOIN provider_attempts search_attempt
                           ON search_attempt.id = target.authorizing_search_attempt_id
                          AND search_attempt.run_id = target.run_id
@@ -971,24 +971,24 @@ class SqlResearchRepository:
                          AND attempt.authorizing_search_attempt_id =
                              s.authorizing_search_attempt_id
                          AND attempt.authorizing_operation_kind = 'search'
-                        JOIN search_result_authorizations authorization
-                          ON authorization.id = s.authorization_id
-                         AND authorization.run_id = s.run_id
-                         AND authorization.org_id = s.org_id
-                         AND authorization.project_id = s.project_id
-                         AND authorization.item_id = s.item_id
-                         AND authorization.query_id = s.query_id
-                         AND authorization.search_attempt_id =
+                        JOIN search_result_authorizations authz
+                          ON authz.id = s.authorization_id
+                         AND authz.run_id = s.run_id
+                         AND authz.org_id = s.org_id
+                         AND authz.project_id = s.project_id
+                         AND authz.item_id = s.item_id
+                         AND authz.query_id = s.query_id
+                         AND authz.search_attempt_id =
                              s.authorizing_search_attempt_id
-                         AND authorization.search_operation_kind = 'search'
-                         AND authorization.canonical_url = s.url
+                         AND authz.search_operation_kind = 'search'
+                         AND authz.canonical_url = s.url
                         JOIN provider_attempts search_attempt
-                          ON search_attempt.id = authorization.search_attempt_id
-                         AND search_attempt.run_id = authorization.run_id
-                         AND search_attempt.org_id = authorization.org_id
-                         AND search_attempt.project_id = authorization.project_id
-                         AND search_attempt.item_id = authorization.item_id
-                         AND search_attempt.query_id = authorization.query_id
+                          ON search_attempt.id = authz.search_attempt_id
+                         AND search_attempt.run_id = authz.run_id
+                         AND search_attempt.org_id = authz.org_id
+                         AND search_attempt.project_id = authz.project_id
+                         AND search_attempt.item_id = authz.item_id
+                         AND search_attempt.query_id = authz.query_id
                          AND search_attempt.operation_kind = 'search'
                          AND search_attempt.status = 'succeeded'
                         WHERE s.org_id = :org_id AND s.project_id = :project_id

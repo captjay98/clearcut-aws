@@ -177,7 +177,7 @@ class SqlJobRepository:
                             "AND cursor_job.project_id = :project_id "
                             "WHERE job.org_id = :org_id "
                             "AND job.project_id = :project_id "
-                            "AND (:cursor_id IS NULL OR ("
+                            "AND (CAST(:cursor_id AS uuid) IS NULL OR ("
                             "cursor_job.id IS NOT NULL AND ("
                             "job.created_at < cursor_job.created_at OR ("
                             "job.created_at = cursor_job.created_at "

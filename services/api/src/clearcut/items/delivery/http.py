@@ -46,8 +46,8 @@ LIST_ITEMS_QUERY = sa.text("""
     FROM clearance_items i
     LEFT JOIN script_elements e ON e.id = i.element_id
     WHERE i.org_id = :org_id AND i.project_id = :project_id
-      AND (:category IS NULL OR i.category = :category)
-      AND (:item_status IS NULL OR i.status = :item_status)
+      AND (CAST(:category AS text) IS NULL OR i.category = CAST(:category AS text))
+      AND (CAST(:item_status AS text) IS NULL OR i.status = CAST(:item_status AS text))
     ORDER BY e.ordinal ASC, i.created_at ASC
 """)
 
