@@ -8,6 +8,7 @@ import {
 } from "@clearcut/contracts";
 import { ReportReceiptView } from "../../../../../features/reports/ReportReceiptView";
 import { ReportSnapshotBuilder } from "../../../../../features/reports/ReportSnapshotBuilder";
+import { Banner, Page } from "../../../../../components/ds";
 
 const LEGAL_BOUNDARY =
   "ClearCut provides sourced findings for qualified human review. It does not provide legal advice or final legal clearance.";
@@ -176,41 +177,43 @@ export function ReportRoute() {
   };
 
   return (
-    <main className="max-w-5xl space-y-6 font-sans">
-      <header>
-        <h1 className="text-2xl font-bold text-white">Clearance report</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Freeze a version-bound evidence record, then release that exact
-          snapshot through a separate accountable action.
+    <Page
+      trail={[
+        { label: "Projects", to: "/o/$orgSlug/projects", params: { orgSlug } },
+        { label: "Clearance report" },
+      ]}
+      eyebrow="Delivery"
+      title="Clearance report"
+      lede="Freeze a version-bound evidence record, then release that exact snapshot through a separate accountable action."
+      notice={
+        <p role="note" className="banner is-warning">
+          <span className="banner-icon" aria-hidden="true">
+            ⚖
+          </span>
+          <span className="banner-body">{LEGAL_BOUNDARY}</span>
         </p>
-      </header>
-
-      <p className="rounded border border-amber-900/70 bg-amber-950/30 p-3 text-xs text-amber-200">
-        {LEGAL_BOUNDARY}
-      </p>
-
+      }
+    >
       {feedback && (
-        <div
+        <Banner
+          tone={feedbackIsError ? "is-danger" : "is-success"}
+          icon={feedbackIsError ? "⚠" : "✓"}
+          message={feedback}
           role="alert"
-          className={`rounded border p-3 text-xs ${
-            feedbackIsError
-              ? "border-rose-900 bg-rose-950/50 text-rose-300"
-              : "border-emerald-900 bg-emerald-950/50 text-emerald-400"
-          }`}
-        >
-          {feedback}
-        </div>
+          className="gap-b-6"
+        />
       )}
 
       {preview && (
-        <section
-          aria-label="Report preview counts"
-          className="grid grid-cols-2 gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300 sm:grid-cols-4"
-        >
-          <div>Total items: {preview.totalItems}</div>
-          <div>Resolved workflow items: {preview.clearedItems}</div>
-          <div>Flagged for review: {preview.flaggedItems}</div>
-          <div>Unresolved risk: {preview.unresolvedRisk}</div>
+        <section className="section" aria-label="Report preview counts">
+          {/* Each count keeps its label and value in one element: the release
+              spec reads them as single exact strings. */}
+          <div className="grid grid-4">
+            <p className="card card-quiet">Total items: {preview.totalItems}</p>
+            <p className="card card-quiet">Resolved workflow items: {preview.clearedItems}</p>
+            <p className="card card-quiet">Flagged for review: {preview.flaggedItems}</p>
+            <p className="card card-quiet">Unresolved risk: {preview.unresolvedRisk}</p>
+          </div>
         </section>
       )}
 
@@ -234,7 +237,7 @@ export function ReportRoute() {
           downloadUrl={release.downloadUrl}
         />
       )}
-    </main>
+    </Page>
   );
 }
 

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { api } from "@clearcut/contracts";
+import { PublicShell } from "../../../components/shell/PublicShell";
+import { Banner, Card } from "../../../components/ds";
 
 export const Route = createFileRoute("/auth/invite/$token")({
   component: AcceptInviteRoute,
@@ -23,7 +25,17 @@ export function AcceptInviteRoute() {
         return;
       }
 
-      navigate({ to: "/o/$orgSlug", params: { orgSlug: "northlight" } });
+      // Route to whichever organization the server resolves for this account.
+      // This previously navigated to a hardcoded "northlight" slug, so anyone
+      // accepting an invitation landed on an organization they may not belong to.
+      const entry = await api.resolveOrganizationEntry();
+      if (entry.ok && entry.value.defaultOrgSlug) {
+        navigate({ to: "/o/$orgSlug/projects", params: { orgSlug: entry.value.defaultOrgSlug } });
+        return;
+      }
+      setError(
+        "The invitation was accepted, but no workspace could be resolved for this account. Sign in to continue.",
+      );
     } catch {
       setError("An unexpected network error occurred.");
     } finally {
@@ -32,29 +44,37 @@ export function AcceptInviteRoute() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950 text-slate-100">
-      <div className="card w-full max-w-md p-6 bg-slate-900 shadow rounded-lg border border-slate-800 text-center">
-        <h1 className="text-xl font-bold text-white mb-2">Team Invitation</h1>
-        <p className="text-xs text-slate-400 mb-6">
-          You've been invited to join a ClearCut screenplay pre-clearance workspace.
-        </p>
-
+    <PublicShell
+      eyebrow="Invitation"
+      title="Team Invitation"
+      lede="You have been invited to join a ClearCut screenplay pre-clearance workspace. Your role is fixed by the invitation and enforced by the server."
+    >
+      <div>
         {error && (
-          <div role="alert" className="mb-4 p-3 bg-red-950/50 border border-red-900 rounded text-xs text-red-400">
-            {error}
-          </div>
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Could not accept the invitation"
+            message={error}
+            role="alert"
+            className="gap-b-6"
+          />
         )}
 
-        <button
-          type="button"
-          onClick={handleAccept}
-          disabled={loading}
-          className="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-xs font-bold text-white rounded shadow focus:outline-none focus:ring-2 focus:ring-amber-500"
-        >
-          {loading ? "Accepting..." : "Accept Invitation & Open Workspace"}
-        </button>
+        <Card accent>
+          <div className="cluster">
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={handleAccept}
+              disabled={loading}
+            >
+              {loading ? "Accepting…" : "Accept Invitation & Open Workspace"}
+            </button>
+          </div>
+        </Card>
       </div>
-    </div>
+    </PublicShell>
   );
 }
 

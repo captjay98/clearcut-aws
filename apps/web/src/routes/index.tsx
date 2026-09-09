@@ -20,12 +20,20 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 });
 
+/**
+ * Only rendered if the redirect above does not fire, which should not happen in
+ * practice. Kept minimal and landmark-free: the shell owns the main landmark.
+ */
 export function IndexPage() {
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-bold">ClearCut Workspace</h1>
-      <p className="text-slate-400">Screenplay pre-clearance research desk</p>
-    </main>
+    <div className="page narrow">
+      <header className="page-head">
+        <h1 id="route-heading" tabIndex={-1}>
+          ClearCut Workspace
+        </h1>
+        <p className="page-lede">Screenplay pre-clearance evidence desk.</p>
+      </header>
+    </div>
   );
 }
 

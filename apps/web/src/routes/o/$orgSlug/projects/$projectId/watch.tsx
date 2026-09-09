@@ -7,6 +7,7 @@ import {
 } from "../../../../../features/monitoring/CadenceSelector";
 import { MonitoredSourcesTable } from "../../../../../features/monitoring/MonitoredSourcesTable";
 import { ChangeSignalCard } from "../../../../../features/monitoring/ChangeSignalCard";
+import { Banner, Card, Page, Section } from "../../../../../components/ds";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/watch")({
   component: WatchRoute,
@@ -73,35 +74,44 @@ export function WatchRoute() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Source Monitoring & Cadence</h1>
-          <p className="text-sm text-slate-400">
-            Scheduled monitoring of cited sources and attributable source changes.
-          </p>
-        </div>
-
+    <Page
+      trail={[
+        { label: "Projects", to: "/o/$orgSlug/projects", params: { orgSlug } },
+        { label: "Source watch" },
+      ]}
+      eyebrow="Monitoring"
+      title="Source Monitoring & Cadence"
+      lede="Scheduled monitoring of cited sources and attributable source changes. A detected change is surfaced for a human call; it never re-decides an item on its own."
+      actions={
         <button
+          className="button button-primary"
           type="button"
           onClick={handleRunCheck}
           disabled={running}
-          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold rounded shadow focus:outline-none focus:ring-2 focus:ring-amber-500 shrink-0"
         >
           {running ? "Starting Source Check..." : "Run Immediate Source Check"}
         </button>
-      </div>
+      }
+      notice={
+        feedback ? (
+          <Banner
+            tone={feedback.startsWith("Error:") ? "is-danger" : "is-success"}
+            icon={feedback.startsWith("Error:") ? "⚠" : "✓"}
+            message={feedback}
+            role="status"
+          />
+        ) : undefined
+      }
+    >
+      <Section title="Cadence">
+        <Card>
+          <CadenceSelector currentCadence={cadence} onChangeCadence={handleChangeCadence} />
+        </Card>
+      </Section>
 
-      {feedback ? (
-        <div role="status" className="p-3 bg-slate-900 border border-slate-800 rounded text-xs text-slate-300">
-          {feedback}
-        </div>
-      ) : null}
-
-      <CadenceSelector currentCadence={cadence} onChangeCadence={handleChangeCadence} />
       <MonitoredSourcesTable />
       <ChangeSignalCard />
-    </div>
+    </Page>
   );
 }
 

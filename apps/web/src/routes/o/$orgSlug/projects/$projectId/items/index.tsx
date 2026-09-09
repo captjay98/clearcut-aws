@@ -153,37 +153,42 @@ export function ClearanceItemsRoute() {
                 description="Clear the search or choose a different filter."
               />
             ) : (
-              <div className="list" aria-label="Persisted clearance items">
+              // A list of items, so each row is a listitem whose heading names
+              // the entity and which carries its own review link.
+              <ul
+                className="list"
+                aria-label="Persisted clearance items"
+                style={{ listStyle: "none", margin: 0, padding: 0 }}
+              >
                 {filtered.map((item) => {
                   const tone = rowTone(item);
                   return (
-                    <div className={`list-row is-static ${tone}`.trim()} key={item.itemId}>
+                    <li className={`list-row is-static ${tone}`.trim()} key={item.itemId}>
                       <div className="list-main">
-                        <Link
-                          className="list-main-button"
-                          to="/o/$orgSlug/projects/$projectId/items/$itemId"
-                          params={{ orgSlug, projectId, itemId: item.itemId }}
-                        >
-                          <span className="list-title">{item.entityName}</span>
-                          <span className="list-meta">
-                            <span>{humanizeCategory(item.category)}</span>
-                            <span>
-                              {item.claimCount ?? 0} cited evidence claim
-                              {(item.claimCount ?? 0) === 1 ? "" : "s"}
-                            </span>
-                            {item.contextText && (
-                              <span className="truncate">{item.contextText}</span>
-                            )}
+                        <h2 className="list-title">{item.entityName}</h2>
+                        <span className="list-meta">
+                          <span>{humanizeCategory(item.category)}</span>
+                          <span>
+                            {item.claimCount ?? 0} cited evidence claim
+                            {(item.claimCount ?? 0) === 1 ? "" : "s"}
                           </span>
-                        </Link>
+                          {item.contextText && <span className="truncate">{item.contextText}</span>}
+                        </span>
                       </div>
                       <div className="list-aside">
                         <Badge tone={statusTone(item.status)}>{humanizeStatus(item.status)}</Badge>
+                        <Link
+                          className="button button-quiet button-sm"
+                          to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                          params={{ orgSlug, projectId, itemId: item.itemId }}
+                        >
+                          Review item
+                        </Link>
                       </div>
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </Section>
         </>

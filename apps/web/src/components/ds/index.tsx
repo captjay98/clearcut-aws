@@ -140,6 +140,8 @@ export interface CardProps {
   quiet?: boolean;
   actions?: React.ReactNode;
   className?: string;
+  /** Stable hook for tests that need to address a specific card. */
+  testId?: string;
   children: React.ReactNode;
 }
 
@@ -151,6 +153,7 @@ export function Card({
   quiet = false,
   actions,
   className = "",
+  testId,
   children,
 }: CardProps) {
   const hasHead = Boolean(title || badge || eyebrow);
@@ -158,7 +161,7 @@ export function Card({
     .filter(Boolean)
     .join(" ");
   return (
-    <article className={classes}>
+    <article className={classes} data-testid={testId}>
       {hasHead && (
         <div className="card-head">
           <div>
