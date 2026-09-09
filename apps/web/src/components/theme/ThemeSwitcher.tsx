@@ -15,7 +15,8 @@ export function ThemeSwitcher() {
       type="button"
       onClick={toggleTheme}
       className="icon-button is-bare"
-      aria-label={`Choose workspace appearance, currently ${label}`}
+      data-testid="theme-switcher"
+      aria-label={`Choose workspace appearance, currently ${label} theme`}
     >
       <span aria-hidden="true">◐</span>
     </button>

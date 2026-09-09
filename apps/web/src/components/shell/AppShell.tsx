@@ -1,150 +1,384 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { api } from "@clearcut/contracts";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { ShellProvider, useShell } from "./ShellContext";
+
+interface NavItem {
+  label: string;
+  icon: string;
+  to: string;
+  /** Matched against the current path to set aria-current. */
+  match: string;
+}
+
+interface NavGroup {
+  label: string;
+  links: readonly NavItem[];
+}
+
+/**
+ * Mirrors NAV in the canonical mock (misc/clearcut-flow/assets/app.js): the rail
+ * shows organization navigation at the org layer and swaps to project
+ * navigation once inside a project. Labels and glyphs come from the mock's
+ * ROUTES table so the vocabulary matches.
+ *
+ * The mock's "Prototype tools" group (sitemap, states) is intentionally absent:
+ * it is instrumentation for the prototype, not product.
+ */
+const ORG_NAV: readonly NavGroup[] = [
+  {
+    label: "Organization",
+    links: [
+      { label: "Projects", icon: "▤", to: "/o/$orgSlug/projects", match: "/projects" },
+      {
+        label: "Notifications",
+        icon: "◔",
+        to: "/o/$orgSlug/notifications",
+        match: "/notifications",
+      },
+      { label: "Team & roles", icon: "◉", to: "/o/$orgSlug/team", match: "/team" },
+      { label: "Settings", icon: "⚙", to: "/o/$orgSlug/settings", match: "/settings" },
+    ],
+  },
+  {
+    label: "Trust & records",
+    links: [
+      { label: "AI trust", icon: "◐", to: "/o/$orgSlug/trust", match: "/trust" },
+      { label: "Records", icon: "≡", to: "/o/$orgSlug/records", match: "/records" },
+    ],
+  },
+];
+
+const PROJECT_NAV: readonly NavGroup[] = [
+  {
+    label: "Project",
+    links: [
+      {
+        label: "Overview",
+        icon: "◈",
+        to: "/o/$orgSlug/projects/$projectId",
+        match: "@overview",
+      },
+      {
+        label: "Screenplay",
+        icon: "⌑",
+        to: "/o/$orgSlug/projects/$projectId/workspace",
+        match: "/workspace",
+      },
+      {
+        label: "Flags",
+        icon: "☰",
+        to: "/o/$orgSlug/projects/$projectId/items",
+        match: "/items",
+      },
+    ],
+  },
+  {
+    label: "History & delivery",
+    links: [
+      {
+        label: "Versions",
+        icon: "⑂",
+        to: "/o/$orgSlug/projects/$projectId/versions",
+        match: "/versions",
+      },
+      {
+        label: "Source watch",
+        icon: "◉",
+        to: "/o/$orgSlug/projects/$projectId/watch",
+        match: "/watch",
+      },
+      {
+        label: "Clearance report",
+        icon: "◎",
+        to: "/o/$orgSlug/projects/$projectId/report",
+        match: "/report",
+      },
+    ],
+  },
+];
+
+/** Project ids appear as the segment after /projects/, excluding /projects/new. */
+function projectIdFrom(path: string): string | null {
+  const match = /\/projects\/([^/]+)/.exec(path);
+  if (!match || match[1] === "new") {
+    return null;
+  }
+  return match[1];
+}
+
+function isCurrent(path: string, item: NavItem, projectId: string | null): boolean {
+  if (item.match === "@overview") {
+    // Overview is the project index, so it is current only when no child
+    // segment follows the project id.
+    return projectId !== null && new RegExp(`/projects/${projectId}/?$`).test(path);
+  }
+  return path.includes(item.match);
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "CC";
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 interface AppShellProps {
   orgSlug?: string;
-  projectId?: string;
-  projectTitle?: string;
-  userEmail?: string;
   userName?: string;
+  memberCount?: number;
 }
 
-export function AppShell({
-  orgSlug = "northlight",
-  projectId,
-  projectTitle,
-  userEmail = "jamie@northlight.example",
-  userName = "Jamie Park",
-}: AppShellProps) {
+export function AppShell(props: AppShellProps) {
+  return (
+    <ShellProvider>
+      <AppShellInner {...props} />
+    </ShellProvider>
+  );
+}
+
+function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppShellProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
+  const projectId = projectIdFrom(currentPath);
+  const inProject = projectId !== null;
+  const { projectTitle, scriptPosition } = useShell();
 
-  const navLinks = [
-    {
-      label: "Clearance Projects",
-      to: "/o/$orgSlug/projects",
-      params: { orgSlug },
-      active: currentPath.includes("/projects"),
-      icon: "📋",
-    },
-    {
-      label: "Team & Access",
-      to: "/o/$orgSlug/team",
-      params: { orgSlug },
-      active: currentPath.includes("/team"),
-      icon: "👥",
-    },
-    {
-      label: "Trust Center",
-      to: "/o/$orgSlug/trust",
-      params: { orgSlug },
-      active: currentPath.includes("/trust"),
-      icon: "🛡️",
-    },
-    {
-      label: "Workspace Settings",
-      to: "/o/$orgSlug/settings",
-      params: { orgSlug },
-      active: currentPath.includes("/settings"),
-      icon: "⚙️",
-    },
-  ];
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // The mock's chip reads "<organization> · <n> members", so the shell resolves
+  // both rather than falling back to the slug in the URL.
+  const [orgName, setOrgName] = useState<string | null>(null);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadContext() {
+      try {
+        const orgs = await api.listOrganizations();
+        if (!cancelled && orgs.ok) {
+          const match = orgs.value.find((org) => org.slug === orgSlug || org.orgId === orgSlug);
+          if (match) {
+            setOrgName(match.name);
+          }
+        }
+      } catch {
+        // The chip shows the slug rather than inventing an organization name.
+      }
+
+      try {
+        const members = await api.listOrganizationMembers({ params: { orgId: orgSlug } });
+        if (!cancelled && members.ok) {
+          setMemberCount(members.value.length);
+        }
+      } catch {
+        // A missing count simply omits that half of the chip.
+      }
+    }
+    loadContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orgSlug]);
+
+  // The mock keys the shell's grid off body classes so the rail and the main
+  // column stay in step, including when the rail collapses.
+  useEffect(() => {
+    document.body.classList.add("app-shell");
+    return () => document.body.classList.remove("app-shell");
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("sidebar-collapsed", sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    document.body.classList.toggle("dialog-open", drawerOpen);
+    return () => document.body.classList.remove("dialog-open");
+  }, [drawerOpen]);
+
+  // A route change closes the drawer: it is navigation, so it must not survive
+  // the navigation it triggered.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [currentPath]);
+
+  const groups = inProject ? PROJECT_NAV : ORG_NAV;
+  const params = inProject ? { orgSlug, projectId } : { orgSlug };
+
+  const renderNav = () => (
+    <>
+      {inProject && (
+        <div className="nav-group">
+          <Link className="nav-link" to="/o/$orgSlug/projects" params={{ orgSlug }}>
+            <span className="nav-icon" aria-hidden="true">
+              ←
+            </span>
+            <span className="truncate">All projects</span>
+          </Link>
+        </div>
+      )}
+      {groups.map((group) => (
+        <div className="nav-group" key={group.label}>
+          <p className="nav-label">{group.label}</p>
+          {group.links.map((item) => (
+            <Link
+              key={item.label}
+              className="nav-link"
+              to={item.to}
+              params={params}
+              data-label={item.label}
+              aria-current={isCurrent(currentPath, item, projectId) ? "page" : undefined}
+            >
+              <span className="nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="truncate">{item.label}</span>
+            </Link>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+
+  const mobilePrimary = inProject
+    ? PROJECT_NAV.flatMap((group) => group.links).slice(0, 4)
+    : ORG_NAV[0].links;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
-      {/* Accessible Skip Link */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-amber-500 focus:text-slate-950 focus:font-bold focus:rounded-md focus:shadow-lg focus:outline-none"
-      >
+    <>
+      <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
 
-      {/* Top Header */}
-      <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-4 flex items-center justify-between shrink-0 sticky top-0 z-40">
-        <div className="flex items-center space-x-3">
-          <Link
-            to="/o/$orgSlug/projects"
-            params={{ orgSlug }}
-            className="flex items-center space-x-2 text-amber-500 hover:text-amber-400 font-black tracking-tight text-lg focus:outline-none focus:ring-2 focus:ring-amber-500 rounded"
-          >
-            <span className="text-xl">🎬</span>
-            <span>ClearCut</span>
-          </Link>
+      <header className="app-header">
+        <button
+          className="icon-button is-bare nav-toggle"
+          type="button"
+          aria-label="Open navigation menu"
+          aria-expanded={drawerOpen}
+          aria-controls="mobile-drawer"
+          onClick={() => setDrawerOpen(true)}
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+        <button
+          className="icon-button is-bare rail-toggle"
+          type="button"
+          aria-expanded={!sidebarCollapsed}
+          aria-controls="app-sidebar"
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={() => setSidebarCollapsed((value) => !value)}
+        >
+          <span aria-hidden="true">⇤</span>
+        </button>
 
-          <span className="text-slate-600 font-light">/</span>
-
-          <span className="text-xs px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 rounded font-medium">
-            {orgSlug}
+        <Link className="brand" to="/o/$orgSlug/projects" params={{ orgSlug }} aria-label="ClearCut projects">
+          <span className="slate-mark" aria-hidden="true">
+            <span>CC</span>
           </span>
+          <span>ClearCut</span>
+        </Link>
 
-          {projectTitle && (
+        <div className="org-chip" aria-label="Current context">
+          {inProject ? (
+            <strong>{projectTitle ?? "Project"}</strong>
+          ) : (
             <>
-              <span className="text-slate-600 font-light">/</span>
-              <span className="text-sm font-semibold text-slate-200 truncate max-w-[200px]">
-                {projectTitle}
-              </span>
+              <strong>{orgName ?? orgSlug}</strong>
+              {memberCount !== null && (
+                <>
+                  <span className="divider-dot" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="muted small">
+                    {memberCount} {memberCount === 1 ? "member" : "members"}
+                  </span>
+                </>
+              )}
             </>
           )}
         </div>
 
-        <div className="flex items-center space-x-3">
-          <ThemeSwitcher />
-
-          {/* User Badge */}
-          <div className="flex items-center space-x-2 pl-2 border-l border-slate-800">
-            <div className="w-7 h-7 rounded-full bg-amber-600 flex items-center justify-center text-xs font-bold text-white uppercase shadow-sm">
-              {userName.substring(0, 2)}
-            </div>
-            <div className="hidden sm:block text-left text-xs leading-tight">
-              <div className="font-medium text-slate-200">{userName}</div>
-              <div className="text-slate-500 truncate max-w-[120px]">{userEmail}</div>
-            </div>
-          </div>
+        <div className="position-readout" aria-live="polite">
+          {scriptPosition}
         </div>
+
+        <div className="header-spacer" />
+
+        <div className="header-actions">
+          <Link className="button button-quiet" to="/o/$orgSlug/notifications" params={{ orgSlug }}>
+            Inbox
+          </Link>
+          <ThemeSwitcher />
+          <span className="avatar" aria-label={`Signed in as ${userName}`} title={userName}>
+            {initialsOf(userName)}
+          </span>
+        </div>
+
+        <span className="revision-bar" aria-hidden="true" />
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Organization Sidebar Navigation */}
-        <aside
-          aria-label="Workspace navigation"
-          className="w-60 border-r border-slate-800 bg-slate-900/40 shrink-0 hidden md:flex flex-col p-3 space-y-1"
-        >
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 px-2.5">
-            Workspace
-          </div>
+      <aside
+        id="app-sidebar"
+        className={`app-sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`.trim()}
+        aria-label="Primary navigation"
+      >
+        {renderNav()}
+      </aside>
 
-          <nav aria-label="Organization Navigation" className="space-y-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.label}
-                to={link.to}
-                params={link.params}
-                className={`flex items-center space-x-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 ${
-                  link.active
-                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-                }`}
+      <main id="main-content" tabIndex={-1}>
+        <Outlet />
+      </main>
+
+      <nav className="mobile-nav" aria-label="Primary navigation">
+        {mobilePrimary.map((item) => (
+          <Link
+            key={item.label}
+            to={item.to}
+            params={params}
+            aria-current={isCurrent(currentPath, item, projectId) ? "page" : undefined}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              {item.icon}
+            </span>
+            <span className="truncate">{item.label.split(" ")[0]}</span>
+          </Link>
+        ))}
+        <button type="button" onClick={() => setDrawerOpen(true)}>
+          <span className="nav-icon" aria-hidden="true">
+            ☰
+          </span>
+          <span>More</span>
+        </button>
+      </nav>
+
+      <div id="mobile-drawer" className="mobile-drawer" data-open={drawerOpen ? "true" : "false"}>
+        {drawerOpen && (
+          <div className="drawer-panel" role="dialog" aria-modal="true" aria-label="Navigation menu">
+            <div className="cluster-between gap-b-5">
+              <strong>{inProject ? (projectTitle ?? "Project") : orgSlug}</strong>
+              <button
+                className="icon-button is-bare"
+                type="button"
+                aria-label="Close menu"
+                onClick={() => setDrawerOpen(false)}
               >
-                <span aria-hidden="true" className="text-base">
-                  {link.icon}
-                </span>
-                <span>{link.label}</span>
-              </Link>
-            ))}
-          </nav>
-        </aside>
-
-        {/* Main Content Area */}
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 flex flex-col overflow-y-auto focus:outline-none bg-slate-950 p-4 sm:p-6"
-        >
-          <Outlet />
-        </main>
+                <span aria-hidden="true">✕</span>
+              </button>
+            </div>
+            {renderNav()}
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }

@@ -6,7 +6,10 @@ test.describe("Shell, Navigation, and Theme System", () => {
     const skipLink = page.locator("a[href='#main-content']");
     await expect(skipLink).toBeAttached();
 
-    const header = page.locator("header");
+    // The banner landmark, specifically. Surfaces also render the design
+    // system's <header class="page-head"> inside <main>, which is a generic
+    // element rather than a landmark, so a bare "header" locator matches two.
+    const header = page.getByRole("banner");
     await expect(header).toBeVisible();
 
     const main = page.locator("main#main-content");
@@ -21,8 +24,10 @@ test.describe("Shell, Navigation, and Theme System", () => {
     const initialTheme = await html.getAttribute("data-theme");
     expect(initialTheme).toBeTruthy();
 
-    // Find and click theme switcher
-    const themeBtn = page.locator("button[aria-label*='Theme'], button[aria-label*='theme']").first();
+    // Addressed by test id rather than label wording: the accessible name now
+    // follows the mock's "Choose workspace appearance" phrasing, which is copy
+    // and free to change, while the control's identity is not.
+    const themeBtn = page.getByTestId("theme-switcher").first();
     await expect(themeBtn).toBeVisible();
     await themeBtn.click();
 
