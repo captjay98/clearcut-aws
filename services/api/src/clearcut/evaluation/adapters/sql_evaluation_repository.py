@@ -9,6 +9,7 @@ from uuid import UUID
 import sqlalchemy as sa
 import uuid6
 from clearcut.database import database_wall_clock_sql, session_scope
+from clearcut.evaluation.domain.gates import GateSeverity
 from clearcut.evaluation.domain.rubric import (
     AgentEvaluation,
     DimensionStatus,
@@ -23,14 +24,24 @@ from clearcut.evaluation.ports.judge import (
     JudgeSafeError,
 )
 from clearcut.evaluation.ports.repository import (
+    EvaluationLookup,
     EvaluationPersistenceError,
     EvaluationRepositoryPort,
     JudgeInvocationState,
+    PersistedEvaluationProvenance,
+    PersistedEvaluationRecord,
+    PersistedGateOutcome,
     PreparedJudgeInvocation,
 )
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+_GATE_SEVERITY_RANK = {
+    GateSeverity.INFO: 0,
+    GateSeverity.WARNING: 1,
+    GateSeverity.BLOCKER: 2,
+}
 
 
 class SqlEvaluationRepository(EvaluationRepositoryPort):
@@ -421,6 +432,234 @@ class SqlEvaluationRepository(EvaluationRepositoryPort):
             raise EvaluationPersistenceError(
                 "Judge attempt provenance conflicts with the scoped database state."
             ) from error
+
+    async def list_persisted_evaluations(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        run_id: UUID | None = None,
+    ) -> tuple[PersistedEvaluationRecord, ...]:
+        """Read every persisted evaluation inside one project scope.
+
+        Both ``org_id`` and ``project_id`` are required predicates: a project
+        that is not in the caller's organization simply matches nothing.
+        """
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    sa.text(
+                        "SELECT * FROM agent_evaluations "
+                        "WHERE org_id = :org_id AND project_id = :project_id "
+                        "AND (:run_id IS NULL OR run_id = :run_id) "
+                        "ORDER BY created_at DESC, id DESC"
+                    ),
+                    {
+                        "org_id": str(org_id),
+                        "project_id": str(project_id),
+                        "run_id": str(run_id) if run_id is not None else None,
+                    },
+                )
+            ).mappings().all()
+            return tuple(
+                [
+                    await self._read_record(
+                        session,
+                        row,
+                        org_id=org_id,
+                        project_id=project_id,
+                    )
+                    for row in rows
+                ]
+            )
+
+    async def get_persisted_evaluation(
+        self,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        evaluation_id: UUID,
+    ) -> EvaluationLookup:
+        """Read one persisted evaluation inside one project scope.
+
+        An evaluation that belongs to another organization or another project is
+        indistinguishable from one that never existed.
+        """
+        async with session_scope() as session:
+            row = (
+                await session.execute(
+                    sa.text(
+                        "SELECT * FROM agent_evaluations WHERE id = :evaluation_id "
+                        "AND org_id = :org_id AND project_id = :project_id"
+                    ),
+                    {
+                        "evaluation_id": str(evaluation_id),
+                        "org_id": str(org_id),
+                        "project_id": str(project_id),
+                    },
+                )
+            ).mappings().first()
+            if row is None:
+                return EvaluationLookup.not_found()
+            record = await self._read_record(
+                session,
+                row,
+                org_id=org_id,
+                project_id=project_id,
+            )
+        return EvaluationLookup.found(record)
+
+    async def _read_record(
+        self,
+        session: AsyncSession,
+        row: RowMapping,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+    ) -> PersistedEvaluationRecord:
+        evaluation_id = self._uuid(row["id"])
+        run_id = self._uuid(row["run_id"])
+        verdicts = await self._read_verdicts(
+            session,
+            evaluation_id=evaluation_id,
+            org_id=org_id,
+            project_id=project_id,
+        )
+        gates = await self._read_gates(
+            session,
+            run_id=run_id,
+            org_id=org_id,
+            project_id=project_id,
+        )
+        critique = str(row["critique"]) if row["critique"] is not None else ""
+        return PersistedEvaluationRecord(
+            evaluation_id=evaluation_id,
+            org_id=self._uuid(row["org_id"]),
+            project_id=self._uuid(row["project_id"]),
+            run_id=run_id,
+            stage=EvaluationStage(str(row["stage"])),
+            blockers_count=int(row["blockers_count"]),
+            # Legacy rows backfilled an empty critique; an empty string is the
+            # absence of a critique, not a critique that says nothing.
+            critique=critique.strip() or None,
+            verdicts=verdicts,
+            gates=gates,
+            provenance=PersistedEvaluationProvenance(
+                rubric_version=str(row["rubric_version"]),
+                prompt_version=str(row["prompt_version"]),
+                policy_version=str(row["policy_version"]),
+                requested_model=str(row["requested_model"]),
+                returned_model=(
+                    str(row["returned_model"])
+                    if row["returned_model"] is not None
+                    else None
+                ),
+                input_sha256=str(row["input_sha256"]),
+                latency_ms=int(row["latency_ms"]),
+                total_tokens=(
+                    int(row["total_tokens"])
+                    if row["total_tokens"] is not None
+                    else None
+                ),
+                repair_count=int(row["repair_count"]),
+            ),
+            created_at=self._datetime(row["created_at"]),
+        )
+
+    async def _read_verdicts(
+        self,
+        session: AsyncSession,
+        *,
+        evaluation_id: UUID,
+        org_id: UUID,
+        project_id: UUID,
+    ) -> tuple[JudgeVerdict, ...]:
+        rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT * FROM judge_verdicts WHERE evaluation_id = :evaluation_id "
+                    "AND org_id = :org_id AND project_id = :project_id "
+                    "ORDER BY created_at, id"
+                ),
+                {
+                    "evaluation_id": str(evaluation_id),
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                },
+            )
+        ).mappings().all()
+        return tuple(
+            JudgeVerdict(
+                verdict_id=self._uuid(verdict["id"]),
+                dimension=JudgeDimension(str(verdict["dimension"])),
+                status=DimensionStatus(str(verdict["status"])),
+                # A NULL score stays None all the way to the wire. Coercing it to
+                # a number here would turn "we did not judge this" into a zero.
+                score=(
+                    float(verdict["score"]) if verdict["score"] is not None else None
+                ),
+                rationale=str(verdict["rationale"]),
+                created_at=self._datetime(verdict["created_at"]),
+            )
+            for verdict in rows
+        )
+
+    async def _read_gates(
+        self,
+        session: AsyncSession,
+        *,
+        run_id: UUID,
+        org_id: UUID,
+        project_id: UUID,
+    ) -> tuple[PersistedGateOutcome, ...]:
+        rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT gate_name, passed, severity, details "
+                    "FROM deterministic_gate_results "
+                    "WHERE org_id = :org_id AND project_id = :project_id "
+                    "AND run_id = :run_id ORDER BY created_at, id"
+                ),
+                {
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                    "run_id": str(run_id),
+                },
+            )
+        ).mappings().all()
+        representatives: dict[str, PersistedGateOutcome] = {}
+        for gate in rows:
+            outcome = PersistedGateOutcome(
+                gate_name=str(gate["gate_name"]),
+                passed=bool(gate["passed"]),
+                severity=GateSeverity(str(gate["severity"])),
+                details=str(gate["details"]),
+            )
+            incumbent = representatives.get(outcome.gate_name)
+            if incumbent is None or self._outranks(outcome, incumbent):
+                representatives[outcome.gate_name] = outcome
+        return tuple(
+            representatives[gate_name] for gate_name in sorted(representatives)
+        )
+
+    @staticmethod
+    def _outranks(
+        candidate: PersistedGateOutcome,
+        incumbent: PersistedGateOutcome,
+    ) -> bool:
+        """Decide which real gate row represents a gate name for a whole run.
+
+        A failure always displaces a pass, and a worse failure displaces a milder
+        one, so the surfaced row is the most serious thing the gate actually
+        recorded. Ties keep the earliest row.
+        """
+        if incumbent.passed and not candidate.passed:
+            return True
+        if candidate.passed or incumbent.passed:
+            return False
+        return _GATE_SEVERITY_RANK[candidate.severity] > _GATE_SEVERITY_RANK[
+            incumbent.severity
+        ]
 
     async def _insert_attempts(
         self,

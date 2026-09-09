@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 API_ROOT = Path(__file__).resolve().parents[2]
 
-HEAD_REVISION = "0035_revision_selective_rescan"
+HEAD_REVISION = "0036_governance_surfaces"
 PREVIOUS_REVISION = "0029_job_list_pagination"
 
 

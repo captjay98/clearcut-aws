@@ -1051,28 +1051,17 @@ async def test_detection_provider_failure_is_persisted_and_fails_job_safely() ->
     assert candidate_count == 0
 
 
-@pytest.mark.parametrize("active_configuration_count", [0, 2])
 @pytest.mark.asyncio
-async def test_detection_requires_one_active_org_policy_binding(
-    active_configuration_count: int,
-) -> None:
+async def test_detection_requires_an_active_org_policy_binding() -> None:
+    """Detection fails closed when the organization has no active binding.
+
+    The former companion case seeded two active bindings to prove detection also
+    refuses an ambiguous one. That is now unreachable through this path: since
+    0036 a partial unique index permits at most one active row per organization,
+    so the ambiguity is rejected by the database before any job can observe it.
+    The test below covers that boundary directly.
+    """
     org_id, project_id, _script_id, _version_id, run_id, _elements = await _create_detection_scope()
-    async with session_scope() as session:
-        for ordinal in range(active_configuration_count):
-            await session.execute(
-                sa.text(
-                    "INSERT INTO protected_configurations "
-                    "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                    "VALUES (:id, :org_id, 'active', :policy, :prompt, "
-                    "CURRENT_TIMESTAMP)"
-                ),
-                {
-                    "id": str(uuid4()),
-                    "org_id": str(org_id),
-                    "policy": f"policy-v{ordinal + 1}",
-                    "prompt": f"prompt-v{ordinal + 1}",
-                },
-            )
     job = await SqlJobRepository().get(
         org_id=org_id,
         project_id=project_id,
@@ -1096,6 +1085,58 @@ async def test_detection_requires_one_active_org_policy_binding(
     assert raised.value.error.code == "detection_configuration_unavailable"
     assert raised.value.error.retryable is False
     assert runtime.elements == []
+
+
+@pytest.mark.asyncio
+async def test_a_second_active_policy_binding_is_rejected_by_the_database() -> None:
+    """The one-active-binding invariant is enforced in storage, not just in readers.
+
+    Detection and research each re-check it, but two hand-rolled reader checks
+    cannot stop a concurrent activation from creating the ambiguity in the first
+    place. The partial unique index added in 0036 does.
+    """
+    org_id, _project_id, _script_id, _version_id, _run_id, _elements = (
+        await _create_detection_scope()
+    )
+    insert = sa.text(
+        "INSERT INTO protected_configurations "
+        "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
+        "VALUES (:id, :org_id, 'active', :policy, :prompt, CURRENT_TIMESTAMP)"
+    )
+    async with session_scope() as session:
+        await session.execute(
+            insert,
+            {
+                "id": str(uuid4()),
+                "org_id": str(org_id),
+                "policy": "policy-v1",
+                "prompt": "prompt-v1",
+            },
+        )
+
+    with pytest.raises(IntegrityError):
+        async with session_scope() as session:
+            await session.execute(
+                insert,
+                {
+                    "id": str(uuid4()),
+                    "org_id": str(org_id),
+                    "policy": "policy-v2",
+                    "prompt": "prompt-v2",
+                },
+            )
+
+    async with session_scope() as session:
+        active_count = (
+            await session.execute(
+                sa.text(
+                    "SELECT count(*) FROM protected_configurations "
+                    "WHERE org_id = :org_id AND lifecycle = 'active'"
+                ),
+                {"org_id": str(org_id)},
+            )
+        ).scalar_one()
+    assert active_count == 1
 
 
 def test_application_registers_the_detection_job_processor() -> None:

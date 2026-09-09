@@ -35,7 +35,7 @@ def test_self_exclusion_actor_does_not_receive_own_notification():
         title="Evidence decision recorded",
         body_redacted="A reviewer recorded a decision on an item.",
         destination_path="/o/paramount/projects/p1/items/i1",
-        tier=NotificationTier.STANDARD,
+        tier=NotificationTier.ACTION,
         active_memberships=[member_actor, member_teammate],
     )
 

@@ -25,6 +25,7 @@ from clearcut.bootstrap.settings import (
 )
 from clearcut.bootstrap.storage import build_object_storage
 from clearcut.collaboration.delivery.http import router as collaboration_router
+from clearcut.collaboration.delivery.notifications_http import router as notifications_router
 from clearcut.database import DATABASE_URL as CONFIGURED_DATABASE_URL
 from clearcut.database import session_scope
 from clearcut.decisions.delivery.http import router as decisions_router
@@ -37,7 +38,9 @@ from clearcut.detection.ports.model_runtime import DetectionResult, ModelRuntime
 from clearcut.detection.runtime_provider import get_detection_runtime
 from clearcut.evaluation.adapters.sql_evaluation_repository import SqlEvaluationRepository
 from clearcut.evaluation.application.evaluate import EvaluationService
+from clearcut.evaluation.delivery.configuration_http import router as configuration_router
 from clearcut.evaluation.delivery.http import router as evaluation_router
+from clearcut.evaluation.delivery.learning_http import router as learning_router
 from clearcut.evaluation.ports.judge import JudgePort, JudgeRequest, JudgeResult
 from clearcut.evaluation.runtime_provider import get_judge_runtime
 from clearcut.export.delivery.http import router as export_router
@@ -70,6 +73,7 @@ from clearcut.operations.ports.job_repository import EnqueueJob
 from clearcut.organizations.adapters.sql_repository import DatabaseOrganizationRepository
 from clearcut.organizations.application.bootstrap import OrganizationBootstrapService
 from clearcut.organizations.delivery.http import router as organization_router
+from clearcut.organizations.delivery.settings_http import router as organization_settings_router
 from clearcut.projects.adapters.sql_repository import DatabaseProjectRepository
 from clearcut.projects.application.project_service import ProjectService
 from clearcut.records.delivery.http import router as records_router
@@ -827,6 +831,10 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.include_router(monitoring_router)
     app.include_router(records_router)
     app.include_router(evaluation_router)
+    app.include_router(configuration_router)
+    app.include_router(learning_router)
+    app.include_router(notifications_router)
+    app.include_router(organization_settings_router)
     app.include_router(export_router)
 
     async def healthz() -> JSONResponse:

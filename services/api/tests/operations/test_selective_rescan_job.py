@@ -13,24 +13,21 @@ elements carry evidence forward.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 import pytest
 import uuid6
+from clearcut.main import app
+from clearcut.operations.adapters.sql_job_repository import SqlJobRepository
 from clearcut.operations.application.run_job import (
-    JobExecutionError,
-    JobExecutionResult,
     RunJobService,
 )
 from clearcut.operations.domain.jobs import RunStatus
-from clearcut.operations.adapters.sql_job_repository import SqlJobRepository
 from clearcut.operations.ports.job_repository import EnqueueJob
 from clearcut.rescan.adapters.sql_repository import SqlSelectiveRescanRepository
 from clearcut.rescan.application.models import (
     CarriedEvidenceEdge,
     CarriedItemMapping,
-    CarryableElement,
     CarryableElementPair,
     RescanSafeError,
     RescanStage,
@@ -39,7 +36,6 @@ from clearcut.rescan.application.models import (
 from clearcut.rescan.application.run_rescan_job import RunSelectiveRescanJobService
 from clearcut.rescan.ports.repository import RescanChildWorkTicket
 from httpx import ASGITransport, AsyncClient
-from clearcut.main import app
 
 _STAGE_ORDER = (
     RescanStage.MATERIALIZING_LINEAGE,
@@ -465,7 +461,7 @@ async def test_typed_stage_failure_maps_to_safe_job_error_with_no_later_stage() 
         project_id=project_id,
         job_id=enqueued.job.job_id,
     )
-    stages = {stage: status for stage, status in history}
+    stages = dict(history)
     assert stages[RescanStage.MATERIALIZING_LINEAGE] == "failed"
     assert RescanStage.CARRYING_EVIDENCE not in stages
     assert RescanStage.COMPLETED not in stages

@@ -2,7 +2,15 @@ from datetime import datetime
 from uuid import UUID
 
 import sqlalchemy as sa
+import uuid6
 from clearcut.database import session_scope
+from clearcut.evaluation.adapters.sql_configuration_repository import (
+    SqlProtectedConfigurationRepository,
+)
+from clearcut.evaluation.domain.configuration import (
+    ProtectedConfiguration,
+    default_active_configuration,
+)
 from clearcut.organizations.domain.invitations import Invitation
 from clearcut.organizations.domain.models import Membership, Organization
 from clearcut.organizations.ports.organization_repository import OrganizationRepositoryPort
@@ -12,6 +20,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class SqlOrganizationRepository(OrganizationRepositoryPort):
     def __init__(self, db_session: AsyncSession) -> None:
         self.db = db_session
+        self._configurations = SqlProtectedConfigurationRepository()
+
+    async def create_organization_with_owner(
+        self,
+        *,
+        organization: Organization,
+        owner: Membership,
+    ) -> ProtectedConfiguration:
+        """Create the organization, its owner membership, and its governing binding.
+
+        All three writes go to this repository's single session, so they commit
+        together or not at all. Detection, research, and rescan all refuse to run
+        unless the organization holds exactly one active protected configuration
+        binding, so an organization committed without one could never complete a
+        detection pass. Seeding it here is what makes a newly created organization
+        usable, and doing it in this transaction is what makes that guarantee hold
+        under any failure.
+
+        The seeded binding is accountable to the owner who created the
+        organization and carries the organization's own creation instant, which is
+        what the database's accountability constraint on an active row requires.
+        """
+        await self.create_organization(organization)
+        await self.save_membership(owner)
+        configuration = default_active_configuration(
+            config_id=uuid6.uuid7(),
+            org_id=organization.org_id,
+            owner_user_id=owner.user_id,
+            created_at=organization.created_at,
+        )
+        await self._configurations.seed_default_binding(self.db, configuration=configuration)
+        await self.db.flush()
+        return configuration
 
     async def create_organization(self, org: Organization) -> Organization:
         await self.db.execute(
@@ -300,6 +341,28 @@ class SqlOrganizationRepository(OrganizationRepositoryPort):
 
 
 class DatabaseOrganizationRepository(OrganizationRepositoryPort):
+    async def create_organization_with_owner(
+        self,
+        *,
+        organization: Organization,
+        owner: Membership,
+    ) -> ProtectedConfiguration:
+        """Commit the organization, its owner, and its governing binding atomically.
+
+        This is the single unit of work the whole creation act runs in. Every other
+        method on this class opens its own session, which is why organization
+        creation cannot be composed from them: a failure between two of those calls
+        would leave an organization with no owner, or an owner with no governing
+        policy binding — an organization that exists but can never run a detection
+        pass.
+        """
+        async with session_scope() as db:
+            repo = SqlOrganizationRepository(db)
+            return await repo.create_organization_with_owner(
+                organization=organization,
+                owner=owner,
+            )
+
     async def create_organization(self, org: Organization) -> Organization:
         async with session_scope() as db:
             repo = SqlOrganizationRepository(db)

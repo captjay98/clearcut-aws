@@ -501,11 +501,101 @@ export interface MonitoringRun {
 export interface Notification {
   notificationId: UUIDv7;
   orgId: UUIDv7;
+  tier: 'urgent' | 'action' | 'informational';
   title: string;
   body: string;
   read: boolean;
   link?: string;
+  blockedReason?: string;
   createdAt: ISODateTime;
+}
+
+export interface JudgeDimensionScore {
+  dimension: string;
+  status: 'scored' | 'incomplete' | 'not_applicable' | 'failed';
+  score: number | null;
+  rationale: string;
+}
+
+export interface DeterministicGateResult {
+  gateName: string;
+  passed: boolean;
+  severity: string;
+  details?: string;
+}
+
+export interface EvaluationProvenance {
+  rubricVersion: string;
+  promptVersion: string;
+  policyVersion: string;
+  requestedModel?: string;
+  returnedModel?: string | null;
+  inputSha256?: string;
+  latencyMs?: number | null;
+  totalTokens?: number | null;
+  repairCount?: number;
+}
+
+export interface TrustEvaluation {
+  evaluationId: UUIDv7;
+  orgId: UUIDv7;
+  projectId: UUIDv7;
+  runId: UUIDv7;
+  stage: 'detection' | 'research' | 'final';
+  headlineScore: number | null;
+  scoredDimensionsCount: number;
+  blockersCount: number;
+  critique?: string;
+  dimensions: JudgeDimensionScore[];
+  gates: DeterministicGateResult[];
+  provenance: EvaluationProvenance;
+  createdAt: ISODateTime;
+}
+
+export interface ProtectedConfiguration {
+  configurationId: UUIDv7;
+  orgId: UUIDv7;
+  lifecycle: 'draft' | 'validated' | 'active' | 'superseded';
+  label?: string;
+  policyVersion: string;
+  promptVersion: string;
+  rationale?: string;
+  validationIssues?: string[];
+  activatedBy?: UUIDv7;
+  activatedAt?: ISODateTime;
+  validatedAt?: ISODateTime;
+  supersededAt?: ISODateTime;
+  createdAt: ISODateTime;
+}
+
+export interface LearningCandidate {
+  candidateId: UUIDv7;
+  orgId: UUIDv7;
+  scope: 'query_phrasing' | 'retrieval_examples' | 'prompt_refinement' | 'org_preferences';
+  stage: 'candidate' | 'shadow' | 'canary' | 'promoted' | 'rolled_back';
+  title?: string;
+  summary?: string;
+  canaryPassRate: number;
+  regressionCasesPassed: number;
+  regressionCasesTotal: number;
+  version: number;
+  promotedAt?: ISODateTime;
+  rolledBackAt?: ISODateTime;
+  rollbackReason?: string;
+  createdAt: ISODateTime;
+}
+
+export interface OrganizationSettings {
+  orgId: UUIDv7;
+  name: string;
+  slug: string;
+  jurisdiction?: string;
+  defaultMonitoringCadence: 'off' | 'manual' | 'daily' | 'weekly';
+  version: number;
+}
+
+export interface NotificationDeliveryPreference {
+  channel: 'in_app' | 'email' | 'push';
 }
 
 export interface AuditRecord {
@@ -801,6 +891,12 @@ export interface Operations {
   listRecords: { method: 'GET'; path: '/api/v1/organizations/{orgId}/records' };
   getRecord: { method: 'GET'; path: '/api/v1/organizations/{orgId}/records/{recordId}' };
   getProviderAttempt: { method: 'GET'; path: '/api/v1/organizations/{orgId}/provider-attempts/{attemptId}' };
+  listProtectedConfigurations: { method: 'GET'; path: '/api/v1/organizations/{orgId}/protected-configurations' };
+  draftProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations' };
+  listLearningCandidates: { method: 'GET'; path: '/api/v1/organizations/{orgId}/learning-candidates' };
+  getOrganizationSettings: { method: 'GET'; path: '/api/v1/organizations/{orgId}/settings' };
+  updateOrganizationSettings: { method: 'PATCH'; path: '/api/v1/organizations/{orgId}/settings' };
+  setNotificationDeliveryPreference: { method: 'PUT'; path: '/api/v1/organizations/{orgId}/notification-preference' };
   validateProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate' };
   activateProtectedConfiguration: { method: 'POST'; path: '/api/v1/organizations/{orgId}/protected-configurations/{configurationId}:activate' };
   promoteLearningCandidate: { method: 'POST'; path: '/api/v1/organizations/{orgId}/learning-candidates/{candidateId}:promote' };
@@ -1810,9 +1906,9 @@ export function createApiClient(config: ApiClientConfig = {}) {
         query?: { jobId?: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<Array<Record<string, unknown>>>> => {
+    ): Promise<ApiResult<Array<TrustEvaluation>>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request<Array<Record<string, unknown>>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations', {
+      return request<Array<TrustEvaluation>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations', {
         params: args?.params,
         query: args?.query,
         headers,
@@ -1825,9 +1921,9 @@ export function createApiClient(config: ApiClientConfig = {}) {
         params: { orgId: UUIDv7; projectId: UUIDv7; evaluationId: UUIDv7 };
         headers?: Record<string, string>;
       }
-    ): Promise<ApiResult<Record<string, unknown>>> => {
+    ): Promise<ApiResult<TrustEvaluation>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
-      return request<Record<string, unknown>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations/{evaluationId}', {
+      return request<TrustEvaluation>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/evaluations/{evaluationId}', {
         params: args?.params,
         headers,
       });
@@ -1873,6 +1969,99 @@ export function createApiClient(config: ApiClientConfig = {}) {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<Record<string, unknown>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/provider-attempts/{attemptId}', {
         params: args?.params,
+        headers,
+      });
+    },
+
+    /** List the organization's protected configuration bindings */
+    listProtectedConfigurations: async (
+      args: {
+        params: { orgId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Array<ProtectedConfiguration>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<ProtectedConfiguration>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/protected-configurations', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Draft a new protected configuration (Owner-only) */
+    draftProtectedConfiguration: async (
+      args: {
+        params: { orgId: UUIDv7 };
+        body: { label?: string; policyVersion: string; promptVersion: string; rationale: string };
+        headers?: { "Idempotency-Key"?: string } & Record<string, string>;
+      }
+    ): Promise<ApiResult<ProtectedConfiguration>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<ProtectedConfiguration>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/protected-configurations', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
+        headers,
+      });
+    },
+
+    /** List bounded learning candidates and their stages */
+    listLearningCandidates: async (
+      args: {
+        params: { orgId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Array<LearningCandidate>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<LearningCandidate>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/learning-candidates', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Read organization settings */
+    getOrganizationSettings: async (
+      args: {
+        params: { orgId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<OrganizationSettings>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<OrganizationSettings>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/settings', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** Update organization settings (Owner or Admin) */
+    updateOrganizationSettings: async (
+      args: {
+        params: { orgId: UUIDv7 };
+        body: { name: string; jurisdiction?: string; defaultMonitoringCadence: 'off' | 'manual' | 'daily' | 'weekly'; expectedVersion: number };
+        headers?: { "Idempotency-Key"?: string } & Record<string, string>;
+      }
+    ): Promise<ApiResult<OrganizationSettings>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<OrganizationSettings>(baseUrl, fetchFn, 'PATCH', '/api/v1/organizations/{orgId}/settings', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
+        headers,
+      });
+    },
+
+    /** Set the caller's notification delivery channel */
+    setNotificationDeliveryPreference: async (
+      args: {
+        params: { orgId: UUIDv7 };
+        body: NotificationDeliveryPreference;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<NotificationDeliveryPreference>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<NotificationDeliveryPreference>(baseUrl, fetchFn, 'PUT', '/api/v1/organizations/{orgId}/notification-preference', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },

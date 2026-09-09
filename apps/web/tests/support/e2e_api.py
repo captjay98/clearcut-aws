@@ -22,9 +22,9 @@ from clearcut.evaluation.application.evaluate import EvaluationService
 from clearcut.identity.delivery.http import verify_csrf_origin
 from clearcut.identity.delivery.scope import get_request_scope
 from clearcut.main import (
-    app,
     _SelectiveRescanChildWorkCoordinator,
     _SelectiveRescanItemLineageCoordinator,
+    app,
 )
 from clearcut.operations.application.local_dispatcher import LocalJobDispatcher
 from clearcut.operations.application.run_job import RunJobService
@@ -33,8 +33,8 @@ from clearcut.organizations.domain.capabilities import has_capability
 from clearcut.rescan.application.run_rescan_job import RunSelectiveRescanJobService
 from clearcut.research.adapters.hermetic_extract import HermeticExtractAdapter
 from clearcut.research.adapters.hermetic_search import HermeticSearchAdapter
-from clearcut.research.adapters.sql_research_repository import SqlResearchRepository
 from clearcut.research.adapters.sql_evidence_lineage import SqlEvidenceLineageAdapter
+from clearcut.research.adapters.sql_research_repository import SqlResearchRepository
 from clearcut.research.application.run_research_job import RunResearchJobService
 from clearcut.research.domain.queries import ResearchPlan
 from clearcut.research.ports.planner import (

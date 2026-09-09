@@ -391,11 +391,101 @@ export interface MonitoringRun {
 export interface Notification {
   notificationId: UUIDv7;
   orgId: UUIDv7;
+  tier: 'urgent' | 'action' | 'informational';
   title: string;
   body: string;
   read: boolean;
   link?: string;
+  blockedReason?: string;
   createdAt: ISODateTime;
+}
+
+export interface JudgeDimensionScore {
+  dimension: string;
+  status: 'scored' | 'incomplete' | 'not_applicable' | 'failed';
+  score: number | null;
+  rationale: string;
+}
+
+export interface DeterministicGateResult {
+  gateName: string;
+  passed: boolean;
+  severity: string;
+  details?: string;
+}
+
+export interface EvaluationProvenance {
+  rubricVersion: string;
+  promptVersion: string;
+  policyVersion: string;
+  requestedModel?: string;
+  returnedModel?: string | null;
+  inputSha256?: string;
+  latencyMs?: number | null;
+  totalTokens?: number | null;
+  repairCount?: number;
+}
+
+export interface TrustEvaluation {
+  evaluationId: UUIDv7;
+  orgId: UUIDv7;
+  projectId: UUIDv7;
+  runId: UUIDv7;
+  stage: 'detection' | 'research' | 'final';
+  headlineScore: number | null;
+  scoredDimensionsCount: number;
+  blockersCount: number;
+  critique?: string;
+  dimensions: JudgeDimensionScore[];
+  gates: DeterministicGateResult[];
+  provenance: EvaluationProvenance;
+  createdAt: ISODateTime;
+}
+
+export interface ProtectedConfiguration {
+  configurationId: UUIDv7;
+  orgId: UUIDv7;
+  lifecycle: 'draft' | 'validated' | 'active' | 'superseded';
+  label?: string;
+  policyVersion: string;
+  promptVersion: string;
+  rationale?: string;
+  validationIssues?: string[];
+  activatedBy?: UUIDv7;
+  activatedAt?: ISODateTime;
+  validatedAt?: ISODateTime;
+  supersededAt?: ISODateTime;
+  createdAt: ISODateTime;
+}
+
+export interface LearningCandidate {
+  candidateId: UUIDv7;
+  orgId: UUIDv7;
+  scope: 'query_phrasing' | 'retrieval_examples' | 'prompt_refinement' | 'org_preferences';
+  stage: 'candidate' | 'shadow' | 'canary' | 'promoted' | 'rolled_back';
+  title?: string;
+  summary?: string;
+  canaryPassRate: number;
+  regressionCasesPassed: number;
+  regressionCasesTotal: number;
+  version: number;
+  promotedAt?: ISODateTime;
+  rolledBackAt?: ISODateTime;
+  rollbackReason?: string;
+  createdAt: ISODateTime;
+}
+
+export interface OrganizationSettings {
+  orgId: UUIDv7;
+  name: string;
+  slug: string;
+  jurisdiction?: string;
+  defaultMonitoringCadence: 'off' | 'manual' | 'daily' | 'weekly';
+  version: number;
+}
+
+export interface NotificationDeliveryPreference {
+  channel: 'in_app' | 'email' | 'push';
 }
 
 export interface AuditRecord {

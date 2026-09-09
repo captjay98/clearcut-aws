@@ -2659,8 +2659,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      additionalProperties: true
+                      $ref: '#/components/schemas/TrustEvaluation'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
         '503':
@@ -2699,8 +2698,7 @@ paths:
                   - meta
                 properties:
                   data:
-                    type: object
-                    additionalProperties: true
+                    $ref: '#/components/schemas/TrustEvaluation'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
         '503':
@@ -2830,6 +2828,224 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/organizations/{orgId}/protected-configurations:
+    get:
+      summary: List the organization's protected configuration bindings
+      operationId: listProtectedConfigurations
+      tags:
+        - governance
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Protected configurations, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProtectedConfiguration'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+    post:
+      summary: Draft a new protected configuration (Owner-only)
+      operationId: draftProtectedConfiguration
+      tags:
+        - governance
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - policyVersion
+                - promptVersion
+                - rationale
+              properties:
+                label:
+                  type: string
+                policyVersion:
+                  type: string
+                  minLength: 1
+                promptVersion:
+                  type: string
+                  minLength: 1
+                rationale:
+                  type: string
+                  minLength: 1
+      responses:
+        '201':
+          description: Draft configuration created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ProtectedConfiguration'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/learning-candidates:
+    get:
+      summary: List bounded learning candidates and their stages
+      operationId: listLearningCandidates
+      tags:
+        - learning
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Learning candidates, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LearningCandidate'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/settings:
+    get:
+      summary: Read organization settings
+      operationId: getOrganizationSettings
+      tags:
+        - organizations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Organization settings
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OrganizationSettings'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+    patch:
+      summary: Update organization settings (Owner or Admin)
+      operationId: updateOrganizationSettings
+      tags:
+        - organizations
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - defaultMonitoringCadence
+                - expectedVersion
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                jurisdiction:
+                  type: string
+                defaultMonitoringCadence:
+                  type: string
+                  enum:
+                    - 'off'
+                    - manual
+                    - daily
+                    - weekly
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Updated organization settings
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OrganizationSettings'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/notification-preference:
+    put:
+      summary: Set the caller's notification delivery channel
+      operationId: setNotificationDeliveryPreference
+      tags:
+        - notifications
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationDeliveryPreference'
+      responses:
+        '200':
+          description: Stored delivery preference
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/NotificationDeliveryPreference'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
 
   /api/v1/organizations/{orgId}/protected-configurations/{configurationId}:validate:
     post:
@@ -4918,6 +5134,7 @@ components:
       required:
         - notificationId
         - orgId
+        - tier
         - title
         - body
         - read
@@ -4927,6 +5144,15 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         orgId:
           $ref: '#/components/schemas/UUIDv7'
+        tier:
+          type: string
+          description: >-
+            Triage priority. The inbox groups by this, so it is required rather
+            than inferred from the title.
+          enum:
+            - urgent
+            - action
+            - informational
         title:
           type: string
         body:
@@ -4935,8 +5161,292 @@ components:
           type: boolean
         link:
           type: string
+          description: >-
+            Resolved destination path. Absent when the recipient's access does
+            not cover the destination, in which case blockedReason explains why
+            rather than offering a link that would mislead.
+        blockedReason:
+          type: string
+          description: >-
+            Why this notification cannot be opened. A notification is not
+            permission; when the destination project is gone or outside the
+            recipient's access the row says so.
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
+
+    JudgeDimensionScore:
+      type: object
+      required:
+        - dimension
+        - status
+        - rationale
+      properties:
+        dimension:
+          type: string
+          description: One of the ten rubric dimensions.
+        status:
+          type: string
+          enum:
+            - scored
+            - incomplete
+            - not_applicable
+            - failed
+        score:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Present only when status is scored or failed. An incomplete or
+            not-applicable dimension carries null and must never render as zero.
+        rationale:
+          type: string
+
+    DeterministicGateResult:
+      type: object
+      required:
+        - gateName
+        - passed
+        - severity
+      properties:
+        gateName:
+          type: string
+        passed:
+          type: boolean
+        severity:
+          type: string
+        details:
+          type: string
+
+    EvaluationProvenance:
+      type: object
+      required:
+        - rubricVersion
+        - promptVersion
+        - policyVersion
+      properties:
+        rubricVersion:
+          type: string
+        promptVersion:
+          type: string
+        policyVersion:
+          type: string
+        requestedModel:
+          type: string
+        returnedModel:
+          type: string
+          nullable: true
+        inputSha256:
+          type: string
+        latencyMs:
+          type: integer
+          nullable: true
+        totalTokens:
+          type: integer
+          nullable: true
+        repairCount:
+          type: integer
+
+    TrustEvaluation:
+      type: object
+      required:
+        - evaluationId
+        - orgId
+        - projectId
+        - runId
+        - stage
+        - headlineScore
+        - scoredDimensionsCount
+        - blockersCount
+        - dimensions
+        - gates
+        - provenance
+        - createdAt
+      properties:
+        evaluationId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        runId:
+          $ref: '#/components/schemas/UUIDv7'
+        stage:
+          type: string
+          enum:
+            - detection
+            - research
+            - final
+        headlineScore:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            The mean of the scored dimensions, derived on read. It cannot
+            disagree with the dimensions array beneath it.
+        scoredDimensionsCount:
+          type: integer
+        blockersCount:
+          type: integer
+        critique:
+          type: string
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/JudgeDimensionScore'
+        gates:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeterministicGateResult'
+        provenance:
+          $ref: '#/components/schemas/EvaluationProvenance'
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    ProtectedConfiguration:
+      type: object
+      required:
+        - configurationId
+        - orgId
+        - lifecycle
+        - policyVersion
+        - promptVersion
+        - createdAt
+      properties:
+        configurationId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        lifecycle:
+          type: string
+          enum:
+            - draft
+            - validated
+            - active
+            - superseded
+        label:
+          type: string
+        policyVersion:
+          type: string
+        promptVersion:
+          type: string
+        rationale:
+          type: string
+        validationIssues:
+          type: array
+          items:
+            type: string
+        activatedBy:
+          $ref: '#/components/schemas/UUIDv7'
+        activatedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        validatedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        supersededAt:
+          $ref: '#/components/schemas/ISODateTime'
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    LearningCandidate:
+      type: object
+      required:
+        - candidateId
+        - orgId
+        - scope
+        - stage
+        - canaryPassRate
+        - regressionCasesPassed
+        - regressionCasesTotal
+        - version
+        - createdAt
+      properties:
+        candidateId:
+          $ref: '#/components/schemas/UUIDv7'
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        scope:
+          type: string
+          description: >-
+            The bounded thing this candidate may change. Never a protected
+            scope such as permissions, policy, or legal-boundary language.
+          enum:
+            - query_phrasing
+            - retrieval_examples
+            - prompt_refinement
+            - org_preferences
+        stage:
+          type: string
+          enum:
+            - candidate
+            - shadow
+            - canary
+            - promoted
+            - rolled_back
+        title:
+          type: string
+        summary:
+          type: string
+        canaryPassRate:
+          type: number
+          minimum: 0
+          maximum: 1
+        regressionCasesPassed:
+          type: integer
+        regressionCasesTotal:
+          type: integer
+        version:
+          type: integer
+        promotedAt:
+          $ref: '#/components/schemas/ISODateTime'
+        rolledBackAt:
+          $ref: '#/components/schemas/ISODateTime'
+        rollbackReason:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    OrganizationSettings:
+      type: object
+      required:
+        - orgId
+        - name
+        - slug
+        - defaultMonitoringCadence
+        - version
+      properties:
+        orgId:
+          $ref: '#/components/schemas/UUIDv7'
+        name:
+          type: string
+        slug:
+          type: string
+        jurisdiction:
+          type: string
+        defaultMonitoringCadence:
+          type: string
+          description: >-
+            Stored canonically. Surfaces render it through a label map rather
+            than printing the token.
+          enum:
+            - 'off'
+            - manual
+            - daily
+            - weekly
+        version:
+          type: integer
+
+    NotificationDeliveryPreference:
+      type: object
+      required:
+        - channel
+      properties:
+        channel:
+          type: string
+          enum:
+            - in_app
+            - email
+            - push
 
     AuditRecord:
       type: object
