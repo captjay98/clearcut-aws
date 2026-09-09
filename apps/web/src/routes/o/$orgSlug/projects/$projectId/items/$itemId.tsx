@@ -85,6 +85,12 @@ export function ItemDetailRoute() {
   const referralCapability = item?.capabilities.find(
     (capability) => capability.action === "item:refer",
   );
+  const rewriteProposeCapability = item?.capabilities.find(
+    (capability) => capability.action === "rewrite:propose",
+  );
+  const rewriteApproveCapability = item?.capabilities.find(
+    (capability) => capability.action === "rewrite:approve",
+  );
 
   const handleAssign = async (assigneeId: string | null) => {
     if (!item) throw new Error("The clearance item is unavailable.");
@@ -557,6 +563,8 @@ export function ItemDetailRoute() {
         projectId={projectId}
         itemId={item.itemId}
         originalText={item.contextText ?? item.entityName}
+        proposeCapability={rewriteProposeCapability}
+        approveCapability={rewriteApproveCapability}
       />
       <ReferralCard
         itemId={item.itemId}
