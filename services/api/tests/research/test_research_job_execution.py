@@ -99,6 +99,99 @@ class RecordingExtract:
         return self.outcomes.pop(0)
 
 
+def _synthesized_claim_text(excerpt: str) -> str:
+    return f"According to the source, {excerpt}"
+
+
+class RecordingSynthesizer:
+    requested_model = "gemini-3.1-flash-lite"
+
+    def __init__(self, stance: str = "supports") -> None:
+        self.stance = stance
+        self.requests: list[Any] = []
+
+    async def synthesize_claim(self, request: Any) -> Any:
+        self.requests.append(request)
+        stance_enum = _load_type(
+            "clearcut.research.domain.claims",
+            "EvidenceStance",
+        )
+        usage_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "SynthesisTokenUsage",
+        )
+        metadata_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "SynthesisAttemptMetadata",
+        )
+        success_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "ClaimSynthesisSuccess",
+        )
+        return success_type(
+            claim_text=_synthesized_claim_text(request.excerpt),
+            stance=stance_enum(self.stance),
+            metadata=metadata_type(
+                status="succeeded",
+                requested_model=self.requested_model,
+                returned_model="gemini-3.1-flash-lite-20260820",
+                response_id="synthesis-response-1",
+                usage=usage_type(
+                    input_tokens=8,
+                    output_tokens=12,
+                    total_tokens=20,
+                ),
+                latency_ms=9,
+                error=None,
+            ),
+        )
+
+
+class FailingSynthesizer:
+    requested_model = "gemini-3.1-flash-lite"
+
+    def __init__(self, code: str = "provider_unavailable", retryable: bool = True) -> None:
+        self.code = code
+        self.retryable = retryable
+        self.requests: list[Any] = []
+
+    async def synthesize_claim(self, request: Any) -> Any:
+        self.requests.append(request)
+        error_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "SynthesisSafeError",
+        )
+        metadata_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "SynthesisAttemptMetadata",
+        )
+        usage_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "SynthesisTokenUsage",
+        )
+        failure_type = _load_type(
+            "clearcut.research.ports.claim_synthesizer",
+            "ClaimSynthesisFailure",
+        )
+        error = error_type(
+            code=self.code,
+            message="The claim synthesizer could not complete the request.",
+            retryable=self.retryable,
+        )
+        return failure_type(
+            error=error,
+            attempt=metadata_type(
+                status="failed",
+                requested_model=self.requested_model,
+                returned_model=None,
+                response_id=None,
+                usage=usage_type(None, None, None),
+                latency_ms=5,
+                error=error,
+            ),
+        )
+
+
 def _plan() -> ResearchPlan:
     return ResearchPlan(
         objective=("Verify attributable ownership and current status for qualified human review."),
@@ -238,6 +331,7 @@ def _processor(
     planner: RecordingPlanner,
     search: RecordingSearch,
     extract: RecordingExtract,
+    synthesizer: Any | None = None,
 ) -> Any:
     repository_type = _load_type(
         "clearcut.research.adapters.sql_research_repository",
@@ -250,6 +344,7 @@ def _processor(
     return service_type(
         repository=repository_type(),
         planner=planner,
+        synthesizer=synthesizer or RecordingSynthesizer(),
         search=search,
         extract=extract,
         evaluation=EvaluationService(
@@ -531,8 +626,12 @@ async def test_research_job_extracts_only_three_canonical_urls_from_authorizing_
     assert all(str(row["excerpt"]).strip() for row in snapshots)
     assert len(claims) == 3
     assert all(row["origin"] == "extract" for row in claims)
-    assert all(row["stance"] == "context" for row in claims)
-    assert all(row["claim_text"] == row["snapshot_excerpt"] for row in claims)
+    assert all(row["stance"] == "supports" for row in claims)
+    assert all(
+        row["claim_text"] == _synthesized_claim_text(row["snapshot_excerpt"])
+        for row in claims
+    )
+    assert all(row["claim_text"] != row["snapshot_excerpt"] for row in claims)
     assert all(row["provenance_excerpt"] == row["snapshot_excerpt"] for row in claims)
     assert len(evaluations) == 1
     assert evaluations[0]["stage"] == "research"
@@ -1223,3 +1322,96 @@ async def test_extract_finalization_rejects_mismatched_search_session() -> None:
             )
         ).scalar_one()
     assert extract_snapshot_count == 0
+
+
+
+def _extract_success_flow() -> tuple[RecordingSearch, RecordingExtract]:
+    search = RecordingSearch(
+        [
+            SearchResponse(
+                search_id="search-synth-1",
+                session_id="session-synth-1",
+                results=[
+                    SearchResultItem(
+                        url="https://example.com/source-1",
+                        title="Source 1",
+                        publisher="Example Publisher",
+                        snippet="Attributable excerpt one.",
+                    ),
+                ],
+                duration_ms=20,
+            ),
+            SearchResponse(
+                search_id="search-synth-2",
+                session_id="session-synth-2",
+                results=[],
+                duration_ms=21,
+            ),
+        ]
+    )
+    extract = RecordingExtract(
+        [
+            ExtractBatchResponse(
+                extract_id="extract-synth-1",
+                session_id="session-synth-1",
+                results=(
+                    ExtractedPage(
+                        url="https://example.com/source-1",
+                        title="Source 1",
+                        content="Exact attributable extracted excerpt one.",
+                    ),
+                ),
+                errors=(),
+                warnings=(),
+            )
+        ]
+    )
+    return search, extract
+
+
+@pytest.mark.asyncio
+async def test_synthesis_failure_produces_typed_retryable_job_failure_without_claims() -> None:
+    job, org_id, project_id, _version_id, item_id = await _create_research_scope()
+    search, extract = _extract_success_flow()
+    synthesizer = FailingSynthesizer(code="provider_unavailable", retryable=True)
+
+    with pytest.raises(JobExecutionError) as raised:
+        await _processor(RecordingPlanner(_plan()), search, extract, synthesizer)(job)
+
+    assert raised.value.error.code == "research_synthesis_failed"
+    assert raised.value.error.retryable is True
+    assert len(synthesizer.requests) == 1
+    assert synthesizer.requests[0].item_id == item_id
+    assert synthesizer.requests[0].excerpt == "Exact attributable extracted excerpt one."
+
+    async with session_scope() as session:
+        run = (
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT status FROM research_runs WHERE org_id = :org_id "
+                        "AND project_id = :project_id AND job_id = :job_id"
+                    ),
+                    {
+                        "org_id": str(org_id),
+                        "project_id": str(project_id),
+                        "job_id": str(job.job_id),
+                    },
+                )
+            )
+            .mappings()
+            .one()
+        )
+        claim_count = (
+            await session.execute(sa.text("SELECT count(*) FROM evidence_claims"))
+        ).scalar_one()
+        evaluation_count = (
+            await session.execute(
+                sa.text("SELECT count(*) FROM agent_evaluations WHERE run_id = :job_id"),
+                {"job_id": str(job.job_id)},
+            )
+        ).scalar_one()
+
+    assert run["status"] == "failed"
+    assert claim_count == 0
+    assert evaluation_count == 0

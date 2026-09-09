@@ -29,6 +29,11 @@ from clearcut.research.application.select_extract_targets import select_extract_
 from clearcut.research.domain.extraction import ExtractRequest
 from clearcut.research.domain.queries import SearchRequest
 from clearcut.research.domain.snapshots import ProviderFailure
+from clearcut.research.ports.claim_synthesizer import (
+    ClaimSynthesisFailure,
+    ClaimSynthesisRequest,
+    ClaimSynthesizerPort,
+)
 from clearcut.research.ports.planner import (
     ResearchPlannerPort,
     ResearchPlanningFailure,
@@ -44,12 +49,14 @@ class RunResearchJobService:
         *,
         repository: SqlResearchRepository,
         planner: ResearchPlannerPort,
+        synthesizer: ClaimSynthesizerPort,
         search: WebSearchPort,
         extract: UrlExtractPort,
         evaluation: EvaluationService,
     ) -> None:
         self._repository = repository
         self._planner = planner
+        self._synthesizer = synthesizer
         self._search = search
         self._extract = extract
         self._evaluation = evaluation
@@ -169,6 +176,8 @@ class RunResearchJobService:
                 lease_owner=lease_owner,
                 item_id=item_id,
                 version_id=research_input.version_id,
+                category=research_input.category,
+                item_text=research_input.text,
                 run_id=prepared.run_id,
                 objective=plan.objective,
                 queries=queries,
@@ -191,6 +200,8 @@ class RunResearchJobService:
         lease_owner: str,
         item_id: UUID,
         version_id: UUID,
+        category: str,
+        item_text: str,
         run_id: UUID,
         objective: str,
         queries: tuple[ResearchQueryRecord, ...],
@@ -350,6 +361,15 @@ class RunResearchJobService:
                 item_id=item_id,
             )
             if evidence:
+                evidence = await self._synthesize_evidence(
+                    job=job,
+                    lease_owner=lease_owner,
+                    item_id=item_id,
+                    run_id=run_id,
+                    category=category,
+                    item_text=item_text,
+                    evidence=evidence,
+                )
                 bindings = JudgeBindings(
                     rubric_version="clearcut-ten-dimension-rubric-v1",
                     prompt_version=prompt_version,
@@ -455,6 +475,63 @@ class RunResearchJobService:
                 }
             )
         return JobExecutionResult(summary=summary)
+
+    async def _synthesize_evidence(
+        self,
+        *,
+        job: JobRecord,
+        lease_owner: str,
+        item_id: UUID,
+        run_id: UUID,
+        category: str,
+        item_text: str,
+        evidence: tuple[ResearchEvidence, ...],
+    ) -> tuple[ResearchEvidence, ...]:
+        synthesized: list[ResearchEvidence] = []
+        for item in evidence:
+            result = await self._synthesizer.synthesize_claim(
+                ClaimSynthesisRequest(
+                    item_id=item_id,
+                    snapshot_id=item.snapshot_id,
+                    category=category,
+                    item_text=item_text,
+                    url=item.url,
+                    publisher=item.publisher,
+                    excerpt=item.excerpt,
+                    correlation_id=job.correlation_id,
+                    research_run_id=run_id,
+                )
+            )
+            if isinstance(result, ClaimSynthesisFailure):
+                await self._repository.fail_run(
+                    org_id=job.org_id,
+                    project_id=job.project_id,
+                    job_id=job.job_id,
+                    job_attempt_number=job.attempt_count,
+                    lease_owner=lease_owner,
+                    run_id=run_id,
+                    item_id=item_id,
+                    code=result.error.code,
+                    message=result.error.message,
+                    retryable=result.error.retryable,
+                )
+                raise self._job_error(
+                    "research_synthesis_failed",
+                    result.error.message,
+                    result.error.retryable,
+                )
+            synthesized.append(
+                ResearchEvidence(
+                    snapshot_id=item.snapshot_id,
+                    url=item.url,
+                    publisher=item.publisher,
+                    excerpt=item.excerpt,
+                    authority_tier=item.authority_tier,
+                    stance=result.stance.value,
+                    claim_text=result.claim_text,
+                )
+            )
+        return tuple(synthesized)
 
     @staticmethod
     def _item_id(job: JobRecord) -> UUID:

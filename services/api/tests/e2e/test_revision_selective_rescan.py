@@ -76,8 +76,16 @@ from clearcut.research.adapters.hermetic_search import HermeticSearchAdapter
 from clearcut.research.adapters.sql_evidence_lineage import SqlEvidenceLineageAdapter
 from clearcut.research.adapters.sql_research_repository import SqlResearchRepository
 from clearcut.research.application.run_research_job import RunResearchJobService
+from clearcut.research.domain.claims import EvidenceStance
 from clearcut.research.domain.queries import ResearchPlan
 from clearcut.research.domain.snapshots import ProviderFailure
+from clearcut.research.ports.claim_synthesizer import (
+    ClaimSynthesisRequest,
+    ClaimSynthesisResult,
+    ClaimSynthesisSuccess,
+    SynthesisAttemptMetadata,
+    SynthesisTokenUsage,
+)
 from clearcut.research.ports.planner import (
     PlanningAttemptMetadata,
     PlanningTokenUsage,
@@ -156,6 +164,29 @@ class _FakeResearchPlanner:
                 returned_model=self.requested_model,
                 response_id="hermetic-planner-e2e-only",
                 usage=PlanningTokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
+                latency_ms=0,
+                error=None,
+            ),
+        )
+
+
+class _FakeClaimSynthesizer:
+    """A typed ClaimSynthesizerPort that never calls a paid model."""
+
+    @property
+    def requested_model(self) -> str:
+        return "hermetic-synthesizer-e2e-only"
+
+    async def synthesize_claim(self, request: ClaimSynthesisRequest) -> ClaimSynthesisResult:
+        return ClaimSynthesisSuccess(
+            claim_text=f"According to the source, {request.excerpt}",
+            stance=EvidenceStance.CONTEXT,
+            metadata=SynthesisAttemptMetadata(
+                status="succeeded",
+                requested_model=self.requested_model,
+                returned_model=self.requested_model,
+                response_id="hermetic-synthesizer-e2e-only",
+                usage=SynthesisTokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
                 latency_ms=0,
                 error=None,
             ),
@@ -1148,6 +1179,7 @@ def _hermetic_runner(
     run_research_job = RunResearchJobService(
         repository=SqlResearchRepository(),
         planner=planner or _FakeResearchPlanner(),
+        synthesizer=_FakeClaimSynthesizer(),
         search=search or HermeticSearchAdapter(),
         extract=HermeticExtractAdapter(),
         evaluation=evaluation,

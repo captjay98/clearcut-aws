@@ -95,6 +95,11 @@ from clearcut.research.delivery.http import router as research_router
 from clearcut.research.domain.extraction import ExtractRequest
 from clearcut.research.domain.queries import SearchRequest
 from clearcut.research.domain.snapshots import ProviderResult
+from clearcut.research.ports.claim_synthesizer import (
+    ClaimSynthesisRequest,
+    ClaimSynthesisResult,
+    ClaimSynthesizerPort,
+)
 from clearcut.research.ports.planner import (
     ResearchPlannerPort,
     ResearchPlanningRequest,
@@ -104,6 +109,7 @@ from clearcut.research.ports.url_extract import ExtractResult, UrlExtractPort
 from clearcut.research.ports.web_search import WebSearchPort
 from clearcut.research.runtime_provider import (
     ResearchRuntime,
+    get_claim_synthesizer,
     get_research_planner,
     get_research_runtime,
 )
@@ -200,6 +206,31 @@ class _ConfiguredResearchPlanner(ResearchPlannerPort):
     def _resolve(self) -> ResearchPlannerPort:
         if self._runtime is None:
             self._runtime = get_research_planner()
+        return self._runtime
+
+
+class _ConfiguredClaimSynthesizer(ClaimSynthesizerPort):
+    """Resolve and gate the configured claim synthesizer only when research executes."""
+
+    def __init__(self, gate: PaidProviderGate) -> None:
+        self._gate = gate
+        self._runtime: ClaimSynthesizerPort | None = None
+
+    @property
+    def requested_model(self) -> str:
+        with self._gate.acquire("gemini"):
+            return self._resolve().requested_model
+
+    async def synthesize_claim(
+        self,
+        request: ClaimSynthesisRequest,
+    ) -> ClaimSynthesisResult:
+        async with self._gate.acquire("gemini"):
+            return await self._resolve().synthesize_claim(request)
+
+    def _resolve(self) -> ClaimSynthesizerPort:
+        if self._runtime is None:
+            self._runtime = get_claim_synthesizer()
         return self._runtime
 
 
@@ -718,10 +749,12 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     )
     research_repository = SqlResearchRepository()
     research_planner = _ConfiguredResearchPlanner(paid_provider_gate)
+    research_synthesizer = _ConfiguredClaimSynthesizer(paid_provider_gate)
     research_runtime = _ConfiguredResearchRuntime(paid_provider_gate)
     run_research_job = RunResearchJobService(
         repository=research_repository,
         planner=research_planner,
+        synthesizer=research_synthesizer,
         search=research_runtime,
         extract=research_runtime,
         evaluation=evaluation_service,

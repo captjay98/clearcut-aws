@@ -63,3 +63,26 @@ def get_research_planner():
         location=os.getenv("CLEARCUT_VERTEX_LOCATION", "global"),
         role_configuration=resolve_model_role(GeminiRole.RESEARCH_PLANNING),
     )
+
+
+def get_claim_synthesizer():
+    """Return the configured production evidence claim synthesizer."""
+    project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("CLEARCUT_GCP_PROJECT")
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Claim synthesis is not configured. Set GOOGLE_CLOUD_PROJECT "
+                "with Application Default Credentials to enable Vertex synthesis."
+            ),
+        )
+    from clearcut.ai.model_roles import GeminiRole, resolve_model_role
+    from clearcut.research.adapters.vertex_claim_synthesizer import (
+        VertexClaimSynthesizer,
+    )
+
+    return VertexClaimSynthesizer(
+        project=project,
+        location=os.getenv("CLEARCUT_VERTEX_LOCATION", "global"),
+        role_configuration=resolve_model_role(GeminiRole.RESEARCH_PLANNING),
+    )

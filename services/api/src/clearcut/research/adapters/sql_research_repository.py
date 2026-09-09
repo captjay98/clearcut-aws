@@ -1012,8 +1012,8 @@ class SqlResearchRepository:
                 publisher=str(row["publisher"]),
                 excerpt=str(row["excerpt"]),
                 authority_tier=self._authority_tier(str(row["url"])),
-                stance="context",
-                claim_text=str(row["excerpt"]),
+                stance="",
+                claim_text="",
             )
             for row in rows
         )
@@ -1026,7 +1026,7 @@ class SqlResearchRepository:
                         gate_name="AttributableExcerptGate",
                         passed=True,
                         severity=GateSeverity.INFO,
-                        details="Claim wording exactly matches the attributable excerpt.",
+                        details="Claim is synthesized solely from the attributable excerpt.",
                     ),
                     GateResult.create(
                         candidate_id=item.snapshot_id,
@@ -1100,7 +1100,7 @@ class SqlResearchRepository:
                         authority_tier, claim_text, provenance_excerpt, created_at,
                         run_id, query_id, provider_attempt_id
                     ) VALUES (
-                        :id, :org_id, :project_id, :item_id, :snapshot_id, 'context',
+                        :id, :org_id, :project_id, :item_id, :snapshot_id, :stance,
                         :authority_tier, :claim_text, :provenance_excerpt, :created_at,
                         :run_id, :query_id, :provider_attempt_id
                     )
@@ -1113,6 +1113,7 @@ class SqlResearchRepository:
                         "project_id": str(project_id),
                         "item_id": str(item_id),
                         "snapshot_id": str(item.snapshot_id),
+                        "stance": item.stance,
                         "authority_tier": item.authority_tier,
                         "claim_text": item.claim_text,
                         "provenance_excerpt": item.excerpt,
@@ -1124,7 +1125,6 @@ class SqlResearchRepository:
                         ),
                     }
                     for item in evidence
-                    if item.claim_text == item.excerpt
                 ],
             )
             await self._fence_active_lease(

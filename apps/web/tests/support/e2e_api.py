@@ -36,7 +36,15 @@ from clearcut.research.adapters.hermetic_search import HermeticSearchAdapter
 from clearcut.research.adapters.sql_evidence_lineage import SqlEvidenceLineageAdapter
 from clearcut.research.adapters.sql_research_repository import SqlResearchRepository
 from clearcut.research.application.run_research_job import RunResearchJobService
+from clearcut.research.domain.claims import EvidenceStance
 from clearcut.research.domain.queries import ResearchPlan
+from clearcut.research.ports.claim_synthesizer import (
+    ClaimSynthesisRequest,
+    ClaimSynthesisResult,
+    ClaimSynthesisSuccess,
+    SynthesisAttemptMetadata,
+    SynthesisTokenUsage,
+)
 from clearcut.research.ports.planner import (
     PlanningAttemptMetadata,
     PlanningTokenUsage,
@@ -105,6 +113,36 @@ class _HermeticResearchPlanner:
         )
 
 
+class _HermeticClaimSynthesizer:
+    """A typed ``ClaimSynthesizerPort`` double that never calls a paid model.
+
+    The production synthesizer resolves a gated Gemini model. This double returns
+    a deterministic, schema-valid claim attributable to the supplied excerpt so
+    admitted evidence reaches persistence through the real research job without
+    any provider or network call. It is explicitly an E2E-only identity and is
+    not a Parallel/Gemini receipt.
+    """
+
+    @property
+    def requested_model(self) -> str:
+        return "hermetic-synthesizer-e2e-only"
+
+    async def synthesize_claim(self, request: ClaimSynthesisRequest) -> ClaimSynthesisResult:
+        return ClaimSynthesisSuccess(
+            claim_text=f"According to the source, {request.excerpt}",
+            stance=EvidenceStance.CONTEXT,
+            metadata=SynthesisAttemptMetadata(
+                status="succeeded",
+                requested_model=self.requested_model,
+                returned_model=self.requested_model,
+                response_id="hermetic-synthesizer-e2e-only",
+                usage=SynthesisTokenUsage(input_tokens=0, output_tokens=0, total_tokens=0),
+                latency_ms=0,
+                error=None,
+            ),
+        )
+
+
 class _AlwaysEnabledProviderGate:
     """A typed provider gate that reports the paid provider available.
 
@@ -140,11 +178,13 @@ run_detection_job = RunDetectionJobService(
 # job so that every research child triggered by the rescan reaches the real
 # research job logic without any paid Parallel/Gemini call.
 research_planner = _HermeticResearchPlanner()
+research_synthesizer = _HermeticClaimSynthesizer()
 research_search = HermeticSearchAdapter()
 research_extract = HermeticExtractAdapter()
 run_research_job = RunResearchJobService(
     repository=SqlResearchRepository(),
     planner=research_planner,
+    synthesizer=research_synthesizer,
     search=research_search,
     extract=research_extract,
     evaluation=evaluation_service,
