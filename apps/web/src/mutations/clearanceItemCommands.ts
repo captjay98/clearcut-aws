@@ -7,6 +7,7 @@ import {
   type ApiError,
   type ClearanceItem,
   type Comment as CommentResult,
+  type Job,
   type RecordEvidenceDecisionRequest,
   type Referral,
   type ReferClearanceItemRequest,
@@ -27,6 +28,7 @@ type ReferralClient = Pick<typeof api, "referClearanceItem">;
 type AcknowledgeReferralClient = Pick<typeof api, "acknowledgeReferral">;
 type ReplyToCommentClient = Pick<typeof api, "replyToComment">;
 type ReviseCommentClient = Pick<typeof api, "reviseComment">;
+type StartResearchClient = Pick<typeof api, "startResearch">;
 
 export interface RecordEvidenceDecisionInput extends RecordEvidenceDecisionRequest {
   idempotencyKey: string;
@@ -256,6 +258,21 @@ export async function executeReviseComment(
   return result.value;
 }
 
+export async function executeStartResearch(
+  scope: ClearanceItemScope,
+  client: StartResearchClient = api,
+): Promise<Job> {
+  const result = await client.startResearch({
+    params: {
+      orgId: scope.orgId,
+      projectId: scope.projectId,
+      itemId: scope.itemId,
+    },
+  });
+  if (!result.ok) throw toCommandError(result.error);
+  return result.value;
+}
+
 async function invalidateAuthoritativeItemState(
   queryClient: QueryClient,
   scope: ClearanceItemScope,
@@ -387,6 +404,20 @@ export function setDispositionMutationOptions(
     retry: false as const,
     mutationFn: (input: SetDispositionInput) =>
       executeSetDisposition(scope, input, client),
+    onSuccess: () => invalidateAuthoritativeItemState(queryClient, scope),
+  };
+}
+
+
+
+export function startResearchMutationOptions(
+  scope: ClearanceItemScope,
+  queryClient: QueryClient,
+  client: StartResearchClient = api,
+) {
+  return {
+    retry: false as const,
+    mutationFn: () => executeStartResearch(scope, client),
     onSuccess: () => invalidateAuthoritativeItemState(queryClient, scope),
   };
 }

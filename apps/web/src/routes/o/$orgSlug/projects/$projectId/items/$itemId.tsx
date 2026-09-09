@@ -19,6 +19,7 @@ import {
   replyToCommentMutationOptions,
   reviseCommentMutationOptions,
   setDispositionMutationOptions,
+  startResearchMutationOptions,
 } from "../../../../../../mutations/clearanceItemCommands";
 import { clearanceItemDetailQueryOptions } from "../../../../../../queries/clearanceItems";
 import { organizationMentionRecipientsQueryOptions } from "../../../../../../queries/organizationMembers";
@@ -67,6 +68,9 @@ export function ItemDetailRoute() {
   );
   const dispositionMutation = useMutation(
     setDispositionMutationOptions(scope, queryClient),
+  );
+  const researchMutation = useMutation(
+    startResearchMutationOptions(scope, queryClient),
   );
   const [decision, setDecision] = useState<EvidenceDecision>("further_review_required");
   const [rationale, setRationale] = useState("");
@@ -390,11 +394,34 @@ export function ItemDetailRoute() {
         description={item.evidenceState.reason}
       >
         {item.claims.length === 0 ? (
-          <Banner
-            tone="is-warning"
-            icon="⚠"
-            message="Zero cited evidence remains unresolved. No fallback evidence has been invented."
-          />
+          <div className="stack">
+            <Banner
+              tone="is-warning"
+              icon="⚠"
+              message="Zero cited evidence remains unresolved. No fallback evidence has been invented."
+            />
+            {researchMutation.isError && (
+              <Banner
+                tone="is-danger"
+                icon="⚠"
+                message={`Research not started: ${
+                  (researchMutation.error as Error)?.message ||
+                  "The clearance service is unavailable."
+                }`}
+                role="alert"
+              />
+            )}
+            <div className="cluster" style={{ justifyContent: "flex-end" }}>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={researchMutation.isPending}
+                onClick={() => researchMutation.mutate()}
+              >
+                {researchMutation.isPending ? "Starting research…" : "Run research"}
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="stack">
             {item.claims.map((claim) => {
