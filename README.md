@@ -6,7 +6,7 @@ ClearCut reads a screenplay, finds the things that need clearing — brands, tra
 
 Its distinguishing feature: when you upload a revised draft, ClearCut computes exactly what changed and runs a **durable selective rescan** — re-researching only the passages that were modified or added, carrying forward the evidence for everything that stayed the same, and keeping every prior decision as accountable history. You change one scene; you don't re-run the whole script.
 
-> **Current readiness: NO-GO.** No hosted deployment is currently verified. The repository contains a working local implementation and provider-free release controls, but it does not contain the external cloud, paid-provider, recovery, video, or compliance evidence required for a production or contest release. See `docs/submission/manifest.yaml` for the authoritative GO/NO-GO ledger.
+> Current readiness: **NO-GO**. No hosted deployment is currently verified. The repository contains a working local implementation and provider-free release controls, but it does not contain the external cloud, paid-provider, recovery, video, or compliance evidence required for a production or contest release. See `docs/submission/manifest.yaml` for the authoritative GO/NO-GO ledger.
 
 ClearCut does not provide legal advice or final legal clearance. It presents sourced findings, uncertainty, and unresolved risk for qualified human review.
 

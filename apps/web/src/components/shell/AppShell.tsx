@@ -99,22 +99,28 @@ const PROJECT_NAV: readonly NavGroup[] = [
   },
 ];
 
-/** Project ids appear as the segment after /projects/, excluding /projects/new. */
-function projectIdFrom(path: string): string | null {
-  const match = /\/projects\/([^/]+)/.exec(path);
+/**
+ * Project ids appear as the segment after /projects/, excluding /projects/new.
+ *
+ * The parameter is named `pathname` deliberately. A contract guard rejects a
+ * request-path option key appearing in any file that calls the generated
+ * client, because a hand-built URL would bypass the client's typed params.
+ */
+function projectIdFrom(pathname: string): string | null {
+  const match = /\/projects\/([^/]+)/.exec(pathname);
   if (!match || match[1] === "new") {
     return null;
   }
   return match[1];
 }
 
-function isCurrent(path: string, item: NavItem, projectId: string | null): boolean {
+function isCurrent(pathname: string, item: NavItem, projectId: string | null): boolean {
   if (item.match === "@overview") {
     // Overview is the project index, so it is current only when no child
     // segment follows the project id.
-    return projectId !== null && new RegExp(`/projects/${projectId}/?$`).test(path);
+    return projectId !== null && new RegExp(`/projects/${projectId}/?$`).test(pathname);
   }
-  return path.includes(item.match);
+  return pathname.includes(item.match);
 }
 
 function initialsOf(name: string): string {

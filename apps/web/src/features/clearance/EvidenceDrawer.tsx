@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
-import type { ClearanceItem, ClearanceItemDetail } from "@clearcut/contracts";
+import type { ClearanceItem } from "@clearcut/contracts";
+import type { ClearanceItemDetail } from "@clearcut/contracts";
 import { Badge, Banner } from "../../components/ds";
 import { humanizeCategory, humanizeStatus, statusTone } from "./itemPresentation";
 import type { Tone } from "../../components/ds";
