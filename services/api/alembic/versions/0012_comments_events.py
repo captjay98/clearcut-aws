@@ -46,7 +46,7 @@ def upgrade() -> None:
             "mentions",
             sa.JSON().with_variant(ARRAY(sa.String(100)), "postgresql"),
             nullable=False,
-            server_default="[]",
+            server_default=("{}" if op.get_bind().dialect.name == "postgresql" else "[]"),
         ),
         sa.Column("is_edited", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

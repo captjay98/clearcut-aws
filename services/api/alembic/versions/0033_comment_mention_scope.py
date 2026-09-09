@@ -1,6 +1,6 @@
 """Bind comment mentions to an exact tenant-scoped revision identity.
 
-Revision ID: 0033_comment_mention_revision_scope
+Revision ID: 0033_comment_mention_scope
 Revises: 0032_comment_mention_revision
 Create Date: 2026-09-05 02:00:00.000000
 """
@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0033_comment_mention_revision_scope"
+revision: str = "0033_comment_mention_scope"
 down_revision: str | None = "0032_comment_mention_revision"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

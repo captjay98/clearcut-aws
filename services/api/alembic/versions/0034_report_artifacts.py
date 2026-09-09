@@ -1,7 +1,7 @@
 """Persist deterministic report artifacts and release uniqueness.
 
 Revision ID: 0034_report_artifacts
-Revises: 0033_comment_mention_revision_scope
+Revises: 0033_comment_mention_scope
 Create Date: 2026-08-31 05:30:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0034_report_artifacts"
-down_revision: str | None = "0033_comment_mention_revision_scope"
+down_revision: str | None = "0033_comment_mention_scope"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
