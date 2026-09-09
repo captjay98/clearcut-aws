@@ -105,9 +105,12 @@ class ParallelExtractAdapter(UrlExtractPort):
                     message="Parallel Extract response omitted provider identity.",
                 )
 
-            raw_results = data.get("results", [])
-            raw_errors = data.get("errors", [])
-            raw_warnings = data.get("warnings", [])
+            # Parallel returns these keys with an explicit null rather than omitting
+            # them, so `.get(key, [])` yields None and a plain isinstance check
+            # rejects a perfectly valid response. Coalesce null to empty.
+            raw_results = data.get("results") or []
+            raw_errors = data.get("errors") or []
+            raw_warnings = data.get("warnings") or []
             if not all(
                 isinstance(value, list)
                 for value in (raw_results, raw_errors, raw_warnings)

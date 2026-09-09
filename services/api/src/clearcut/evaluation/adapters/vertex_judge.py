@@ -37,6 +37,19 @@ _SYSTEM_INSTRUCTION = (
     "uncertainty and pre-clearance legal boundaries. Never create a clearance decision, "
     "evidence claim, policy change, disposition, or legal conclusion. Do not provide "
     "hidden reasoning or chain-of-thought."
+    "\n\n"
+    "Encoding rules, which are validated strictly and must be followed exactly:\n"
+    "1. Return exactly one verdict for every dimension in the schema enum, with no "
+    "duplicates and none omitted.\n"
+    "2. For any dimension absent from eligibleDimensions, set status to "
+    '"not_applicable" and score to null.\n'
+    '3. For an eligible dimension, use status "scored" with a numeric score between '
+    '0 and 100, or status "failed" with a score of exactly 0, or status "incomplete" '
+    "with score null.\n"
+    '4. Never supply a numeric score alongside status "not_applicable" or '
+    '"incomplete".\n'
+    "5. Every rationale must be a non-empty string of at most 2000 characters, and the "
+    "critique must be a non-empty string of at most 2000 characters."
 )
 
 _RESPONSE_SCHEMA = {
@@ -214,7 +227,7 @@ class VertexJudgeAdapter(JudgePort):
                 error = JudgeSafeError(
                     code="invalid_response",
                     message="The judge provider returned an invalid structured response.",
-                    retryable=False,
+                    retryable=True,
                 )
                 attempts.append(
                     JudgeAttemptMetadata(

@@ -104,7 +104,7 @@ class ParallelSearchAdapter(WebSearchPort):
                     message="Parallel Search response omitted provider identity.",
                 )
 
-            raw_results = data.get("results", [])
+            raw_results = data.get("results") or []
             if not isinstance(raw_results, list):
                 return ProviderFailure(
                     kind="invalid_response",
