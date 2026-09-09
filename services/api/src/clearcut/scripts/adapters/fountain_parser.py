@@ -9,6 +9,9 @@ SCENE_HEADING_REGEX = re.compile(
 )
 POSSIBLE_SCENE_HEADING_REGEX = re.compile(r"^(INT|EXT)\s+", re.IGNORECASE)
 TRANSITION_REGEX = re.compile(r"^(>|CUT TO:|FADE TO:|DISSOLVE TO:)", re.IGNORECASE)
+# A Fountain title-page line is "Key: Value" where Key is one or more words.
+# Restricted to a leading metadata block by the parser, never mid-body.
+TITLE_PAGE_KEY_REGEX = re.compile(r"^[A-Za-z][A-Za-z ]*:\s")
 
 
 class FountainParser(ScriptParserPort):
@@ -24,17 +27,22 @@ class FountainParser(ScriptParserPort):
         scene_count = 0
         ordinal = 1
 
-        # Check for title page metadata
+        # Title page: a leading block of "Key: Value" metadata pairs (Fountain
+        # allows Title, Credit, Author, Source, Draft date, Contact, and more).
+        # These are production metadata, not screenplay body, and must never
+        # reach detection -- otherwise an author credit gets flagged as a real
+        # entity. Recognise the whole block, not a hardcoded subset of keys.
         while i < len(lines):
             line = lines[i].strip()
-            if line.lower().startswith("title:"):
-                title = line.split(":", 1)[1].strip()
-            elif line.lower().startswith("author:") or line.lower().startswith("draft date:"):
-                pass
-            elif line == "":
+            if line == "":
                 if title != "Untitled Screenplay":
                     i += 1
                     break
+            elif TITLE_PAGE_KEY_REGEX.match(line):
+                if line.lower().startswith("title:"):
+                    title = line.split(":", 1)[1].strip()
+                # Every other title-page key (Credit, Author, Draft date, ...)
+                # is consumed and dropped rather than emitted as an element.
             else:
                 break
             i += 1
