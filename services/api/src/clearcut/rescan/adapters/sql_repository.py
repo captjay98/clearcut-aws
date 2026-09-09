@@ -8,10 +8,19 @@ already-succeeded stage writes no duplicate row and never re-runs its work. All
 scope is composite ``(org_id, project_id, job_id)`` and every read is filtered by
 that scope; a missing scope simply returns no rows rather than leaking a foreign
 tenant's checkpoints.
+
+A succeeded checkpoint's ``result`` also carries the stage's replayable OUTPUT
+(carried item mappings, carried-evidence edge count, affected/added item ids) in
+the existing JSON column, because a resumed run needs those outputs as the next
+stage's inputs. The identities involved — successor item ids and freshly detected
+added-item ids — are generated while the stage runs and cannot be recomputed by a
+later attempt without repeating the write or the child provider work, so they are
+read back rather than re-derived.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,10 +29,20 @@ import uuid6
 
 from clearcut.database import session_scope
 from clearcut.rescan.application.models import (
+    ADDED_ITEM_IDS_KEY,
+    AFFECTED_ITEM_IDS_KEY,
+    CARRIED_EVIDENCE_EDGE_COUNT_KEY,
+    CARRIED_MAPPINGS_KEY,
+    CarriedItemMapping,
     ItemId,
     OrgId,
     ProjectId,
+    RescanSafeError,
     RescanStage,
+    RestoredRescanProgress,
+    decode_carried_mappings,
+    decode_edge_count,
+    decode_item_ids,
 )
 
 _STAGE_RANK = {stage: index for index, stage in enumerate(RescanStage)}
@@ -39,12 +58,80 @@ class SqlSelectiveRescanRepository:
         project_id: ProjectId,
         job_id: ItemId,
     ) -> list[tuple[RescanStage, str]]:
+        rows = await self._load_stage_rows(org_id=org_id, project_id=project_id, job_id=job_id)
+        return [(stage, status) for stage, status, _result in rows]
+
+    async def completed_stages(
+        self,
+        *,
+        org_id: OrgId,
+        project_id: ProjectId,
+        job_id: ItemId,
+    ) -> frozenset[RescanStage]:
+        history = await self.load_stage_history(org_id=org_id, project_id=project_id, job_id=job_id)
+        return frozenset(stage for stage, status in history if status == "succeeded")
+
+    async def load_restored_progress(
+        self,
+        *,
+        org_id: OrgId,
+        project_id: ProjectId,
+        job_id: ItemId,
+    ) -> RestoredRescanProgress:
+        rows = await self._load_stage_rows(org_id=org_id, project_id=project_id, job_id=job_id)
+        completed: set[RescanStage] = set()
+        unrecoverable: set[RescanStage] = set()
+        carried_mappings: tuple[CarriedItemMapping, ...] = ()
+        carried_evidence_edge_count = 0
+        affected_item_ids: tuple[ItemId, ...] = ()
+        added_item_ids: tuple[ItemId, ...] = ()
+        for stage, status, result in rows:
+            if status != "succeeded":
+                continue
+            completed.add(stage)
+            # Only the three stages with a downstream output need restoring; the
+            # remaining stages consume nothing from a predecessor.
+            try:
+                if stage is RescanStage.MATERIALIZING_LINEAGE:
+                    carried_mappings = decode_carried_mappings(result.get(CARRIED_MAPPINGS_KEY))
+                elif stage is RescanStage.CARRYING_EVIDENCE:
+                    carried_evidence_edge_count = decode_edge_count(
+                        result.get(CARRIED_EVIDENCE_EDGE_COUNT_KEY)
+                    )
+                elif stage is RescanStage.DETECTING_AFFECTED_PASSAGES:
+                    affected_item_ids = decode_item_ids(
+                        result.get(AFFECTED_ITEM_IDS_KEY), detail="affected item ids"
+                    )
+                    added_item_ids = decode_item_ids(
+                        result.get(ADDED_ITEM_IDS_KEY), detail="added item ids"
+                    )
+            except RescanSafeError:
+                # A stage recorded as succeeded whose output cannot be restored is
+                # never presented as empty: reporting it lets the caller fail the
+                # job closed instead of running later stages against nothing.
+                unrecoverable.add(stage)
+        return RestoredRescanProgress(
+            completed_stages=frozenset(completed),
+            unrecoverable_stages=frozenset(unrecoverable),
+            carried_mappings=carried_mappings,
+            carried_evidence_edge_count=carried_evidence_edge_count,
+            affected_item_ids=affected_item_ids,
+            added_item_ids=added_item_ids,
+        )
+
+    async def _load_stage_rows(
+        self,
+        *,
+        org_id: OrgId,
+        project_id: ProjectId,
+        job_id: ItemId,
+    ) -> list[tuple[RescanStage, str, dict[str, Any]]]:
         async with session_scope() as session:
             rows = (
                 (
                     await session.execute(
                         sa.text(
-                            "SELECT stage, status FROM selective_rescan_checkpoints "
+                            "SELECT stage, status, result FROM selective_rescan_checkpoints "
                             "WHERE org_id = :org_id AND project_id = :project_id "
                             "AND job_id = :job_id "
                             "AND script_version_id IS NULL AND item_id IS NULL"
@@ -59,19 +146,28 @@ class SqlSelectiveRescanRepository:
                 .mappings()
                 .all()
             )
-        history = [(RescanStage(str(row["stage"])), str(row["status"])) for row in rows]
+        history = [
+            (
+                RescanStage(str(row["stage"])),
+                str(row["status"]),
+                self._json_object(row["result"]),
+            )
+            for row in rows
+        ]
         history.sort(key=lambda entry: _STAGE_RANK[entry[0]])
         return history
 
-    async def completed_stages(
-        self,
-        *,
-        org_id: OrgId,
-        project_id: ProjectId,
-        job_id: ItemId,
-    ) -> frozenset[RescanStage]:
-        history = await self.load_stage_history(org_id=org_id, project_id=project_id, job_id=job_id)
-        return frozenset(stage for stage, status in history if status == "succeeded")
+    @staticmethod
+    def _json_object(value: Any) -> dict[str, Any]:
+        # The stage result is read through raw SQL, so the driver may hand back
+        # either decoded JSON (PostgreSQL) or the stored text (SQLite).
+        if value is None:
+            return {}
+        try:
+            parsed = json.loads(value) if isinstance(value, str) else value
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return dict(parsed) if isinstance(parsed, dict) else {}
 
     async def record_stage_success(
         self,

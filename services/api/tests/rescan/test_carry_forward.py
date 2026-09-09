@@ -33,6 +33,7 @@ import sqlalchemy as sa
 import uuid6
 from clearcut.database import session_scope
 from clearcut.detection.adapters.sql_rescan_lineage import SqlItemLineageAdapter
+from clearcut.main import _SelectiveRescanItemLineageCoordinator
 from clearcut.rescan.application.models import (
     CarriedItemMapping,
     CarryableElement,
@@ -903,3 +904,111 @@ def test_rescan_stage_has_the_seven_approved_stages() -> None:
         "awaiting_confirmation",
         "completed",
     ]
+
+
+
+# --------------------------------------------------------------------------- #
+# Multiple clearance items on ONE carried passage (defect D4)
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_additional_item_on_before_element(
+    seed: SeededItem,
+    *,
+    category: str,
+    text: str,
+) -> UUID:
+    """Seed a SECOND clearance item on the same unchanged before element."""
+    item_id = uuid6.uuid7()
+    now = datetime.now(UTC)
+    async with session_scope() as session:
+        await session.execute(
+            sa.text(
+                "INSERT INTO clearance_items "
+                "(id, org_id, project_id, script_id, version_id, element_id, category, text, "
+                "status, research_status, workflow_status, disposition_status, created_at, "
+                "version) VALUES "
+                "(:id, :org_id, :project_id, :script_id, :version_id, :element_id, :category, "
+                ":text, 'resolved', 'completed', 'resolved', 'approved_as_is', :created_at, 2)"
+            ),
+            {
+                "id": str(item_id),
+                "org_id": str(seed.org_id),
+                "project_id": str(seed.project_id),
+                "script_id": str(seed.script_id),
+                "version_id": str(seed.before_version_id),
+                "element_id": str(seed.before_element_id),
+                "category": category,
+                "text": text,
+                "created_at": now,
+            },
+        )
+    return item_id
+
+
+async def test_coordinator_carries_every_item_on_one_unchanged_passage() -> None:
+    """Two findings on one unchanged line must both survive the rescan.
+
+    The coordinator receives ONE carryable element for the passage (the scripts
+    diff is element-level) and must resolve ALL scoped predecessor items bound to
+    that before element, creating exactly one successor per predecessor. Reading
+    a single predecessor row silently dropped every finding but one.
+    """
+    seed = await _seed_carry_forward_revision()
+    second_item_id = await _seed_additional_item_on_before_element(
+        seed,
+        category="locations_and_landmarks",
+        text="Brooklyn Bridge",
+    )
+    expected_predecessor_ids = {seed.predecessor_item_id, second_item_id}
+
+    coordinator = _SelectiveRescanItemLineageCoordinator(SqlItemLineageAdapter())
+    mappings = await coordinator.materialize(
+        org_id=seed.org_id,
+        project_id=seed.project_id,
+        script_id=seed.script_id,
+        before_version_id=seed.before_version_id,
+        after_version_id=seed.after_version_id,
+        carryable_elements=(
+            CarryableElement(
+                before_element_id=seed.before_element_id,
+                after_element_id=seed.after_element_id,
+                # The orchestration passes the before element id as the join key.
+                predecessor_item_id=seed.before_element_id,
+                category="",
+                text="Acme Corporation",
+            ),
+        ),
+    )
+
+    assert {m.predecessor_item_id for m in mappings} == expected_predecessor_ids
+    assert len({m.new_item_id for m in mappings}) == len(expected_predecessor_ids)
+    assert {m.after_element_id for m in mappings} == {seed.after_element_id}
+
+    async with session_scope() as session:
+        carried = (
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT predecessor_item_id, category, text, element_id "
+                        "FROM clearance_items "
+                        "WHERE org_id = :org_id AND version_id = :version_id "
+                        "AND lineage_kind = 'carried_forward' ORDER BY created_at, id"
+                    ),
+                    {
+                        "org_id": str(seed.org_id),
+                        "version_id": str(seed.after_version_id),
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    assert len(carried) == 2
+    assert {UUID(str(row["predecessor_item_id"])) for row in carried} == expected_predecessor_ids
+    assert {str(row["category"]) for row in carried} == {
+        "products_and_trademarks",
+        "locations_and_landmarks",
+    }
+    assert {UUID(str(row["element_id"])) for row in carried} == {seed.after_element_id}

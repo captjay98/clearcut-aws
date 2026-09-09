@@ -22,6 +22,7 @@ from clearcut.rescan.application.models import (
     OrgId,
     ProjectId,
     RescanStage,
+    RestoredRescanProgress,
     VersionId,
 )
 
@@ -76,6 +77,25 @@ class SelectiveRescanRepositoryPort(Protocol):
         job_id: ItemId,
     ) -> frozenset[RescanStage]:
         """Return the set of stages already recorded as ``succeeded``."""
+        ...
+
+    async def load_restored_progress(
+        self,
+        *,
+        org_id: OrgId,
+        project_id: ProjectId,
+        job_id: ItemId,
+    ) -> RestoredRescanProgress:
+        """Return the completed stages together with their replayable outputs.
+
+        A resumed rescan skips the side effects of a completed stage but still
+        needs that stage's output as the next stage's input, so this read returns
+        the persisted carried item mappings, carried-evidence edge count, and
+        affected/added item ids alongside the completed stage set. A stage
+        recorded as ``succeeded`` whose output cannot be restored is reported in
+        ``unrecoverable_stages`` rather than presented as empty, so the caller can
+        fail closed instead of running later stages against nothing.
+        """
         ...
 
     async def record_stage_success(

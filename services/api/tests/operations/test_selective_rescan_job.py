@@ -145,6 +145,7 @@ class _FakeMaterializeItems:
     def __init__(self, *, error: RescanSafeError | None = None) -> None:
         self._error = error
         self.calls: list[tuple[UUID, ...]] = []
+        self.mappings: tuple[CarriedItemMapping, ...] = ()
 
     async def materialize(
         self,
@@ -159,7 +160,7 @@ class _FakeMaterializeItems:
         self.calls.append(tuple(e.after_element_id for e in carryable_elements))
         if self._error is not None:
             raise self._error
-        return tuple(
+        self.mappings = tuple(
             CarriedItemMapping(
                 predecessor_item_id=element.predecessor_item_id,
                 new_item_id=uuid6.uuid7(),
@@ -168,6 +169,7 @@ class _FakeMaterializeItems:
             )
             for element in carryable_elements
         )
+        return self.mappings
 
 
 class _FakeCarryEvidence:
@@ -603,3 +605,101 @@ async def test_invalid_payload_target_is_rejected_before_any_stage() -> None:
     assert failed.error is not None
     assert failed.error.code == "invalid_selective_rescan_job"
     assert materialize.calls == []
+
+
+class _InterruptingCarryEvidence:
+    """An evidence port that loses the worker before carrying anything.
+
+    The lineage stage checkpoint is already persisted when this raises, so the
+    next attempt resumes with the evidence stage still pending — the exact
+    interruption that used to leave a resumed run with zero carried mappings.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    async def carry_forward(self, *, org_id, project_id, new_item_id, source_item_id):
+        raise RescanSafeError(
+            code="rescan_worker_lost",
+            message="The rescan worker was lost mid-stage.",
+            retryable=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_resumed_run_restores_completed_stage_outputs_and_reports_true_totals() -> None:
+    """A resumed run inherits the completed stages' outputs, not empty inputs.
+
+    The first attempt completes lineage materialization and then loses the worker.
+    A brand-new service instance must carry evidence for the mappings the first
+    attempt created (restored from the persisted checkpoint) and must report the
+    true totals rather than zeros for the work already done.
+    """
+    org_id, project_id, actor_id = await _create_scope()
+    job_repository = SqlJobRepository()
+    checkpoint_repository = SqlSelectiveRescanRepository()
+    plan = _revision_plan(org_id, project_id)
+    enqueued = await _enqueue_rescan_job(
+        job_repository,
+        org_id=org_id,
+        project_id=project_id,
+        actor_id=actor_id,
+        after_version_id=plan.after_version_id,
+    )
+
+    first_materialize = _FakeMaterializeItems()
+    failed = await RunJobService(
+        repository=job_repository,
+        processors={
+            "selective_rescan": _service(
+                job_repository=job_repository,
+                repository=checkpoint_repository,
+                plan=plan,
+                materialize=first_materialize,
+                evidence=_InterruptingCarryEvidence(),
+                child=_FakeChildWork(affected_item_ids=(uuid6.uuid7(),)),
+            )
+        },
+        lease_owner="local-rescan",
+    ).run(enqueued.job.job_id, org_id, project_id)
+
+    assert failed.status is RunStatus.FAILED
+    completed = await checkpoint_repository.completed_stages(
+        org_id=org_id, project_id=project_id, job_id=enqueued.job.job_id
+    )
+    assert RescanStage.MATERIALIZING_LINEAGE in completed
+    assert RescanStage.CARRYING_EVIDENCE not in completed
+
+    await job_repository.retry(
+        org_id=org_id, project_id=project_id, job_id=enqueued.job.job_id, actor_id=actor_id
+    )
+
+    resumed_materialize = _FakeMaterializeItems()
+    resumed_evidence = _FakeCarryEvidence()
+    affected_item = uuid6.uuid7()
+    resumed = await RunJobService(
+        repository=job_repository,
+        processors={
+            "selective_rescan": _service(
+                job_repository=job_repository,
+                repository=checkpoint_repository,
+                plan=plan,
+                materialize=resumed_materialize,
+                evidence=resumed_evidence,
+                child=_FakeChildWork(affected_item_ids=(affected_item,)),
+            )
+        },
+        lease_owner="local-rescan-resumed",
+    ).run(enqueued.job.job_id, org_id, project_id)
+
+    assert resumed.status is RunStatus.SUCCEEDED
+    # The completed lineage stage is not repeated ...
+    assert resumed_materialize.calls == []
+    # ... and its restored mappings are exactly what the evidence stage carries.
+    assert resumed_evidence.calls == [
+        (mapping.new_item_id, mapping.predecessor_item_id) for mapping in first_materialize.mappings
+    ]
+    assert resumed.result_summary is not None
+    assert resumed.result_summary["carriedItemCount"] == len(plan.carryable_elements)
+    assert resumed.result_summary["carriedEvidenceEdgeCount"] == len(plan.carryable_elements)
+    assert resumed.result_summary["affectedItemCount"] == 1

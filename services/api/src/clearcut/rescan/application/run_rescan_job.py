@@ -22,6 +22,12 @@ Governance invariants:
 * child work is requested through stable idempotency keys, and completed stages
   are skipped on replay so a reload never duplicates jobs, items, evidence, or
   provider calls;
+* a skipped stage's OUTPUT is restored from its persisted checkpoint before the
+  next stage runs, so a resumed run never carries zero evidence or researches
+  zero items while reporting success; a completed stage whose output cannot be
+  restored fails the job closed instead;
+* the final summary reports the restored totals, so a resumed run reports the
+  work earlier attempts actually completed rather than zeros;
 * strict payload projection rejects any non-``script_version`` target or
   unsupported schema before any stage runs.
 """
@@ -39,10 +45,18 @@ from clearcut.operations.ports.job_repository import (
     SafeJobError,
 )
 from clearcut.rescan.application.models import (
+    ADDED_ITEM_IDS_KEY,
+    AFFECTED_ITEM_IDS_KEY,
+    CARRIED_EVIDENCE_EDGE_COUNT_KEY,
+    CARRIED_MAPPINGS_KEY,
+    CarriedItemMapping,
     CarryableElement,
     RescanSafeError,
     RescanStage,
+    RestoredRescanProgress,
     RevisionPlan,
+    encode_carried_mappings,
+    encode_item_ids,
 )
 from clearcut.rescan.ports.repository import (
     RescanChildWorkPort,
@@ -65,6 +79,7 @@ _STAGE_SEQUENCE: tuple[tuple[RescanStage, float], ...] = (
     (RescanStage.AWAITING_CONFIRMATION, 90.0),
     (RescanStage.COMPLETED, 99.0),
 )
+_STAGE_ORDER: tuple[RescanStage, ...] = tuple(stage for stage, _progress in _STAGE_SEQUENCE)
 
 
 class RunSelectiveRescanJobService:
@@ -89,11 +104,17 @@ class RunSelectiveRescanJobService:
 
     async def __call__(self, job: JobRecord) -> JobExecutionResult:
         after_version_id = self._require_valid_target(job)
-        completed = await self._repository.completed_stages(
+        # A resumed run skips the SIDE EFFECTS of an already-succeeded stage, but
+        # it must still receive that stage's OUTPUTS: the carried mappings feed
+        # evidence carry-forward and the affected item ids feed research. They are
+        # restored from the persisted checkpoints before any stage runs.
+        restored = await self._repository.load_restored_progress(
             org_id=job.org_id,
             project_id=job.project_id,
             job_id=job.job_id,
         )
+        self._require_restorable(restored)
+        completed = restored.completed_stages
 
         try:
             plan = await self._revision_plan.load_revision_plan(
@@ -105,19 +126,24 @@ class RunSelectiveRescanJobService:
             await self._record_failure(job, RescanStage.MATERIALIZING_LINEAGE, error)
             raise self._as_execution_error(error) from error
 
+        # The summary starts from the restored totals, so a resumed run reports the
+        # work a previous attempt actually completed instead of zeros.
         summary: dict[str, Any] = {
             "afterVersionId": str(after_version_id),
-            "carriedItemCount": 0,
-            "carriedEvidenceEdgeCount": 0,
-            "affectedItemCount": 0,
+            "carriedItemCount": len(restored.carried_mappings),
+            "carriedEvidenceEdgeCount": restored.carried_evidence_edge_count,
+            "affectedItemCount": len(restored.affected_item_ids),
+            "addedItemCount": len(restored.added_item_ids),
         }
-        carried_mappings: tuple[Any, ...] = ()
-        affected_item_ids: tuple[UUID, ...] = ()
+        carried_mappings: tuple[CarriedItemMapping, ...] = restored.carried_mappings
+        affected_item_ids: tuple[UUID, ...] = restored.affected_item_ids
 
         for stage, progress in _STAGE_SEQUENCE:
             if stage in completed:
                 # A prior attempt already succeeded this stage: skip its writes,
-                # provider calls, and child work so a replay never duplicates.
+                # provider calls, and child work so a replay never duplicates. Its
+                # outputs were restored above, so the next stage still runs against
+                # real inputs rather than empty ones.
                 continue
             try:
                 stage_result, carried_mappings, affected_item_ids = await self._run_stage(
@@ -152,10 +178,10 @@ class RunSelectiveRescanJobService:
         *,
         plan: RevisionPlan,
         after_version_id: UUID,
-        carried_mappings: tuple[Any, ...],
+        carried_mappings: tuple[CarriedItemMapping, ...],
         affected_item_ids: tuple[UUID, ...],
         summary: dict[str, Any],
-    ) -> tuple[dict[str, Any], tuple[Any, ...], tuple[UUID, ...]]:
+    ) -> tuple[dict[str, Any], tuple[CarriedItemMapping, ...], tuple[UUID, ...]]:
         if stage is RescanStage.MATERIALIZING_LINEAGE:
             elements = self._carryable_elements(plan)
             carried_mappings = await self._materialize_items.materialize(
@@ -168,7 +194,14 @@ class RunSelectiveRescanJobService:
             )
             summary["carriedItemCount"] = len(carried_mappings)
             return (
-                {"carriedItemCount": len(carried_mappings)},
+                {
+                    "carriedItemCount": len(carried_mappings),
+                    # The mapping identities are the evidence stage's input, so
+                    # they are persisted with the checkpoint: the successor item
+                    # ids are generated during materialization and cannot be
+                    # recomputed by a later attempt.
+                    CARRIED_MAPPINGS_KEY: encode_carried_mappings(carried_mappings),
+                },
                 carried_mappings,
                 affected_item_ids,
             )
@@ -184,7 +217,11 @@ class RunSelectiveRescanJobService:
                 )
                 edge_count += len(edges)
             summary["carriedEvidenceEdgeCount"] = edge_count
-            return ({"carriedEvidenceEdgeCount": edge_count}, carried_mappings, affected_item_ids)
+            return (
+                {CARRIED_EVIDENCE_EDGE_COUNT_KEY: edge_count},
+                carried_mappings,
+                affected_item_ids,
+            )
 
         if stage is RescanStage.DETECTING_AFFECTED_PASSAGES:
             affected_item_ids = await self._child_work.list_affected_items(
@@ -223,6 +260,12 @@ class RunSelectiveRescanJobService:
                 {
                     "affectedItemCount": len(affected_item_ids),
                     "addedItemCount": len(added_item_ids),
+                    # The research stage's input is these exact item ids. Added
+                    # items are freshly created by scoped detection, so a later
+                    # attempt cannot recompute them without repeating that child
+                    # work; both id sets are persisted with the checkpoint.
+                    AFFECTED_ITEM_IDS_KEY: encode_item_ids(affected_item_ids),
+                    ADDED_ITEM_IDS_KEY: encode_item_ids(added_item_ids),
                 },
                 carried_mappings,
                 affected_item_ids,
@@ -288,6 +331,29 @@ class RunSelectiveRescanJobService:
                 )
             )
         return job.target.id
+
+    @staticmethod
+    def _require_restorable(restored: RestoredRescanProgress) -> None:
+        """Fail closed when a completed stage's output cannot be restored.
+
+        Continuing past such a stage would run the next stage against empty
+        inputs — zero evidence carried, zero research targets — and still report
+        completion. That silent incorrectness is worse than a visible failure, so
+        the job fails with a typed, non-retryable error naming the stage.
+        """
+        if not restored.unrecoverable_stages:
+            return
+        stage = min(restored.unrecoverable_stages, key=_STAGE_ORDER.index)
+        raise JobExecutionError(
+            SafeJobError(
+                code="unrestorable_rescan_checkpoint",
+                message=(
+                    f"The completed '{stage.value}' stage has no restorable output, so a "
+                    "resumed selective rescan cannot continue correctly."
+                ),
+                retryable=False,
+            )
+        )
 
     async def _advance_progress(
         self, job: JobRecord, *, stage: RescanStage, progress: float

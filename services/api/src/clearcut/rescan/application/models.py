@@ -174,6 +174,111 @@ class CarriedItemMapping:
 
 
 @dataclass(frozen=True)
+class RestoredRescanProgress:
+    """The replayable outputs of the stages a prior attempt already completed.
+
+    A resumed selective rescan skips the side effects of a stage that already
+    succeeded, but the *outputs* of that stage are still the inputs of the next
+    one: the carried item mappings feed evidence carry-forward, and the affected
+    item ids feed research. Restoring them is what keeps a resumed run correct
+    instead of silently running later stages against empty inputs.
+
+    ``unrecoverable_stages`` names any stage recorded as ``succeeded`` whose
+    persisted output cannot be restored (for example a checkpoint written before
+    outputs were persisted). Such a stage is never silently treated as empty: the
+    processor fails the job closed with a typed error so the gap is visible.
+    """
+
+    completed_stages: frozenset[RescanStage] = frozenset()
+    unrecoverable_stages: frozenset[RescanStage] = frozenset()
+    carried_mappings: tuple[CarriedItemMapping, ...] = ()
+    carried_evidence_edge_count: int = 0
+    affected_item_ids: tuple[ItemId, ...] = ()
+    added_item_ids: tuple[ItemId, ...] = ()
+
+
+# Checkpoint-result keys for the replayable stage outputs. The processor encodes
+# them when it records a succeeded stage and the repository adapter decodes them
+# on resume, so both sides share one definition of the persisted shape.
+CARRIED_MAPPINGS_KEY = "carriedMappings"
+CARRIED_EVIDENCE_EDGE_COUNT_KEY = "carriedEvidenceEdgeCount"
+AFFECTED_ITEM_IDS_KEY = "affectedItemIds"
+ADDED_ITEM_IDS_KEY = "addedItemIds"
+
+_UNRESTORABLE = "unrestorable_rescan_checkpoint"
+
+
+def _unrestorable(detail: str) -> RescanSafeError:
+    return RescanSafeError(
+        code=_UNRESTORABLE,
+        message=f"A completed selective-rescan stage cannot be restored: {detail}.",
+        retryable=False,
+    )
+
+
+def encode_carried_mappings(mappings: tuple[CarriedItemMapping, ...]) -> list[dict[str, str]]:
+    """Encode carried item mappings for a stage checkpoint result."""
+    return [
+        {
+            "predecessorItemId": str(mapping.predecessor_item_id),
+            "newItemId": str(mapping.new_item_id),
+            "afterVersionId": str(mapping.after_version_id),
+            "afterElementId": str(mapping.after_element_id),
+        }
+        for mapping in mappings
+    ]
+
+
+def decode_carried_mappings(raw: object) -> tuple[CarriedItemMapping, ...]:
+    """Restore carried item mappings persisted by a completed lineage stage.
+
+    Raises a typed :class:`RescanSafeError` when the persisted output is absent
+    or malformed; an empty list is a legitimate result (a revision can have no
+    carryable item) and restores to an empty tuple.
+    """
+    if not isinstance(raw, list):
+        raise _unrestorable("carried item mappings are missing")
+    mappings: list[CarriedItemMapping] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise _unrestorable("a carried item mapping is malformed")
+        try:
+            mappings.append(
+                CarriedItemMapping(
+                    predecessor_item_id=UUID(str(entry["predecessorItemId"])),
+                    new_item_id=UUID(str(entry["newItemId"])),
+                    after_version_id=UUID(str(entry["afterVersionId"])),
+                    after_element_id=UUID(str(entry["afterElementId"])),
+                )
+            )
+        except (KeyError, ValueError, TypeError) as error:
+            raise _unrestorable("a carried item mapping is malformed") from error
+    return tuple(mappings)
+
+
+def encode_item_ids(item_ids: tuple[ItemId, ...]) -> list[str]:
+    """Encode an ordered item-id output for a stage checkpoint result."""
+    return [str(item_id) for item_id in item_ids]
+
+
+def decode_item_ids(raw: object, *, detail: str) -> tuple[ItemId, ...]:
+    """Restore an ordered item-id output persisted by a completed stage."""
+    if not isinstance(raw, list):
+        raise _unrestorable(f"{detail} are missing")
+    try:
+        return tuple(UUID(str(item_id)) for item_id in raw)
+    except (ValueError, TypeError) as error:
+        raise _unrestorable(f"{detail} are malformed") from error
+
+
+def decode_edge_count(raw: object) -> int:
+    """Restore the carried-evidence edge count of a completed evidence stage."""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        raise _unrestorable("the carried evidence edge count is missing")
+    return raw
+
+
+@dataclass(frozen=True)
 class CarriedEvidenceProvenance:
     """Read projection of one carried claim's original source provenance.
 
@@ -228,4 +333,14 @@ __all__ = [
     "CarriedItemMapping",
     "CarriedEvidenceProvenance",
     "CarriedEvidenceEdge",
+    "RestoredRescanProgress",
+    "CARRIED_MAPPINGS_KEY",
+    "CARRIED_EVIDENCE_EDGE_COUNT_KEY",
+    "AFFECTED_ITEM_IDS_KEY",
+    "ADDED_ITEM_IDS_KEY",
+    "encode_carried_mappings",
+    "decode_carried_mappings",
+    "encode_item_ids",
+    "decode_item_ids",
+    "decode_edge_count",
 ]
