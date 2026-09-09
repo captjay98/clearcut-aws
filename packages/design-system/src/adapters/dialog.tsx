@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, ReactNode } from "react";
+import React, { useEffect, useId, useRef, ReactNode } from "react";
 
 export interface DialogProps {
   isOpen: boolean;
@@ -7,8 +7,17 @@ export interface DialogProps {
   children: ReactNode;
 }
 
+/**
+ * A modal dialog on the design system's backdrop/dialog vocabulary.
+ *
+ * Uses a native <dialog> with showModal(), which supplies the modal semantics
+ * and focus containment. The heading id is generated per instance: it was
+ * previously the constant "dialog-title", so two dialogs mounted at once
+ * produced duplicate ids and an ambiguous accessible name.
+ */
 export function Dialog({ isOpen, onClose, title, children }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -16,14 +25,14 @@ export function Dialog({ isOpen, onClose, title, children }: DialogProps) {
 
     if (isOpen) {
       if (!dialog.open) dialog.showModal();
-    } else {
-      if (dialog.open) dialog.close();
+    } else if (dialog.open) {
+      dialog.close();
     }
   }, [isOpen]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isOpen) {
         onClose();
       }
     };
@@ -34,26 +43,22 @@ export function Dialog({ isOpen, onClose, title, children }: DialogProps) {
   if (!isOpen) return null;
 
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby="dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm m-auto border-none rounded-lg"
-    >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg max-w-lg w-full p-6 shadow-xl">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 mb-4">
-          <h2 id="dialog-title" className="text-lg font-semibold text-slate-900 dark:text-white">
-            {title}
-          </h2>
+    <dialog ref={dialogRef} className="backdrop" aria-labelledby={titleId}>
+      <div className="dialog">
+        <header className="dialog-head">
+          <div>
+            <h2 id={titleId}>{title}</h2>
+          </div>
           <button
+            className="icon-button is-bare"
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
-        </div>
-        <div>{children}</div>
+        </header>
+        <div className="dialog-body">{children}</div>
       </div>
     </dialog>
   );

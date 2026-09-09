@@ -40,80 +40,76 @@ export function RescanProgress({ job, summary }: RescanProgressProps) {
   const carried = resultCount(job.resultSummary, "carried");
 
   return (
-    <div
-      data-testid="rescan-progress"
-      role="status"
-      aria-live="polite"
-      className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg space-y-3"
-    >
-      <div className="flex items-start justify-between gap-3">
+    <article className="card" data-testid="rescan-progress" role="status" aria-live="polite">
+      <div className="card-head">
         <div>
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Selective Re-scan Execution
-          </h4>
-          <p className="text-xs text-slate-500">
-            Rescanning {summary.affectedElementCount} affected clearance items •{" "}
+          <h3>Selective re-scan execution</h3>
+          <p className="small">
+            Rescanning {summary.affectedElementCount} affected clearance items ·{" "}
             {summary.carriedForwardItemCount} items carried forward by lineage (
             {summary.carriedForwardEvidenceCount} evidence claims preserved)
           </p>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Stage: <span className="font-mono">{job.stage || "—"}</span>
+          <p className="small muted gap-t-1">
+            Stage: <span className="mono">{job.stage || "—"}</span>
           </p>
         </div>
         <Badge label={meta.label} variant={meta.variant} />
       </div>
 
-      <Progress
-        value={job.progress}
-        max={100}
-        label="Rescan progress (persisted)"
-      />
+      <Progress value={job.progress} max={100} label="Rescan progress (persisted)" />
 
       {meta.terminal && job.status === "succeeded" && (
-        <div
-          data-testid="rescan-result-success"
-          className="p-3 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-xs text-emerald-700 dark:text-emerald-300"
-        >
-          <strong>Completed.</strong>{" "}
-          {rescanned !== null
-            ? `${rescanned} affected item(s) rescanned`
-            : `${summary.affectedElementCount} affected item(s) rescanned`}
-          {", "}
-          {carried !== null
-            ? `${carried} carried forward.`
-            : `${summary.carriedForwardItemCount} carried forward.`}
+        <div className="banner is-success gap-t-4" data-testid="rescan-result-success">
+          <span className="banner-icon" aria-hidden="true">
+            ✓
+          </span>
+          <div className="banner-body">
+            <p>
+              <strong>Completed.</strong>{" "}
+              {rescanned !== null
+                ? `${rescanned} affected item(s) rescanned`
+                : `${summary.affectedElementCount} affected item(s) rescanned`}
+              {", "}
+              {carried !== null
+                ? `${carried} carried forward.`
+                : `${summary.carriedForwardItemCount} carried forward.`}
+            </p>
+          </div>
         </div>
       )}
 
       {job.status === "cancelled" && (
-        <div
-          data-testid="rescan-result-cancelled"
-          className="p-3 rounded bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300"
-        >
-          This rescan was cancelled by an accountable human. Carried-forward evidence
-          is historical and remains unresolved — it is never treated as cleared.
+        <div className="banner gap-t-4" data-testid="rescan-result-cancelled">
+          <span className="banner-icon" aria-hidden="true">
+            ○
+          </span>
+          <div className="banner-body">
+            <p>
+              This rescan was cancelled by an accountable human. Carried-forward evidence is
+              historical and remains unresolved — it is never treated as cleared.
+            </p>
+          </div>
         </div>
       )}
 
       {job.status === "failed" && job.error && (
-        <div
-          data-testid="rescan-result-error"
-          className="p-3 rounded bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-700 dark:text-rose-300 space-y-1"
-        >
-          <div>
-            <strong>Rescan failed.</strong> {job.error.message}
-          </div>
-          <div className="font-mono text-[11px] opacity-80">
-            code: {job.error.code}
-          </div>
-          <div>
-            {job.canRetry
-              ? "This failure can be retried by an accountable human."
-              : "This failure is not retryable."}
+        <div className="banner is-danger gap-t-4" data-testid="rescan-result-error">
+          <span className="banner-icon" aria-hidden="true">
+            ⚠
+          </span>
+          <div className="banner-body">
+            <strong>Rescan failed.</strong>
+            <p>{job.error.message}</p>
+            <p className="mono small gap-t-1">code: {job.error.code}</p>
+            <p className="small gap-t-1">
+              {job.canRetry
+                ? "This failure can be retried by an accountable human."
+                : "This failure is not retryable."}
+            </p>
           </div>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 

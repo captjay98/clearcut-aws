@@ -10,20 +10,20 @@ export function Progress({ value, max = 100, label }: ProgressProps) {
   const percentage = Math.min(Math.max(0, (value / max) * 100), 100);
 
   return (
-    <div className="w-full">
+    <div>
       {label && (
-        <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-          <span>{label}</span>
-          <span>{Math.round(percentage)}%</span>
+        <div className="cluster-between gap-b-3">
+          <span className="small muted">{label}</span>
+          <span className="mono">{Math.round(percentage)}%</span>
         </div>
       )}
-      <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
-        <div
+      <div className="progress">
+        <span
           role="progressbar"
           aria-valuenow={value}
           aria-valuemin={0}
           aria-valuemax={max}
-          className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+          aria-label={label}
           style={{ width: `${percentage}%` }}
         />
       </div>

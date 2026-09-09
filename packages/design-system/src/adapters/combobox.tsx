@@ -23,55 +23,70 @@ export function Combobox({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const filtered = options.filter((opt) =>
-    opt.label.toLowerCase().includes(search.toLowerCase())
+  const filtered = options.filter((option) =>
+    option.label.toLowerCase().includes(search.toLowerCase()),
   );
+  const selectedOption = options.find((option) => option.value === value);
 
-  const selectedOption = options.find((opt) => opt.value === value);
-
+  // Positioning is inline: the stylesheet has no combobox rules, and inventing
+  // class names it does not define would leave the panel unstyled.
   return (
-    <div className="relative w-full">
+    <div style={{ position: "relative" }}>
       <button
+        className="button button-secondary"
         type="button"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label={ariaLabel}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
       >
         <span>{selectedOption ? selectedOption.label : placeholder}</span>
-        <span className="text-xs text-slate-400">▼</span>
+        <span className="muted" aria-hidden="true">
+          ▾
+        </span>
       </button>
 
       {isOpen && (
         <div
+          className="list"
           role="listbox"
-          className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg max-h-60 overflow-auto"
+          style={{
+            position: "absolute",
+            zIndex: 10,
+            top: "calc(100% + var(--space-1))",
+            left: 0,
+            right: 0,
+            maxHeight: "15rem",
+            overflowY: "auto",
+            padding: "var(--space-2)",
+            boxShadow: "var(--shadow-md)",
+          }}
         >
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter options..."
-            className="w-full p-2 text-xs border-b border-slate-100 dark:border-slate-800 bg-transparent text-slate-900 dark:text-white"
-          />
-          {filtered.map((opt) => (
-            <div
-              key={opt.value}
+          <label className="field">
+            <span className="sr-only">Filter options</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filter options…"
+            />
+          </label>
+          {filtered.map((option) => (
+            <button
+              className="list-row"
+              type="button"
+              key={option.value}
               role="option"
-              aria-selected={opt.value === value}
+              aria-selected={option.value === value}
               onClick={() => {
-                onChange(opt.value);
+                onChange(option.value);
                 setIsOpen(false);
               }}
-              className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
             >
-              {opt.label}
-            </div>
+              {option.label}
+            </button>
           ))}
-          {filtered.length === 0 && (
-            <div className="p-3 text-xs text-slate-400 text-center">No results found</div>
-          )}
+          {filtered.length === 0 && <p className="small muted">No results found</p>}
         </div>
       )}
     </div>

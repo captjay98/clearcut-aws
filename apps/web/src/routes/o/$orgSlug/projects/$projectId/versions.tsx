@@ -22,6 +22,7 @@ import { ScriptUploadModal } from "../../../../../features/scripts/ScriptUploadM
 import { VersionDiffViewer } from "../../../../../features/versions/VersionDiffViewer";
 import { RescanProgress } from "../../../../../features/versions/RescanProgress";
 import { SelectiveRescanDialog } from "../../../../../features/versions/SelectiveRescanDialog";
+import { Badge, Banner, EmptyState, Page, Section } from "../../../../../components/ds";
 
 interface VersionsSearch {
   versionId?: string;
@@ -116,148 +117,156 @@ export function VersionsRoute() {
   const diff = diffQuery.data;
 
   return (
-    <div className="space-y-6 max-w-5xl font-sans">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            Script Versions, Diffing &amp; Lineage
-          </h1>
-          <p className="text-sm text-slate-400">
-            Track committed script revisions. Each revision is compared to its
-            predecessor and can trigger a selective, human-confirmed re-scan of
-            only the clearance items its changes affect.
-          </p>
-        </div>
+    <Page
+      trail={[
+        { label: "Projects", to: "/o/$orgSlug/projects", params: { orgSlug } },
+        { label: "Versions" },
+      ]}
+      eyebrow="Saved snapshots"
+      title="Script Versions, Diffing & Lineage"
+      lede="Track committed script revisions. Each revision is compared to its predecessor and can trigger a selective, human-confirmed re-scan of only the clearance items its changes affect."
+      actions={
         <button
           ref={uploadButtonRef}
+          className="button button-primary"
           type="button"
           onClick={() => setUploadOpen(true)}
-          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded shadow shrink-0"
         >
           Import Revision
         </button>
-      </div>
-
-      {versionsQuery.isError && (
-        <div
-          role="alert"
-          className="rounded border border-rose-900 bg-rose-950/50 p-3 text-xs text-rose-300"
-        >
-          {(versionsQuery.error as Error).message}
-        </div>
-      )}
-
-      {/* Immutable version timeline */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg divide-y divide-slate-800 shadow-sm">
-        <div className="px-4 py-3 border-b border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-400">
-          Recorded Script Versions ({versions.length})
-        </div>
+      }
+      notice={
+        versionsQuery.isError && (
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Script versions unavailable"
+            message={(versionsQuery.error as Error).message}
+            role="alert"
+          />
+        )
+      }
+    >
+      {/* Immutable version timeline. A revision never edits an earlier version,
+          so this list only ever grows. */}
+      <Section
+        title={`Recorded Script Versions (${versions.length})`}
+        description="Revised script pages are printed on coloured stock in production — white first, then blue, pink, yellow — so the label doubles as the crew's at-a-glance marker."
+      >
         {versionsQuery.isLoading ? (
-          <div className="p-8 text-center text-xs text-slate-500">
+          <p role="status" className="small muted">
             Loading script versions…
-          </div>
+          </p>
         ) : versions.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">
-            No committed script versions are available for this project.
-          </div>
+          <EmptyState
+            icon="⑂"
+            title="No versions yet"
+            description="No committed script versions are available for this project. Import a revision to create the first saved snapshot."
+          />
         ) : (
-          versions.map((version, index) => {
-            const isSelected = version.versionId === selectedVersionId;
-            return (
-              <button
-                key={version.versionId}
-                type="button"
-                onClick={() => selectVersion(version.versionId)}
-                aria-current={isSelected ? "true" : undefined}
-                className={`w-full text-left p-4 flex items-center justify-between ${
-                  isSelected ? "bg-amber-950/30" : "hover:bg-slate-800/50"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-bold text-white">
-                      Version {version.versionNumber}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 rounded font-mono">
-                      {version.revisionLabel}
-                    </span>
+          <div className="list">
+            {versions.map((version, index) => {
+              const isSelected = version.versionId === selectedVersionId;
+              return (
+                <div className="list-row is-static" key={version.versionId}>
+                  <div className="list-main">
+                    <button
+                      className="list-main-button"
+                      type="button"
+                      onClick={() => selectVersion(version.versionId)}
+                      aria-pressed={isSelected}
+                      aria-current={isSelected ? "true" : undefined}
+                    >
+                      <span className="list-title">Version {version.versionNumber}</span>
+                      <span className="list-meta">
+                        <span className="mono">{version.revisionLabel}</span>
+                        <span>Created {new Date(version.createdAt).toLocaleString()}</span>
+                        <span>
+                          {version.sceneCount} scenes · {version.elementCount} elements
+                        </span>
+                      </span>
+                    </button>
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Created {new Date(version.createdAt).toLocaleString()}
+                  <div className="list-aside">
+                    {index === 0 ? (
+                      <Badge tone="is-success">Latest Revision</Badge>
+                    ) : (
+                      <Badge>Prior Revision</Badge>
+                    )}
                   </div>
                 </div>
-                <span className="text-xs px-2.5 py-1 bg-amber-950/60 border border-amber-900 text-amber-400 font-bold rounded">
-                  {index === 0 ? "Latest Revision" : "Prior Revision"}
-                </span>
-              </button>
-            );
-          })
+              );
+            })}
+          </div>
         )}
-      </div>
+      </Section>
 
       {/* Predecessor diff + impact summary for the selected version */}
       {selectedVersionId && (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-              Changes Against Predecessor
-            </h2>
-            {diff && diff.beforeVersionId && (
+        <Section
+          title="Changes Against Predecessor"
+          actions={
+            diff &&
+            diff.beforeVersionId && (
               <button
+                className="button button-primary button-sm"
                 type="button"
                 onClick={() => setConfirmOpen(true)}
                 disabled={diff.summary.affectedElementCount === 0}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded shadow"
               >
                 Selective Re-scan…
               </button>
-            )}
-          </div>
-
+            )
+          }
+        >
           {diffQuery.isLoading ? (
-            <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-8 text-center text-xs text-slate-500">
+            <p role="status" className="small muted">
               Loading persisted comparison…
-            </div>
+            </p>
           ) : diffQuery.isError ? (
-            <div
+            <Banner
+              tone="is-danger"
+              icon="⚠"
+              title="Comparison unavailable"
+              message={(diffQuery.error as Error).message}
               role="alert"
-              className="rounded border border-rose-900 bg-rose-950/50 p-3 text-xs text-rose-300"
-            >
-              {(diffQuery.error as Error).message}
-            </div>
+            />
           ) : diff && !diff.beforeVersionId ? (
-            <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400">
-              This is the project's first version, so it has no predecessor to
-              compare against. Import a revision to generate a diff.
-            </div>
+            <Banner
+              icon="○"
+              title="No predecessor to compare"
+              message="This is the project's first version, so it has no predecessor to compare against. Import a revision to generate a diff."
+            />
           ) : diff ? (
-            <>
+            <div className="stack">
               <VersionDiffViewer
                 beforeLabel={diff.beforeLabel}
                 afterLabel={diff.afterLabel}
                 elements={diff.elements}
               />
-              <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-400">
-                {diff.summary.affectedElementCount} affected item(s);{" "}
-                {diff.summary.carriedForwardItemCount} item(s) and{" "}
-                {diff.summary.carriedForwardEvidenceCount} evidence claim(s)
-                carried forward by lineage. Predecessor decisions remain
-                historical and require fresh human confirmation; carried-forward
-                or absent evidence is never treated as cleared.
-              </div>
-            </>
+              <Banner
+                icon="⑂"
+                title="Lineage carry-forward"
+                message={
+                  <>
+                    {diff.summary.affectedElementCount} affected item(s);{" "}
+                    {diff.summary.carriedForwardItemCount} item(s) and{" "}
+                    {diff.summary.carriedForwardEvidenceCount} evidence claim(s) carried forward by
+                    lineage. Predecessor decisions remain historical and require fresh human
+                    confirmation; carried-forward or absent evidence is never treated as cleared.
+                  </>
+                }
+              />
+            </div>
           ) : null}
-        </section>
+        </Section>
       )}
 
       {/* Reload-safe rescan progress, reconstructed from the persisted job */}
       {rescanJobId && jobQuery.data && diff && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-            Re-scan Progress
-          </h2>
+        <Section title="Re-scan Progress">
           <RescanProgress job={jobQuery.data} summary={diff.summary} />
-        </section>
+        </Section>
       )}
 
       <ScriptUploadModal
@@ -281,7 +290,7 @@ export function VersionsRoute() {
           onClose={() => setConfirmOpen(false)}
         />
       )}
-    </div>
+    </Page>
   );
 }
 
