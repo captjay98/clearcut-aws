@@ -14,11 +14,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootComponent() {
   return (
     <ThemeProvider>
-      <div
-        id="root-container"
-        data-clearcut-app="react"
-        className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans"
-      >
+      {/* Canvas, ink and typography come from the design system's base layer on
+          body, exactly as in the canonical mock, so this stays a bare boundary
+          marker rather than restating the theme. */}
+      <div id="root-container" data-clearcut-app="react">
         <Outlet />
       </div>
     </ThemeProvider>
@@ -28,12 +27,7 @@ function RootComponent() {
 export function RootLayout({ children }: { children?: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <div
-        data-clearcut-app="react"
-        className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans"
-      >
-        {children}
-      </div>
+      <div data-clearcut-app="react">{children}</div>
     </ThemeProvider>
   );
 }

@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="en" data-theme="script" class="script">
+<html lang="en" data-theme="script">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="ClearCut helps production teams find screenplay clearance risks, connect them to source evidence, and record accountable human decisions.">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#f6f3ea">
+  <meta name="color-scheme" content="light dark">
   <title>ClearCut — Screenplay clearance with a paper trail</title>
   <script>
     try {
@@ -12,11 +13,12 @@
       var migrated = { "day-shoot": "script", "night-shoot": "night", "high-contrast": "night" }[saved] || saved;
       var theme = (migrated === "script" || migrated === "night") ? migrated : "script";
       document.documentElement.setAttribute("data-theme", theme);
-      document.documentElement.className = theme + (theme === "night" ? " dark" : "");
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", theme === "night" ? "#14161b" : "#f6f3ea");
     } catch (e) {}
   </script>
 </head>
-<body class="bg-slate-950 text-slate-100 antialiased">
+<body>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>

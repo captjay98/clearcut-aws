@@ -4,13 +4,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import postcss from "postcss";
-import tailwindcss from "tailwindcss";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../..");
 const indexCssPath = path.join(webRoot, "src", "index.css");
-const tailwindConfigPath = path.join(webRoot, "tailwind.config.js");
 
 /**
  * The runtime emits exactly these two theme names (ThemeProvider + index.html),
@@ -60,47 +57,43 @@ describe("Theme tokens resolve for every emitted theme", () => {
   });
 });
 
-describe("Utility CSS pipeline generates every emitted utility/variant", () => {
-  // A representative sample of the utility vocabulary actually used across the app:
-  // a base utility, a color utility, a layout utility, plus dark:/hover:/focus:/sm: variants.
-  const fixture = `
-    <div class="flex min-h-screen space-y-6 bg-slate-950 text-slate-100
-                dark:bg-slate-900 hover:bg-amber-700 focus:ring-2 sm:px-6"></div>
-  `;
+/**
+ * The workspace stylesheet must stay a single plain stylesheet.
+ *
+ * Tailwind v3 treated `@layer base`, `@layer components` and `@layer utilities`
+ * as its own directives rather than CSS cascade layers. That had two effects
+ * that silently deleted most of the design system:
+ *
+ *  1. Component rules inside those blocks were tree-shaken unless the class name
+ *     already appeared in the scanned markup, so `.badge` and `.banner`
+ *     resolved to nothing at all.
+ *  2. The hoisted rules landed outside the declared cascade layers, letting the
+ *     unlayered preflight `button { background-color: transparent }` override
+ *     `.button-primary`.
+ *
+ * Reintroducing a Tailwind directive here would bring both back, so this guards
+ * the stylesheet rather than a utility pipeline.
+ */
+describe("Workspace stylesheet is a single plain design-system stylesheet", () => {
+  const css = readFileSync(indexCssPath, "utf8");
 
-  async function compile(): Promise<string> {
-    const input = "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n";
-    const config = {
-      content: [{ raw: fixture, extension: "html" }],
-      darkMode: "class" as const,
-      theme: { extend: {} },
-      plugins: [],
-    };
-    const result = await postcss([tailwindcss(config as never)]).process(input, {
-      from: undefined,
-    });
-    return result.css;
-  }
-
-  it("emits a representative base/color/layout utility", async () => {
-    const out = await compile();
-    expect(out).toMatch(/\.flex\s*\{/);
-    expect(out).toContain(".bg-slate-950");
-    expect(out).toContain(".min-h-screen");
+  it("declares no Tailwind directives", () => {
+    expect(css).not.toMatch(/@tailwind\b/);
+    expect(css).not.toMatch(/@apply\b/);
   });
 
-  it("emits dark, hover, focus and responsive variants", async () => {
-    const out = await compile();
-    expect(out).toContain(".dark\\:bg-slate-900");
-    expect(out).toContain(".hover\\:bg-amber-700");
-    expect(out).toContain(".focus\\:ring-2");
-    expect(out).toMatch(/@media \(min-width: 640px\)/);
+  it("declares the cascade layer order before any layered rule", () => {
+    const statement = css.indexOf("@layer reset, tokens, base, layout");
+    const firstBlock = css.indexOf("@layer reset {");
+    expect(statement).toBeGreaterThan(-1);
+    expect(firstBlock).toBeGreaterThan(statement);
   });
 
-  it("wires the emitted themes' dark mode to the class strategy", () => {
-    const configSource = readFileSync(tailwindConfigPath, "utf8");
-    // ThemeProvider toggles a `dark` class for the night theme, so the
-    // pipeline must resolve dark: variants against a class, not the OS preference.
-    expect(configSource).toMatch(/darkMode\s*:\s*["']class["']/);
+  it("retains the component rules Tailwind used to tree-shake", () => {
+    // Each of these resolved to no styling at all while Tailwind owned the
+    // component layer, because no .tsx referenced the class yet.
+    for (const selector of [".badge", ".banner", ".button-primary", ".card", ".page"]) {
+      expect(css.includes(`${selector} {`) || css.includes(`${selector},`)).toBe(true);
+    }
   });
 });

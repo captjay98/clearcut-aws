@@ -33,12 +33,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(t);
     if (typeof window !== "undefined") {
       localStorage.setItem("clearcut_theme", t);
+      // The design system keys every theme off [data-theme], the same as the
+      // canonical mock. The previous `dark` class existed only to drive
+      // Tailwind's class dark-mode strategy and has no styling attached now.
       document.documentElement.setAttribute("data-theme", t);
-      document.documentElement.classList.remove("script", "night", "dark");
-      document.documentElement.classList.add(t);
-      if (t === "night") {
-        document.documentElement.classList.add("dark");
-      }
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute("content", t === "night" ? "#14161b" : "#f6f3ea");
     }
   };
 

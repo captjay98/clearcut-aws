@@ -1,7 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+/* Canonical design system, mirroring misc/clearcut-flow/assets/app.css.
+   Deliberately a single plain stylesheet with no Tailwind directives: Tailwind
+   v3 consumed `@layer base/components/utilities` as its own directives, hoisted
+   them out of the cascade layers, and tree-shook any component rule whose class
+   name did not yet appear in the markup. That silently deleted most of this
+   file (.badge, .banner and friends resolved to nothing) and let the unlayered
+   preflight override .button-primary. */
 @layer reset, tokens, base, layout, components, utilities, responsive, marketing;
 
 @layer reset {
