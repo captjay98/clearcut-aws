@@ -49,9 +49,9 @@ export function SignInRoute() {
     <PublicShell
       eyebrow="Secure access"
       title="Sign in to ClearCut"
-      lede="Authentication uses this deployment's configured identity provider — local PostgreSQL by default, or Firebase where selected."
+      lede="Reach your organization's clearance projects, their evidence, and the record of every decision."
     >
-      <div className="auth-box">
+      <div>
         {error && (
           <div className="banner is-danger gap-b-6" role="alert">
             <span className="banner-icon" aria-hidden="true">

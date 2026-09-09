@@ -71,7 +71,7 @@ export function SignUpRoute() {
       title="Create your account"
       lede="ClearCut is self-hosted. This account lives in the database you run, alongside the evidence and the audit trail it records."
     >
-      <div className="auth-box">
+      <div>
         {error && (
           <div className="banner is-danger gap-b-6" role="alert">
             <span className="banner-icon" aria-hidden="true">

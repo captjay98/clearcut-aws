@@ -38,10 +38,11 @@ def get_detection_runtime() -> ModelRuntimePort:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    "Detection runtime is not configured. Set GOOGLE_CLOUD_PROJECT "
-                    "(with Application Default Credentials) to enable live Vertex "
-                    "Gemini detection. The hermetic runtime is test-only and is never "
-                    "used to serve real detection results."
+                    "Live detection is not enabled on this deployment, so no findings "
+                    "can be produced and none have been invented. An administrator "
+                    "enables it by setting GOOGLE_CLOUD_PROJECT with Application "
+                    "Default Credentials for Vertex Gemini. The hermetic runtime is "
+                    "test-only and is never used to serve real detection results."
                 ),
             )
         location = os.getenv("CLEARCUT_VERTEX_LOCATION", "global")
