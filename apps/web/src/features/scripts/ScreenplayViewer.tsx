@@ -13,14 +13,100 @@ export interface ScriptScene {
   lines: ScriptLine[];
 }
 
+/**
+ * What the viewer needs to know about a flagged term. The route resolves this
+ * from the project's clearance items so the viewer stays a renderer.
+ */
+export interface FlagAnnotation {
+  itemId: string;
+  /** Abbreviated category printed in the margin, e.g. MARK or MUSIC. */
+  shortCategory: string;
+  /** Severity class from the design system: is-blocked, is-high, is-medium, is-low. */
+  severityClass: string;
+  glyph: string;
+  status: string;
+  /** The flagged term inside the line, so only it is underlined. */
+  term: string;
+}
+
 export interface ScreenplayViewerProps {
   title?: string;
   version?: string;
   scenes?: ScriptScene[];
   loading?: boolean;
-  selectedSceneNumber?: number;
-  onSelectScene?: (sceneNumber: number) => void;
-  onItemClick?: (flag: string) => void;
+  selectedItemId?: string | null;
+  /** Revision stock for the page edge: white, blue, pink, yellow, green, goldenrod. */
+  stock?: string;
+  resolveFlag?: (flag: string) => FlagAnnotation | null;
+  onSelectFlag?: (annotation: FlagAnnotation) => void;
+}
+
+const LINE_CLASS: Record<ScriptLine["type"], string> = {
+  scene_heading: "scene-heading",
+  action: "script-action",
+  character: "script-character",
+  parenthetical: "script-paren",
+  dialogue: "script-dialogue",
+  // The mock's fixture has no transitions, so there is no dedicated rule. A
+  // transition is action text set right, which is how it reads on the page.
+  transition: "script-action text-right",
+};
+
+/**
+ * Renders one screenplay line. A flagged term becomes a margin-marked underline
+ * rather than an inline chip, so the reading line stays intact — the mock's
+ * scriptLine() behaviour.
+ */
+function ScriptLineView({
+  line,
+  annotation,
+  selected,
+  onSelectFlag,
+}: {
+  line: ScriptLine;
+  annotation: FlagAnnotation | null;
+  selected: boolean;
+  onSelectFlag?: (annotation: FlagAnnotation) => void;
+}) {
+  const className = LINE_CLASS[line.type] ?? "script-action";
+
+  if (!annotation) {
+    return <p className={className}>{line.text}</p>;
+  }
+
+  const at = line.text.toLowerCase().indexOf(annotation.term.toLowerCase());
+  const flagButton = (text: string) => (
+    <button
+      className={`flag ${annotation.severityClass} ${selected ? "is-selected" : ""}`.trim()}
+      type="button"
+      aria-pressed={selected}
+      title={`${annotation.shortCategory} — ${annotation.status}`}
+      onClick={() => onSelectFlag?.(annotation)}
+    >
+      {text}
+    </button>
+  );
+
+  return (
+    <p className={className}>
+      <span
+        className={`margin-mark ${annotation.severityClass} ${selected ? "is-selected" : ""}`.trim()}
+        aria-hidden="true"
+      >
+        <span className="mark-glyph">{annotation.glyph}</span>
+        {annotation.shortCategory}
+      </span>
+      {at >= 0 ? (
+        <>
+          {line.text.slice(0, at)}
+          {flagButton(line.text.slice(at, at + annotation.term.length))}
+          {line.text.slice(at + annotation.term.length)}
+        </>
+      ) : (
+        flagButton(line.text)
+      )}
+    </p>
+  );
 }
 
 export function ScreenplayViewer({
@@ -28,146 +114,88 @@ export function ScreenplayViewer({
   version,
   scenes = [],
   loading = false,
-  selectedSceneNumber,
-  onSelectScene,
-  onItemClick,
+  selectedItemId = null,
+  stock = "white",
+  resolveFlag,
+  onSelectFlag,
 }: ScreenplayViewerProps) {
   if (loading) {
     return (
-      <div
-        data-testid="screenplay-viewer"
-        className="flex-1 bg-slate-900/80 border border-slate-800 rounded-lg p-8 text-center text-xs text-slate-500 font-mono"
-      >
-        Loading screenplay manuscript...
+      <div className="script-stage" data-testid="screenplay-viewer">
+        <div className="script-stage-head">
+          <p role="status" className="small muted">
+            Loading screenplay…
+          </p>
+        </div>
       </div>
     );
   }
 
-  const activeScenes = scenes;
+  if (scenes.length === 0) {
+    return (
+      <div className="script-stage" data-testid="screenplay-viewer">
+        <div className="script-stage-head">
+          <div className="empty-state">
+            <span className="empty-icon" aria-hidden="true">
+              ⌑
+            </span>
+            <h3>No committed screenplay</h3>
+            <p>
+              Import and commit a script version as Fountain or Final Draft to read it here.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      data-testid="screenplay-viewer"
-      className="flex-1 flex flex-col min-h-0 bg-slate-950 border border-slate-800 rounded-lg overflow-hidden shadow-inner font-mono"
-    >
-      {/* Header bar */}
-      <div className="h-10 px-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between font-sans shrink-0">
-        <div className="flex items-center space-x-2">
-          <span className="text-xs font-bold text-slate-200">{title ?? "No screenplay imported"}</span>
-          <span className="text-[10px] px-1.5 py-0.5 bg-amber-950 border border-amber-900 text-amber-400 font-bold rounded">
-            {version ?? "No version"}
-          </span>
-        </div>
-
-        {activeScenes.length > 0 && (
-          <div className="flex items-center space-x-2 text-xs">
-            <span className="text-slate-500 font-medium">Jump to Scene:</span>
-            <select
-              value={selectedSceneNumber || activeScenes[0].number}
-              onChange={(e) => onSelectScene?.(Number(e.target.value))}
-              className="px-2 py-0.5 text-xs bg-slate-800 border border-slate-700 text-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
-            >
-              {activeScenes.map((s) => (
-                <option key={s.number} value={s.number}>
-                  Scene {s.number} (Pg {s.page ?? "unknown"})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+    <div className="script-stage" data-testid="screenplay-viewer">
+      <div className="script-stage-head">
+        <span className="slug-heading">{title ?? "Screenplay"}</span>
+        {version && <p className="mono muted small">{version}</p>}
       </div>
 
-      {/* Screenplay Document Surface */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs text-slate-300 selection:bg-amber-500 selection:text-black">
-        {activeScenes.length === 0 ? (
-          <div className="mx-auto max-w-xl py-16 text-center text-slate-500">
-            No committed screenplay is available. Import and commit a script version to populate this viewer.
-          </div>
-        ) : (
-          activeScenes.map((scene) => (
-          <div key={scene.number} id={`scene-${scene.number}`} className="space-y-3 max-w-2xl mx-auto">
-            {/* Scene Heading */}
-            <div
-              data-testid="scene-heading"
-              className="font-bold text-amber-400 bg-slate-900/90 border-l-2 border-amber-500 px-3 py-1.5 uppercase tracking-wide rounded-r"
-            >
+      {scenes.map((scene) => (
+        <section
+          className="script-page"
+          key={scene.number}
+          style={{ "--stock": `var(--rev-${stock})` } as React.CSSProperties}
+          aria-label={scene.page ? `Page ${scene.page}` : `Scene ${scene.number}`}
+        >
+          <span className="stock-strip" aria-hidden="true" />
+          {scene.page !== null && (
+            <span className="page-number" aria-hidden="true">
+              {scene.page}.
+            </span>
+          )}
+          <article className="script-scene" id={`scene-${scene.number}`}>
+            <p className="scene-heading" data-testid="scene-heading">
+              <span className="scene-number is-left" aria-hidden="true">
+                {scene.number}
+              </span>
               {scene.slug}
-            </div>
-
-            {/* Script Elements */}
-            <div className="space-y-2 px-3">
-              {scene.lines.map((line, idx) => {
-                if (line.type === "character") {
-                  return (
-                    <div
-                      key={idx}
-                      className="font-bold text-slate-100 uppercase text-center pt-2 max-w-md mx-auto"
-                    >
-                      {line.text}
-                    </div>
-                  );
-                }
-                if (line.type === "parenthetical") {
-                  return (
-                    <div
-                      key={idx}
-                      className="italic text-slate-400 text-center text-[11px] max-w-xs mx-auto"
-                    >
-                      {line.text}
-                    </div>
-                  );
-                }
-                if (line.type === "dialogue") {
-                  return (
-                    <div
-                      key={idx}
-                      className="text-slate-200 text-center max-w-md mx-auto leading-relaxed"
-                    >
-                      {line.flag ? (
-                        <button
-                          type="button"
-                          onClick={() => onItemClick?.(line.flag!)}
-                          className="bg-amber-950/60 text-amber-300 underline decoration-amber-500 decoration-dotted hover:bg-amber-900/60 px-1 py-0.5 rounded transition-colors"
-                          title={`Click to inspect flag: ${line.flag}`}
-                        >
-                          {line.text}
-                        </button>
-                      ) : (
-                        line.text
-                      )}
-                    </div>
-                  );
-                }
-                if (line.type === "transition") {
-                  return (
-                    <div key={idx} className="text-right font-bold text-slate-400 uppercase pt-2">
-                      {line.text}
-                    </div>
-                  );
-                }
-                // Action text
-                return (
-                  <div key={idx} className="text-slate-300 leading-relaxed text-left">
-                    {line.flag ? (
-                      <button
-                        type="button"
-                        onClick={() => onItemClick?.(line.flag!)}
-                        className="bg-amber-950/60 text-amber-300 underline decoration-amber-500 decoration-dotted hover:bg-amber-900/60 px-1 py-0.5 rounded transition-colors text-left"
-                        title={`Click to inspect flag: ${line.flag}`}
-                      >
-                        {line.text}
-                      </button>
-                    ) : (
-                      line.text
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          ))
-        )}
-      </div>
+              <span className="scene-number is-right" aria-hidden="true">
+                {scene.number}
+              </span>
+            </p>
+            {scene.lines.map((line, index) => {
+              const annotation = line.flag && resolveFlag ? resolveFlag(line.flag) : null;
+              return (
+                <ScriptLineView
+                  // Line order is the line's identity within a scene.
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={`${scene.number}-${index}`}
+                  line={line}
+                  annotation={annotation}
+                  selected={Boolean(annotation && annotation.itemId === selectedItemId)}
+                  onSelectFlag={onSelectFlag}
+                />
+              );
+            })}
+          </article>
+        </section>
+      ))}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { humanizeCategory } from "./itemPresentation";
 
 export const PROTECTED_CATEGORIES = [
   "All",
@@ -22,6 +23,11 @@ export interface CategoryFilterBarProps {
   onSearchChange: (query: string) => void;
 }
 
+/**
+ * Filter controls for the flag list, using the mock's search-field plus choice
+ * chips. Categories with no detected items are still offered so the reader can
+ * see that a category was considered and came back empty.
+ */
 export function CategoryFilterBar({
   selectedCategory,
   onSelectCategory,
@@ -29,48 +35,43 @@ export function CategoryFilterBar({
   searchQuery,
   onSearchChange,
 }: CategoryFilterBarProps) {
+  const total = Object.values(categoryCounts).reduce((sum, value) => sum + value, 0);
+
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pb-2 border-b border-slate-800 shrink-0">
-      {/* Search Input */}
-      <div className="relative shrink-0">
+    <div className="stack-sm">
+      <label className="search-field" htmlFor="flag-filter">
+        <span className="sr-only">Filter flags</span>
+        <span className="search-icon" aria-hidden="true">
+          ⌕
+        </span>
         <input
-          type="text"
+          id="flag-filter"
+          type="search"
           value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Filter items..."
-          className="w-full sm:w-44 px-2.5 py-1 text-xs bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Filter flags…"
         />
-      </div>
+      </label>
 
-      {/* Category Filter Chips */}
-      <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
-        {PROTECTED_CATEGORIES.map((cat) => {
-          const isSelected = selectedCategory === cat || (cat === "Trademarks & Brand Names" && selectedCategory === "Trademarks");
-          const count = categoryCounts[cat] ?? (cat === "All" ? Object.values(categoryCounts).reduce((a, b) => a + b, 0) : undefined);
-
+      <div className="choice-row" role="group" aria-label="Filter flags by category">
+        {PROTECTED_CATEGORIES.map((category) => {
+          const isSelected = selectedCategory === category;
+          const count = category === "All" ? total : categoryCounts[category];
           return (
-            <button
-              key={cat}
-              type="button"
-              data-testid="category-filter-chip"
-              onClick={() => onSelectCategory(cat)}
-              className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 ${
-                isSelected
-                  ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
-                  : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-              }`}
-            >
-              <span>{cat}</span>
-              {count !== undefined && count > 0 && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                    isSelected ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
-                  }`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
+            <label className="choice" key={category}>
+              <input
+                type="radio"
+                name="clearance-category"
+                data-testid="category-filter-chip"
+                value={category}
+                checked={isSelected}
+                onChange={() => onSelectCategory(category)}
+              />
+              <span>
+                {humanizeCategory(category)}
+                {count !== undefined && count > 0 ? ` (${count})` : ""}
+              </span>
+            </label>
           );
         })}
       </div>

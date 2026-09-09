@@ -1,12 +1,22 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { api, type ClearanceItem } from "@clearcut/contracts";
 import { CategoryFilterBar } from "../../../../../features/clearance/CategoryFilterBar";
 import { ClearanceItemCard } from "../../../../../features/clearance/ClearanceItemCard";
 import { EvidenceDrawer } from "../../../../../features/clearance/EvidenceDrawer";
-import { ScreenplayViewer } from "../../../../../features/scripts/ScreenplayViewer";
+import {
+  ScreenplayViewer,
+  type FlagAnnotation,
+} from "../../../../../features/scripts/ScreenplayViewer";
 import { ScriptUploadModal } from "../../../../../features/scripts/ScriptUploadModal";
+import { Badge, Banner } from "../../../../../components/ds";
+import {
+  humanizeStatus,
+  severityOf,
+  shortCategory,
+  statusTone,
+} from "../../../../../features/clearance/itemPresentation";
 import {
   clearanceItemDetailQueryOptions,
   clearanceItemKeys,
@@ -33,9 +43,7 @@ export function WorkspaceRoute() {
       return result.value;
     },
   });
-  const itemsQuery = useQuery(
-    clearanceItemsQueryOptions({ orgId: orgSlug, projectId }),
-  );
+  const itemsQuery = useQuery(clearanceItemsQueryOptions({ orgId: orgSlug, projectId }));
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -45,8 +53,8 @@ export function WorkspaceRoute() {
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const items = itemsQuery.data ?? [];
-  const selectedItem =
-    items.find((item) => item.itemId === selectedItemId) ?? null;
+  const scenes = scriptQuery.data?.scenes ?? [];
+  const selectedItem = items.find((item) => item.itemId === selectedItemId) ?? null;
   const detailQuery = useQuery({
     ...clearanceItemDetailQueryOptions({
       orgId: orgSlug,
@@ -62,8 +70,7 @@ export function WorkspaceRoute() {
   }, {});
 
   const filteredItems = items.filter((item) => {
-    const matchesCategory =
-      selectedCategory === "All" || item.category === selectedCategory;
+    const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
     const normalizedSearch = searchQuery.trim().toLowerCase();
     const matchesSearch =
       normalizedSearch.length === 0 ||
@@ -72,7 +79,55 @@ export function WorkspaceRoute() {
     return matchesCategory && matchesSearch;
   });
 
-  const loading = scriptQuery.isPending || itemsQuery.isPending;
+  /**
+   * A script line's flag is matched to a clearance item by entity name, which is
+   * what the API records against the passage. Resolved once per item list rather
+   * than per line.
+   */
+  const annotationFor = useMemo(() => {
+    const byName = new Map<string, ClearanceItem>();
+    for (const item of items) {
+      byName.set(item.entityName.toLowerCase(), item);
+    }
+    return (flag: string): FlagAnnotation | null => {
+      const normalized = flag.toLowerCase();
+      const item =
+        byName.get(normalized) ??
+        items.find(
+          (candidate) =>
+            candidate.entityName.toLowerCase().includes(normalized) ||
+            normalized.includes(candidate.entityName.toLowerCase()),
+        );
+      if (!item) {
+        return null;
+      }
+      const { severityClass, glyph } = severityOf(item);
+      return {
+        itemId: item.itemId,
+        shortCategory: shortCategory(item.category),
+        severityClass,
+        glyph,
+        status: humanizeStatus(item.status),
+        term: item.entityName,
+      };
+    };
+  }, [items]);
+
+  /** Scenes that carry at least one flag, for the rail. */
+  const scenesWithFlags = useMemo(
+    () =>
+      scenes
+        .map((scene) => {
+          const sceneItems = scene.lines
+            .map((line) => (line.flag ? annotationFor(line.flag) : null))
+            .filter((annotation): annotation is FlagAnnotation => annotation !== null);
+          const unique = new Map(sceneItems.map((annotation) => [annotation.itemId, annotation]));
+          return { scene, flags: [...unique.values()] };
+        })
+        .filter((entry) => entry.flags.length > 0),
+    [scenes, annotationFor],
+  );
+
   const errors = [scriptQuery.error, itemsQuery.error]
     .filter((error): error is Error => error instanceof Error)
     .map((error) => error.message);
@@ -93,94 +148,146 @@ export function WorkspaceRoute() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 space-y-3 font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
-          <h1
-            ref={workspaceHeadingRef}
-            tabIndex={-1}
-            className="text-xl font-bold text-white focus:outline-none"
-          >
-            Clearance Workspace
-          </h1>
-          <p className="text-xs text-slate-400">
-            ClearCut presents sourced findings and unresolved risk for qualified human review. It
-            does not provide legal advice or guarantee legal clearance.
-          </p>
+    <div className="page flush is-stage">
+      <header className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1 id="route-heading" ref={workspaceHeadingRef} tabIndex={-1}>
+              Clearance Workspace
+            </h1>
+            <p className="page-lede">
+              ClearCut presents sourced findings and unresolved risk for qualified human review. It
+              does not provide legal advice or guarantee legal clearance.
+            </p>
+          </div>
+          <div className="page-head-actions">
+            <button
+              ref={uploadButtonRef}
+              className="button button-primary"
+              type="button"
+              onClick={() => setIsUploadOpen(true)}
+            >
+              Upload Script
+            </button>
+          </div>
         </div>
-
-        <button
-          ref={uploadButtonRef}
-          type="button"
-          onClick={() => setIsUploadOpen(true)}
-          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-md shrink-0 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500 flex items-center space-x-1.5"
-        >
-          <span>⬆️</span>
-          <span>Upload Script</span>
-        </button>
-      </div>
+      </header>
 
       {errors.length > 0 && (
-        <div
-          role="alert"
-          className="rounded border border-rose-900 bg-rose-950/50 p-3 text-xs text-rose-300"
-        >
-          {errors.join(" ")}
+        <div className="page-notice">
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Could not load the workspace"
+            message={errors.join(" ")}
+            role="alert"
+          />
         </div>
       )}
 
-      <div className="shrink-0">
-        <CategoryFilterBar
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
-          categoryCounts={categoryCounts}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
-      </div>
+      <div className="script-surface is-drawer-open">
+        <aside className="scene-rail" aria-label="Scene navigator">
+          <div className="scene-rail-head">
+            <h2>Scenes &amp; flags</h2>
+            <span className="mono muted">{items.length}</span>
+          </div>
+          {scenesWithFlags.map(({ scene, flags }) => (
+            <div className="scene-group" key={scene.number}>
+              <a className="scene-group-head" href={`#scene-${scene.number}`}>
+                <span className="scene-number-inline mono">
+                  {String(scene.number).padStart(2, "0")}
+                </span>
+                <span className="scene-slug-text">{scene.slug}</span>
+                <span className="scene-count">{flags.length}</span>
+              </a>
+              {flags.map((annotation) => (
+                <button
+                  className="scene-flag"
+                  type="button"
+                  key={annotation.itemId}
+                  aria-current={annotation.itemId === selectedItemId}
+                  onClick={() => setSelectedItemId(annotation.itemId)}
+                >
+                  <span className={`flag-glyph ${annotation.severityClass}`} aria-hidden="true">
+                    {annotation.glyph}
+                  </span>
+                  <span className="flag-term">{annotation.term}</span>
+                  <Badge>{annotation.shortCategory}</Badge>
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-6 flex flex-col min-h-0">
+        <div className="script-scroll">
           <ScreenplayViewer
             title={scriptQuery.data?.title}
             version={scriptQuery.data?.version}
-            scenes={scriptQuery.data?.scenes ?? []}
+            scenes={scenes}
             loading={scriptQuery.isPending}
-            onItemClick={(flag) => {
-              const matched = items.find((item) =>
-                item.entityName.toLowerCase().includes(flag.toLowerCase()),
-              );
-              if (matched) openDrawer(matched);
-            }}
+            selectedItemId={selectedItemId}
+            resolveFlag={annotationFor}
+            onSelectFlag={(annotation) => setSelectedItemId(annotation.itemId)}
           />
         </div>
 
-        <div className="lg:col-span-6 flex flex-col min-h-0 bg-slate-900/60 border border-slate-800 rounded-lg p-3 overflow-y-auto space-y-2.5">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs font-bold text-slate-300">
-            <span>Detected Clearance Items ({filteredItems.length})</span>
-            <span className="text-[11px] text-slate-500">Structured Category Breakdown</span>
+        <aside className="evidence-drawer" aria-label="Detected flags">
+          <div className="drawer-head">
+            <div className="min-w-0">
+              <span className="slug-heading">Detected flags</span>
+              <h2 className="gap-t-1">{filteredItems.length} shown</h2>
+            </div>
           </div>
+          <div className="drawer-body">
+            <CategoryFilterBar
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              categoryCounts={categoryCounts}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
 
-          {loading ? (
-            <div className="text-center py-12 text-slate-500 text-xs font-mono">
-              Loading clearance items…
+            {itemsQuery.isPending ? (
+              <p role="status" className="small muted">
+                Loading clearance items…
+              </p>
+            ) : filteredItems.length === 0 ? (
+              <div className="empty-state">
+                <span className="empty-icon" aria-hidden="true">
+                  ◦
+                </span>
+                <h3>{items.length === 0 ? "No flags on this version" : "No matches"}</h3>
+                <p>
+                  {items.length === 0
+                    ? "Flags appear here once the script has been checked."
+                    : "No flags match the current filter."}
+                </p>
+              </div>
+            ) : (
+              <div className="list">
+                {filteredItems.map((item) => (
+                  <ClearanceItemCard
+                    key={item.itemId}
+                    item={item}
+                    isSelected={selectedItemId === item.itemId}
+                    onSelect={(selected) => setSelectedItemId(selected.itemId)}
+                    onOpenDrawer={openDrawer}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          {selectedItem && (
+            <div className="drawer-foot">
+              <div className="cluster-between">
+                <span className="small truncate">{selectedItem.entityName}</span>
+                <Badge tone={statusTone(selectedItem.status)}>
+                  {humanizeStatus(selectedItem.status)}
+                </Badge>
+              </div>
             </div>
-          ) : filteredItems.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-xs">
-              No items match the selected category filter.
-            </div>
-          ) : (
-            filteredItems.map((item) => (
-              <ClearanceItemCard
-                key={item.itemId}
-                item={item}
-                isSelected={selectedItemId === item.itemId}
-                onSelect={(selected) => setSelectedItemId(selected.itemId)}
-                onOpenDrawer={openDrawer}
-              />
-            ))
           )}
-        </div>
+        </aside>
       </div>
 
       <EvidenceDrawer
@@ -200,6 +307,7 @@ export function WorkspaceRoute() {
         projectId={projectId}
         returnFocusRef={uploadButtonRef}
         successFocusRef={workspaceHeadingRef}
+        nextVersionNumber={1}
         onSuccess={() => void refreshImportedScript()}
       />
     </div>
