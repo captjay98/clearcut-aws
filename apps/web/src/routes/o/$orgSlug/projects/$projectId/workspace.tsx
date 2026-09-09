@@ -10,7 +10,7 @@ import {
   type FlagAnnotation,
 } from "../../../../../features/scripts/ScreenplayViewer";
 import { ScriptUploadModal } from "../../../../../features/scripts/ScriptUploadModal";
-import { Badge, Banner } from "../../../../../components/ds";
+import { Badge, Banner, TabsBar } from "../../../../../components/ds";
 import {
   humanizeStatus,
   severityOf,
@@ -49,6 +49,12 @@ export function WorkspaceRoute() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  /**
+   * Below 901px the three panes cannot share the viewport, so the stylesheet
+   * shows one at a time and this chooses which. Without it the flag pane — and
+   * the controls inside it — are unreachable on a phone or tablet.
+   */
+  const [paneTab, setPaneTab] = useState("script");
   const uploadButtonRef = useRef<HTMLButtonElement>(null);
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -185,7 +191,24 @@ export function WorkspaceRoute() {
         </div>
       )}
 
-      <div className="script-surface is-drawer-open">
+      <div className="mobile-pane-tabs">
+        <TabsBar
+          items={[
+            { value: "script", label: "Script" },
+            { value: "items", label: "Scenes" },
+            { value: "evidence", label: "Evidence" },
+          ]}
+          active={paneTab}
+          onChange={setPaneTab}
+          label="Workspace view"
+        />
+      </div>
+
+      <div
+        className={`script-surface is-drawer-open ${
+          paneTab === "items" ? "pane-rail" : paneTab === "evidence" ? "pane-evidence" : ""
+        }`.trim()}
+      >
         <aside className="scene-rail" aria-label="Scene navigator">
           <div className="scene-rail-head">
             <h2>Scenes &amp; flags</h2>

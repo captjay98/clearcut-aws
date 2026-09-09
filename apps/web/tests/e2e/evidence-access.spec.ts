@@ -143,10 +143,21 @@ test("evidence drawer supports keyboard operation and restores trigger focus", a
     await page.goto(
       `/app/o/${workspace.orgId}/projects/${workspace.projectId}/workspace`,
     );
+    // Below 901px the three workspace panes cannot share the viewport, so the
+    // flag pane sits behind a pane switcher. Select it when that switcher is
+    // on screen; on wider viewports the pane is already laid out.
+    const flagPaneTab = page
+      .getByRole("group", { name: "Workspace view" })
+      .getByRole("button", { name: "Evidence" });
+    if (await flagPaneTab.isVisible()) {
+      await flagPaneTab.click();
+    }
+
     const citedCard = page
       .getByTestId("clearance-item-card")
       .filter({ hasText: "Vega Camera" });
     const openButton = citedCard.getByTestId("open-evidence-drawer-btn");
+    await expect(openButton).toBeVisible();
     await openButton.focus();
     await page.keyboard.press("Enter");
 
