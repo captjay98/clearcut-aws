@@ -15,6 +15,12 @@ export interface ScriptUploadModalProps {
    * derived from this — no version number is ever hard-coded.
    */
   purpose?: "initial" | "revision";
+  /**
+   * The version this commit will create, so the confirming button names it.
+   * Derived from the project's persisted versions by the caller rather than
+   * assumed here, and defaulted to the first version.
+   */
+  nextVersionNumber?: number;
 }
 
 type ImportMode = "file" | "paste";
@@ -29,12 +35,12 @@ interface PurposeCopy {
   resumeFailure: string;
 }
 
-function copyForPurpose(purpose: "initial" | "revision"): PurposeCopy {
+function copyForPurpose(purpose: "initial" | "revision", nextVersionNumber: number): PurposeCopy {
   if (purpose === "revision") {
     return {
       dialogTitle: "Import Revision",
-      commitIdle: "Commit Revision",
-      commitAccept: "Accept Warnings & Commit Revision",
+      commitIdle: `Commit Revision ${nextVersionNumber}`,
+      commitAccept: `Accept Warnings & Commit Revision ${nextVersionNumber}`,
       commitBusy: "Committing Revision…",
       commitFailure: "The revision could not be committed.",
       resumeFailure:
@@ -43,8 +49,8 @@ function copyForPurpose(purpose: "initial" | "revision"): PurposeCopy {
   }
   return {
     dialogTitle: "Import Screenplay",
-    commitIdle: "Commit Version",
-    commitAccept: "Accept Warnings & Commit Version",
+    commitIdle: `Commit Version ${nextVersionNumber}`,
+    commitAccept: `Accept Warnings & Commit Version ${nextVersionNumber}`,
     commitBusy: "Committing Version…",
     commitFailure: "The screenplay version could not be committed.",
     resumeFailure:
@@ -67,6 +73,7 @@ export function ScriptUploadModal({
   successFocusRef,
   onSuccess,
   purpose = "initial",
+  nextVersionNumber = 1,
 }: ScriptUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [pastedText, setPastedText] = useState("");
@@ -79,7 +86,7 @@ export function ScriptUploadModal({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const commitSucceededRef = useRef(false);
   const loadingRef = useRef(false);
-  const copy = copyForPurpose(purpose);
+  const copy = copyForPurpose(purpose, nextVersionNumber);
 
   const reset = () => {
     setFile(null);
@@ -282,170 +289,171 @@ export function ScriptUploadModal({
     step === "select" ? copy.dialogTitle : "Parser Diagnostics & Verification";
 
   return (
-    <div
-      data-testid="script-upload-modal"
-      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
-    >
+    <div data-testid="script-upload-modal" className="backdrop">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="script-import-title"
         tabIndex={-1}
-        className="card w-full max-w-lg bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+        className="dialog"
       >
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 id="script-import-title" className="text-base font-bold text-white">
-            {dialogTitle}
-          </h2>
+        <header className="dialog-head">
+          <div>
+            <h2 id="script-import-title">{dialogTitle}</h2>
+          </div>
           <button
+            className="icon-button is-bare"
             type="button"
             onClick={close}
             disabled={loading}
             aria-label="Close import dialog"
-            className="text-slate-400 hover:text-white disabled:opacity-50 text-lg font-bold"
           >
-            ×
+            <span aria-hidden="true">✕</span>
           </button>
-        </div>
+        </header>
 
-        <div className="p-5 space-y-4 text-xs">
-          {error && (
-            <div role="alert" className="p-3 bg-red-950/50 border border-red-900 rounded text-red-400">
-              {error}
-            </div>
-          )}
-
-          {step === "select" ? (
-            <>
-              <div className="flex space-x-2 border-b border-slate-800 pb-2">
-                <button
-                  type="button"
-                  onClick={() => setMode("file")}
-                  aria-pressed={mode === "file"}
-                  className={`px-3 py-1 font-bold rounded ${
-                    mode === "file"
-                      ? "bg-amber-600 text-white"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  File Upload (.Fountain, .FDX, .TXT)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("paste")}
-                  aria-pressed={mode === "paste"}
-                  className={`px-3 py-1 font-bold rounded ${
-                    mode === "paste"
-                      ? "bg-amber-600 text-white"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  Paste Screenplay Text
-                </button>
+        <div className="dialog-body">
+          <div className="stack">
+            {error && (
+              <div className="banner is-danger" role="alert">
+                <span className="banner-icon" aria-hidden="true">
+                  ⚠
+                </span>
+                <div className="banner-body">
+                  <p>{error}</p>
+                </div>
               </div>
+            )}
 
-              {mode === "file" ? (
-                <div
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={handleFileDrop}
-                  className="p-8 border-2 border-dashed border-slate-700 hover:border-amber-500/60 rounded-lg text-center bg-slate-800/30 transition-colors"
-                >
-                  <div className="text-3xl mb-2" aria-hidden="true">📄</div>
-                  <p className="text-slate-300 font-medium mb-1">
-                    Drag and drop a Fountain, Final Draft, or text screenplay
-                  </p>
-                  <p className="text-[11px] text-slate-500 mb-4">Up to 25MB supported</p>
-                  <label className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold rounded cursor-pointer border border-slate-700">
-                    Browse Files
-                    <input
-                      type="file"
-                      aria-label="Screenplay file"
-                      accept=".fountain,.fdx,.txt"
-                      className="sr-only"
-                      onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            {step === "select" ? (
+              <>
+                <div className="tabs" role="group" aria-label="Choose how to bring in the script">
+                  <button
+                    className="tab"
+                    type="button"
+                    onClick={() => setMode("file")}
+                    aria-pressed={mode === "file"}
+                  >
+                    File Upload (.Fountain, .FDX, .TXT)
+                  </button>
+                  <button
+                    className="tab"
+                    type="button"
+                    onClick={() => setMode("paste")}
+                    aria-pressed={mode === "paste"}
+                  >
+                    Paste Screenplay Text
+                  </button>
+                </div>
+
+                {mode === "file" ? (
+                  <div
+                    className="empty-state"
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handleFileDrop}
+                  >
+                    <span className="empty-icon" aria-hidden="true">
+                      ⌑
+                    </span>
+                    <h3>Drag and drop a Fountain, Final Draft, or text screenplay</h3>
+                    <p>Up to 25MB. PDF import is unavailable until a deterministic parser is configured.</p>
+                    <label className="button button-secondary">
+                      Browse Files
+                      <input
+                        type="file"
+                        aria-label="Screenplay file"
+                        accept=".fountain,.fdx,.txt"
+                        className="sr-only"
+                        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    {file && (
+                      <p className="small">
+                        Selected: <strong>{file.name}</strong>
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <label className="field" htmlFor="pasted-script">
+                    <span className="field-label">Screenplay Text Content</span>
+                    <textarea
+                      id="pasted-script"
+                      className="mono"
+                      rows={8}
+                      value={pastedText}
+                      onChange={(event) => setPastedText(event.target.value)}
+                      placeholder="EXT. DOWNTOWN ROOFTOP - DUSK"
                     />
                   </label>
-                  {file && (
-                    <div className="mt-3 text-emerald-400 font-medium">Selected: {file.name}</div>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <label htmlFor="pasted-script" className="block text-slate-300 font-medium mb-1">
-                    Screenplay Text Content
-                  </label>
-                  <textarea
-                    id="pasted-script"
-                    rows={8}
-                    value={pastedText}
-                    onChange={(event) => setPastedText(event.target.value)}
-                    placeholder="EXT. DOWNTOWN ROOFTOP - DUSK"
-                    className="w-full p-3 font-mono text-xs bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              )}
-            </>
-          ) : parseRun ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div className="p-3 bg-slate-800/60 rounded border border-slate-700">
-                  <div className="text-slate-400 text-[10px]">Scenes</div>
-                  <div className="text-base font-bold text-amber-400">{parseRun.sceneCount}</div>
-                </div>
-                <div className="p-3 bg-slate-800/60 rounded border border-slate-700">
-                  <div className="text-slate-400 text-[10px]">Elements</div>
-                  <div className="text-base font-bold text-amber-400">{parseRun.elementCount}</div>
-                </div>
-              </div>
-
-              {parseRun.warnings.length > 0 ? (
-                <div className="p-3 bg-amber-950/30 border border-amber-800/60 rounded-lg space-y-1.5">
-                  <div className="font-bold text-amber-300">
-                    Parser warnings requiring acceptance ({parseRun.warnings.length})
+                )}
+              </>
+            ) : parseRun ? (
+              <>
+                <div className="grid grid-2">
+                  <div className="stat">
+                    <span className="stat-label">Scenes</span>
+                    <span className="stat-value">{parseRun.sceneCount}</span>
                   </div>
-                  <ul className="list-disc pl-4 space-y-1 text-slate-300">
-                    {parseRun.warnings.map((warning, index) => (
-                      <li key={`${warning.code}-${warning.line ?? index}`}>
-                        {warning.line ? `Line ${warning.line}: ` : ""}
-                        {warning.message}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="stat">
+                    <span className="stat-label">Elements</span>
+                    <span className="stat-value">{parseRun.elementCount}</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="p-3 bg-emerald-950/30 border border-emerald-800/60 rounded text-emerald-300">
-                  Parse completed without warnings.
-                </div>
-              )}
-            </div>
-          ) : null}
+
+                {parseRun.warnings.length > 0 ? (
+                  <div className="banner is-warning">
+                    <span className="banner-icon" aria-hidden="true">
+                      ⚠
+                    </span>
+                    <div className="banner-body">
+                      <strong>
+                        Parser warnings requiring acceptance ({parseRun.warnings.length})
+                      </strong>
+                      <ul className="small">
+                        {parseRun.warnings.map((warning, index) => (
+                          <li key={`${warning.code}-${warning.line ?? index}`}>
+                            {warning.line ? `Line ${warning.line}: ` : ""}
+                            {warning.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="banner is-success">
+                    <span className="banner-icon" aria-hidden="true">
+                      ✓
+                    </span>
+                    <div className="banner-body">
+                      <p>Parse completed without warnings.</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-end space-x-3 bg-slate-900/60">
-          <button
-            type="button"
-            onClick={close}
-            disabled={loading}
-            className="px-4 py-2 text-slate-400 hover:text-white disabled:opacity-50 font-medium text-xs"
-          >
+        <footer className="dialog-actions">
+          <button className="button button-quiet" type="button" onClick={close} disabled={loading}>
             Cancel
           </button>
           {step === "select" ? (
             <button
+              className="button button-primary"
               type="button"
               onClick={handleAnalyze}
               disabled={loading || (mode === "file" ? !file : !pastedText.trim())}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded shadow"
             >
               {loading ? "Uploading & Parsing..." : "Upload & Analyze"}
             </button>
           ) : (
             <button
+              className="button button-primary"
               type="button"
               onClick={handleCommit}
               disabled={loading || !parseRun}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded shadow"
             >
               {loading
                 ? copy.commitBusy
@@ -454,7 +462,7 @@ export function ScriptUploadModal({
                   : copy.commitIdle}
             </button>
           )}
-        </div>
+        </footer>
       </div>
     </div>
   );

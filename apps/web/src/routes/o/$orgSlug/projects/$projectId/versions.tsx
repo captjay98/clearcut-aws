@@ -268,6 +268,7 @@ export function VersionsRoute() {
         purpose="revision"
         returnFocusRef={uploadButtonRef}
         successFocusRef={uploadButtonRef}
+        nextVersionNumber={versions.length + 1}
         onSuccess={handleRevisionCommitted}
       />
 

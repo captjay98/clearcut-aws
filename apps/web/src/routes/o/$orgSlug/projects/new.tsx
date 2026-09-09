@@ -10,6 +10,7 @@ import {
 } from "@clearcut/contracts";
 import { ScriptUploadModal } from "../../../../features/scripts/ScriptUploadModal";
 import { JobProgress } from "../../../../features/operations/JobProgress";
+import { Badge, Banner, Card, Page } from "../../../../components/ds";
 
 interface NewClearanceSearch {
   projectId?: string;
@@ -23,6 +24,51 @@ function optionalSearchId(value: unknown): string | undefined {
 
 function toQueryError(error: ApiError): Error & ApiError {
   return Object.assign(new Error(error.message), error);
+}
+
+function formatLockDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
+ * The mock's wizard heads each step with a numbered marker that becomes a tick
+ * once the step is persisted, and announces position for screen readers because
+ * the marker itself is decorative.
+ */
+function StepHead({
+  number,
+  title,
+  done,
+  current,
+  headingRef,
+}: {
+  number: number;
+  title: string;
+  done: boolean;
+  current: boolean;
+  headingRef?: React.Ref<HTMLHeadingElement>;
+}) {
+  return (
+    <div className="cluster step-head" {...(current ? { "aria-current": "step" as const } : {})}>
+      <span
+        className={`step-num ${done ? "is-done" : current ? "is-current" : ""}`.trim()}
+        aria-hidden="true"
+      >
+        {done ? "✓" : number}
+      </span>
+      <h2 className="step-title" ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
+        {title}
+        <span className="sr-only">
+          {` — step ${number} of 3${done ? ", done" : current ? ", current step" : ""}`}
+        </span>
+      </h2>
+      {done && <Badge tone="is-success">Done</Badge>}
+    </div>
+  );
 }
 
 export const Route = createFileRoute("/o/$orgSlug/projects/new")({
@@ -109,10 +155,7 @@ export function NewProjectRoute() {
       return result.value;
     },
     onSuccess: (project: Project) => {
-      queryClient.setQueryData(
-        ["new-clearance-project", orgSlug, project.projectId],
-        project,
-      );
+      queryClient.setQueryData(["new-clearance-project", orgSlug, project.projectId], project);
       void updateSearch({ projectId: project.projectId }, true);
     },
   });
@@ -155,278 +198,336 @@ export function NewProjectRoute() {
         version,
       ],
     );
-    await updateSearch(
-      { projectId: version.projectId, versionId: version.versionId },
-      true,
-    );
+    await updateSearch({ projectId: version.projectId, versionId: version.versionId }, true);
   };
 
   const project = projectQuery.data;
   const projectUnavailable = Boolean(search.projectId && projectQuery.isError);
   const versionUnavailable = Boolean(search.projectId && versionsQuery.isError);
 
+  const detailsDone = Boolean(project);
+  const importDone = Boolean(persistedVersion);
+  const checkDone = Boolean(
+    observedJob &&
+      search.jobId &&
+      observedJob.jobId === search.jobId &&
+      observedJob.status === "succeeded" &&
+      observedJob.jobType === "detection" &&
+      observedJob.target.type === "script_version" &&
+      observedJob.target.id === persistedVersion?.versionId &&
+      observedJob.resultSummary?.scriptVersionId === persistedVersion?.versionId,
+  );
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5 py-8">
-      <header>
-        <h1 className="text-2xl font-bold text-white">New Clearance</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Build a persisted pre-clearance evidence workspace. ClearCut supports qualified human review; it does not provide legal advice or a clearance decision.
-        </p>
-      </header>
+    <Page
+      width="narrow"
+      trail={[
+        { label: "Projects", to: "/o/$orgSlug/projects", params: { orgSlug } },
+        { label: "New clearance" },
+      ]}
+      eyebrow="Start here"
+      title="New Clearance"
+      lede="Three steps: describe the production, bring in the script, and let ClearCut check it. You make every call after that. ClearCut supports qualified human review; it does not provide legal advice or a clearance decision."
+    >
+      {/* The three steps are an ordered list: they are a sequence, and each one's
+          marker reports whether it is persisted yet. */}
+      <ol aria-label="New clearance steps" style={{ listStyle: "none", padding: 0 }}>
+      <li className="section">
+        <StepHead number={1} title="Describe production" done={detailsDone} current={!detailsDone} />
 
-      <ol aria-label="New clearance steps" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {["Describe production", "Bring in script", "Check script"].map((label, index) => {
-          const completed =
-            index === 0
-              ? Boolean(project)
-              : index === 1
-                ? Boolean(persistedVersion)
-                : Boolean(
-                    observedJob &&
-                      search.jobId &&
-                      observedJob.jobId === search.jobId &&
-                      observedJob.status === "succeeded" &&
-                      observedJob.jobType === "detection" &&
-                      observedJob.target.type === "script_version" &&
-                      observedJob.target.id === persistedVersion?.versionId &&
-                      observedJob.resultSummary?.scriptVersionId === persistedVersion?.versionId,
-                  );
-          return (
-            <li key={label} className="rounded border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
-              <span className="mr-2 font-mono text-amber-400">{completed ? "✓" : index + 1}</span>
-              {label}
-            </li>
-          );
-        })}
-      </ol>
-
-      <section className="rounded-lg border border-slate-800 bg-slate-900 p-6 shadow">
-        <h2 className="text-lg font-bold text-white">Describe production</h2>
         {search.projectId && projectQuery.isPending ? (
-          <p role="status" className="mt-3 text-xs text-slate-400">Loading persisted production details…</p>
+          <Card>
+            <p role="status" className="small muted">
+              Loading persisted production details…
+            </p>
+          </Card>
         ) : projectUnavailable ? (
-          <div role="alert" className="mt-3 rounded border border-rose-900 bg-rose-950/40 p-3">
-            <h3 className="font-bold text-rose-200">Production unavailable</h3>
-            <p className="mt-1 text-xs text-rose-300">{projectQuery.error?.message}</p>
-          </div>
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Production unavailable"
+            message={projectQuery.error?.message}
+            role="alert"
+            titleIsHeading
+          />
         ) : project ? (
-          <div className="mt-3 rounded border border-emerald-900 bg-emerald-950/20 p-4">
-            <p className="font-bold text-emerald-200">{project.title}</p>
-            {project.description && <p className="mt-1 text-xs text-slate-300">{project.description}</p>}
-            <dl className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-300 sm:grid-cols-2">
-              <div><dt className="text-slate-500">Production type</dt><dd>{project.productionType ?? "Not provided"}</dd></div>
-              <div><dt className="text-slate-500">Production stage</dt><dd>{project.productionStage ?? "Not provided"}</dd></div>
-              <div><dt className="text-slate-500">Jurisdiction</dt><dd>{project.jurisdiction ?? "Not provided"}</dd></div>
+          <Card>
+            <div className="stack">
               <div>
-                <dt className="text-slate-500">Target lock date</dt>
-                <dd>{project.targetLockDate ? new Date(`${project.targetLockDate}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "Not provided"}</dd>
+                <strong>{project.title}</strong>
+                {project.description && <p className="small gap-t-2">{project.description}</p>}
               </div>
-            </dl>
-            {project.reviewBrief && <p className="mt-3 text-xs text-slate-300">{project.reviewBrief}</p>}
-            <p className="mt-2 text-[11px] text-slate-500">Saved project: {project.projectId}</p>
-          </div>
+              <dl className="report-meta">
+                <div>
+                  <dt>Production type</dt>
+                  <dd>{project.productionType ?? "Not provided"}</dd>
+                </div>
+                <div>
+                  <dt>Production stage</dt>
+                  <dd>{project.productionStage ?? "Not provided"}</dd>
+                </div>
+                <div>
+                  <dt>Jurisdiction</dt>
+                  <dd>{project.jurisdiction ?? "Not provided"}</dd>
+                </div>
+                <div>
+                  <dt>Target lock date</dt>
+                  <dd>
+                    {project.targetLockDate ? formatLockDate(project.targetLockDate) : "Not provided"}
+                  </dd>
+                </div>
+              </dl>
+              {project.reviewBrief && <p className="small">{project.reviewBrief}</p>}
+              <p className="small muted">
+                Saved project: <span className="mono">{project.projectId}</span>
+              </p>
+            </div>
+          </Card>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <form onSubmit={handleSubmit}>
             {createMutation.isError && (
-              <div role="alert" className="rounded border border-rose-900 bg-rose-950/50 p-3 text-xs text-rose-300">
-                {createMutation.error.message}
-              </div>
+              <Banner
+                tone="is-danger"
+                icon="⚠"
+                title="Could not save the production"
+                message={createMutation.error.message}
+                role="alert"
+                className="gap-b-4"
+              />
             )}
-            <div>
-              <label htmlFor="title" className="block text-xs font-medium text-slate-300">
-                Project / Screenplay Title
-              </label>
-              <input
-                id="title"
-                type="text"
-                required
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                placeholder="e.g. Signal Check"
-              />
-            </div>
-            <div>
-              <label htmlFor="description" className="block text-xs font-medium text-slate-300">
-                Description / Production Notes (Optional)
-              </label>
-              <textarea
-                id="description"
-                rows={3}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                placeholder="Feature screenplay draft for pre-production evidence review."
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="production-type" className="block text-xs font-medium text-slate-300">Production Type</label>
-                <select
-                  id="production-type"
-                  value={productionType}
-                  onChange={(event) => setProductionType(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+            <Card>
+              <div className="form-grid">
+                <label className="field field-full" htmlFor="title">
+                  <span className="field-label">Project / Screenplay Title</span>
+                  <input
+                    id="title"
+                    type="text"
+                    required
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="e.g. Signal Check"
+                  />
+                </label>
+
+                <label className="field field-full" htmlFor="description">
+                  <span className="field-label">Description / Production Notes (Optional)</span>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Feature screenplay draft for pre-production evidence review."
+                  />
+                </label>
+
+                <label className="field" htmlFor="production-type">
+                  <span className="field-label">Production Type</span>
+                  <select
+                    id="production-type"
+                    value={productionType}
+                    onChange={(event) => setProductionType(event.target.value)}
+                  >
+                    <option value="">Select type</option>
+                    <option value="Feature film">Feature film</option>
+                    <option value="Short film">Short film</option>
+                    <option value="Television">Television</option>
+                    <option value="Digital series">Digital series</option>
+                  </select>
+                </label>
+
+                <label className="field" htmlFor="production-stage">
+                  <span className="field-label">Production Stage</span>
+                  <select
+                    id="production-stage"
+                    value={productionStage}
+                    onChange={(event) => setProductionStage(event.target.value)}
+                  >
+                    <option value="">Select stage</option>
+                    <option value="Development">Development</option>
+                    <option value="Pre-production">Pre-production</option>
+                    <option value="Production">Production</option>
+                    <option value="Post-production">Post-production</option>
+                  </select>
+                </label>
+
+                <label className="field" htmlFor="jurisdiction">
+                  <span className="field-label">Jurisdiction</span>
+                  <input
+                    id="jurisdiction"
+                    type="text"
+                    value={jurisdiction}
+                    onChange={(event) => setJurisdiction(event.target.value)}
+                  />
+                </label>
+
+                <label className="field" htmlFor="target-lock-date">
+                  <span className="field-label">Target Lock Date</span>
+                  <input
+                    id="target-lock-date"
+                    type="date"
+                    value={targetLockDate}
+                    onChange={(event) => setTargetLockDate(event.target.value)}
+                  />
+                </label>
+
+                <label className="field field-full" htmlFor="review-brief">
+                  <span className="field-label">Review Brief</span>
+                  <textarea
+                    id="review-brief"
+                    rows={3}
+                    value={reviewBrief}
+                    onChange={(event) => setReviewBrief(event.target.value)}
+                    placeholder="Describe the evidence review priorities and unresolved concerns."
+                  />
+                </label>
+              </div>
+
+              <div className="cluster gap-t-5" style={{ justifyContent: "flex-end" }}>
+                <button
+                  className="button button-quiet"
+                  type="button"
+                  onClick={() => navigate({ to: "/o/$orgSlug/projects", params: { orgSlug } })}
                 >
-                  <option value="">Select type</option>
-                  <option value="Feature film">Feature film</option>
-                  <option value="Short film">Short film</option>
-                  <option value="Television">Television</option>
-                  <option value="Digital series">Digital series</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="production-stage" className="block text-xs font-medium text-slate-300">Production Stage</label>
-                <select
-                  id="production-stage"
-                  value={productionStage}
-                  onChange={(event) => setProductionStage(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+                  Cancel
+                </button>
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={createMutation.isPending || !title.trim()}
                 >
-                  <option value="">Select stage</option>
-                  <option value="Development">Development</option>
-                  <option value="Pre-production">Pre-production</option>
-                  <option value="Production">Production</option>
-                  <option value="Post-production">Post-production</option>
-                </select>
+                  {createMutation.isPending ? "Saving…" : "Save and bring in script"}
+                </button>
               </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="jurisdiction" className="block text-xs font-medium text-slate-300">Jurisdiction</label>
-                <input
-                  id="jurisdiction"
-                  type="text"
-                  value={jurisdiction}
-                  onChange={(event) => setJurisdiction(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label htmlFor="target-lock-date" className="block text-xs font-medium text-slate-300">Target Lock Date</label>
-                <input
-                  id="target-lock-date"
-                  type="date"
-                  value={targetLockDate}
-                  onChange={(event) => setTargetLockDate(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="review-brief" className="block text-xs font-medium text-slate-300">Review Brief</label>
-              <textarea
-                id="review-brief"
-                rows={3}
-                value={reviewBrief}
-                onChange={(event) => setReviewBrief(event.target.value)}
-                className="mt-1 block w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
-                placeholder="Describe the evidence review priorities and unresolved concerns."
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => navigate({ to: "/o/$orgSlug/projects", params: { orgSlug } })}
-                className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending || !title.trim()}
-                className="rounded-md bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-amber-700 disabled:opacity-50"
-              >
-                {createMutation.isPending ? "Saving…" : "Save and bring in script"}
-              </button>
-            </div>
+            </Card>
           </form>
         )}
-      </section>
+      </li>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-900 p-6 shadow">
-        <h2 className="text-lg font-bold text-white">Bring in script</h2>
+      <li className="section">
+        <StepHead
+          number={2}
+          title="Bring in script"
+          done={importDone}
+          current={detailsDone && !importDone}
+        />
+
         {!search.projectId ? (
-          <p className="mt-2 text-xs text-slate-500">Save the production details before importing a screenplay.</p>
+          <Card quiet>
+            <p className="small muted">
+              Save the production details before importing a screenplay.
+            </p>
+          </Card>
         ) : versionUnavailable ? (
-          <div role="alert" className="mt-3 rounded border border-rose-900 bg-rose-950/40 p-3 text-xs text-rose-300">
-            Script versions are unavailable. {versionsQuery.error?.message}
-          </div>
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Script versions unavailable"
+            message={versionsQuery.error?.message}
+            role="alert"
+          />
         ) : versionsQuery.isPending ? (
-          <p role="status" className="mt-2 text-xs text-slate-400">Loading persisted script versions…</p>
+          <Card>
+            <p role="status" className="small muted">
+              Loading persisted script versions…
+            </p>
+          </Card>
         ) : persistedVersion ? (
-          <div className="mt-3 space-y-3">
-            <p className="text-sm font-bold text-emerald-200">
-              Version {persistedVersion.versionNumber} is ready for a check.
-            </p>
-            <dl className="grid grid-cols-2 gap-3">
-              <div className="rounded border border-slate-800 bg-slate-950/50 p-3">
-                <dt className="text-[11px] text-slate-400">Persisted scenes</dt>
-                <dd data-testid="version-scene-count" className="text-lg font-bold text-white">{persistedVersion.sceneCount}</dd>
+          <Card>
+            <div className="stack">
+              <p className="small">
+                Version {persistedVersion.versionNumber} is ready for a check.
+              </p>
+              <div className="grid grid-2">
+                <div className="stat">
+                  <span className="stat-label">Persisted scenes</span>
+                  <span className="stat-value" data-testid="version-scene-count">
+                    {persistedVersion.sceneCount}
+                  </span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">Persisted elements</span>
+                  <span className="stat-value" data-testid="version-element-count">
+                    {persistedVersion.elementCount}
+                  </span>
+                </div>
               </div>
-              <div className="rounded border border-slate-800 bg-slate-950/50 p-3">
-                <dt className="text-[11px] text-slate-400">Persisted elements</dt>
-                <dd data-testid="version-element-count" className="text-lg font-bold text-white">{persistedVersion.elementCount}</dd>
-              </div>
-            </dl>
-          </div>
+            </div>
+          </Card>
         ) : (
-          <div className="mt-3">
-            <p className="mb-3 text-xs text-slate-400">Upload a file or paste screenplay text. Parser counts will come from the persisted version.</p>
-            <button
-              ref={uploadTriggerRef}
-              type="button"
-              onClick={() => setIsUploadOpen(true)}
-              className="rounded bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700"
-            >
-              Bring in script
-            </button>
-          </div>
+          <Card>
+            <div className="stack">
+              <p className="small muted">
+                Upload a Fountain or Final Draft file, or paste screenplay text. Parser counts come
+                from the persisted version.
+              </p>
+              <div className="cluster">
+                <button
+                  ref={uploadTriggerRef}
+                  className="button button-primary"
+                  type="button"
+                  onClick={() => setIsUploadOpen(true)}
+                >
+                  Bring in script
+                </button>
+              </div>
+            </div>
+          </Card>
         )}
-      </section>
+      </li>
 
-      <section className="rounded-lg border border-slate-800 bg-slate-900 p-6 shadow">
-        <h2
-          ref={checkScriptHeadingRef}
-          tabIndex={-1}
-          className="text-lg font-bold text-white"
-        >
-          Check script
-        </h2>
+      <li className="section">
+        <StepHead
+          number={3}
+          title="Check script"
+          done={checkDone}
+          current={importDone && !checkDone}
+          headingRef={checkScriptHeadingRef}
+        />
+
         {!persistedVersion ? (
-          <p className="mt-2 text-xs text-slate-500">Commit a script version before starting the check.</p>
+          <Card quiet>
+            <p className="small muted">Commit a script version before starting the check.</p>
+          </Card>
         ) : search.jobId && search.projectId ? (
-          <div className="mt-4">
-            <JobProgress
-              orgSlug={orgSlug}
-              projectId={search.projectId}
-              jobId={search.jobId}
-              expectedVersionId={persistedVersion.versionId}
-              onJobChange={setObservedJob}
-            />
-          </div>
+          <JobProgress
+            orgSlug={orgSlug}
+            projectId={search.projectId}
+            jobId={search.jobId}
+            expectedVersionId={persistedVersion.versionId}
+            onJobChange={setObservedJob}
+          />
         ) : (
-          <div className="mt-3">
-            <p className="text-xs text-slate-400">
-              Start an observable check for persisted version {persistedVersion.versionNumber}. Progress and terminal counts are read from the operation record.
-            </p>
-            {detectionMutation.isError && (
-              <div role="alert" className="mt-3 rounded border border-rose-900 bg-rose-950/40 p-3">
-                <h3 className="font-bold text-rose-200">Check unavailable</h3>
-                <p className="mt-1 text-xs text-rose-300">{detectionMutation.error.message}</p>
+          <Card>
+            <div className="stack">
+              <p className="small muted">
+                Start an observable check for persisted version {persistedVersion.versionNumber}.
+                Progress and terminal counts are read from the operation record.
+              </p>
+              {detectionMutation.isError && (
+                <Banner
+                  tone="is-danger"
+                  icon="⚠"
+                  title="Check unavailable"
+                  message={detectionMutation.error.message}
+                  role="alert"
+                  titleIsHeading
+                />
+              )}
+              <div className="cluster">
+                <button
+                  className="button button-primary"
+                  type="button"
+                  onClick={() => detectionMutation.mutate(persistedVersion)}
+                  disabled={detectionMutation.isPending}
+                >
+                  {detectionMutation.isPending ? "Starting check…" : "Check script"}
+                </button>
               </div>
-            )}
-            <button
-              type="button"
-              onClick={() => detectionMutation.mutate(persistedVersion)}
-              disabled={detectionMutation.isPending}
-              className="mt-4 rounded bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
-            >
-              {detectionMutation.isPending ? "Starting check…" : "Check script"}
-            </button>
-          </div>
+            </div>
+          </Card>
         )}
-      </section>
+      </li>
+      </ol>
 
       {search.projectId && (
         <ScriptUploadModal
@@ -436,10 +537,11 @@ export function NewProjectRoute() {
           projectId={search.projectId}
           returnFocusRef={uploadTriggerRef}
           successFocusRef={checkScriptHeadingRef}
+          nextVersionNumber={(versionsQuery.data?.length ?? 0) + 1}
           onSuccess={handleVersionCommitted}
         />
       )}
-    </div>
+    </Page>
   );
 }
 

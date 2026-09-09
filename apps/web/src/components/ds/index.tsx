@@ -314,6 +314,13 @@ export function Banner({
   action,
   /** Set for error banners so the message is announced immediately. */
   role,
+  /**
+   * Exposes the title as a heading. The mock styles banner titles as <strong>,
+   * which is right visually, but where a banner announces the outcome of an
+   * operation the title is the heading for that outcome and should be reachable
+   * as one. Opt-in so routine advisories stay out of the heading outline.
+   */
+  titleIsHeading = false,
   className = "",
 }: {
   tone?: Tone;
@@ -322,6 +329,7 @@ export function Banner({
   message?: React.ReactNode;
   action?: React.ReactNode;
   role?: "alert" | "status";
+  titleIsHeading?: boolean;
   className?: string;
 }) {
   return (
@@ -330,7 +338,14 @@ export function Banner({
         {icon}
       </span>
       <div className="banner-body">
-        {title && <strong>{title}</strong>}
+        {title &&
+          (titleIsHeading ? (
+            <strong role="heading" aria-level={3}>
+              {title}
+            </strong>
+          ) : (
+            <strong>{title}</strong>
+          ))}
         {message && <p>{message}</p>}
       </div>
       {action && <div className="cluster">{action}</div>}
