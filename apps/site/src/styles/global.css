@@ -1,16 +1,9 @@
-/* Declare the cascade-layer order up front. Tailwind's own base/components/
-   utilities layers are registered by the @tailwind directives below; the
-   design-system layer is declared last so its authored paper theme, marketing
-   classes, and component rules win over Tailwind's preflight. Astro's CSS
-   bundler otherwise collapses same-named design-system layers into Tailwind's,
-   which dropped the paper hero typography and dark primary button. Importing
-   the design system into its own dedicated `clearcut-ds` layer keeps every
-   token and class intact and ranked above Tailwind. */
-@layer base, components, utilities, clearcut-ds;
-
-/* Design-system tokens and classes (paper theme, marketing surface). */
-@import "@clearcut/design-system/tokens.css" layer(clearcut-ds);
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* The canonical mock (misc/clearcut-flow/assets/app.css) is the single source of
+   truth for the public surface, and it is a plain stylesheet with no utility
+   framework. Tailwind is deliberately absent here: its preflight reset competes
+   with the design system's own reset, and wrapping the design system in a named
+   cascade layer to outrank it ranked whole-layer precedence above per-selector
+   specificity, so the generic `h1, h2, h3 { font-family: var(--display) }` reset
+   beat the more specific `.lp-h1` marketing rule. Importing the design system
+   alone reproduces the mock's cascade verbatim. */
+@import "@clearcut/design-system/tokens.css";
