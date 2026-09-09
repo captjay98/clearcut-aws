@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { api, type AuditRecord } from "@clearcut/contracts";
+import { Badge, Banner, EmptyState, Page, Section } from "../../../components/ds";
 
 type RecordsView = "activity" | "runsAndTools" | "evaluations" | "policies" | "operations";
 
@@ -67,50 +68,70 @@ export function OrgRecordsRoute() {
   }, [orgSlug, search.projectId, search.view]);
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Audit Records & Lineage</h1>
-        <p className="text-sm text-slate-400">
-          Immutable log of clearance decisions, referrals, governed approvals, and releases.
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          View: {search.view}
-          {search.projectId ? ` • Project: ${search.projectId}` : ""}
-        </p>
-      </div>
-
-      {error && (
-        <div role="alert" className="rounded border border-rose-900 bg-rose-950/50 p-4 text-sm text-rose-300">
-          {error}
-        </div>
-      )}
-
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden divide-y divide-slate-800">
+    <Page
+      trail={[{ label: "Records" }]}
+      eyebrow="Immutable ledger"
+      title="Audit Records & Lineage"
+      lede="Immutable log of clearance decisions, referrals, governed approvals, and releases."
+      notice={
+        error && (
+          <Banner
+            tone="is-danger"
+            icon="⚠"
+            title="Records unavailable"
+            message={`${error} No empty-ledger conclusion has been inferred.`}
+            role="alert"
+          />
+        )
+      }
+    >
+      <Section
+        title="Recorded events"
+        description={
+          <>
+            View: <span className="mono">{search.view}</span>
+            {search.projectId ? (
+              <>
+                {" · Project: "}
+                <span className="mono">{search.projectId}</span>
+              </>
+            ) : null}
+          </>
+        }
+      >
         {loading ? (
-          <div className="p-6 text-center text-xs text-slate-500">Loading audit records...</div>
-        ) : error ? (
-          <div className="p-6 text-center text-xs text-slate-500">
-            Records remain unavailable; no empty-ledger conclusion was inferred.
-          </div>
-        ) : records.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-500">No audit events recorded yet.</div>
+          <p role="status" className="small muted">
+            Loading audit records…
+          </p>
+        ) : error ? null : records.length === 0 ? (
+          <EmptyState
+            icon="≡"
+            title="No audit events recorded yet"
+            description="Every governed action writes an immutable event here in the same transaction that commits it."
+          />
         ) : (
-          records.map((record) => (
-            <div key={record.recordId} className="p-4 flex items-center justify-between">
-              <div>
-                <div className="text-xs font-bold text-slate-200">{record.eventType}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  Actor: {record.actorEmail ?? record.actorId} • {new Date(record.timestamp).toLocaleString()}
+          <div className="list">
+            {records.map((record) => (
+              <div className="list-row is-static" key={record.recordId}>
+                <div className="list-main">
+                  <span className="list-title">{record.eventType}</span>
+                  <span className="list-meta">
+                    <span>Actor: {record.actorEmail ?? record.actorId}</span>
+                    <span>{new Date(record.timestamp).toLocaleString()}</span>
+                    {record.receiptHash && (
+                      <span className="mono truncate">{record.receiptHash}</span>
+                    )}
+                  </span>
+                </div>
+                <div className="list-aside">
+                  <Badge tone="is-success">Recorded</Badge>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 rounded font-mono">
-                Recorded
-              </span>
-            </div>
-          ))
+            ))}
+          </div>
         )}
-      </div>
-    </div>
+      </Section>
+    </Page>
   );
 }
 

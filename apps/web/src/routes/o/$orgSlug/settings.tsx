@@ -1,50 +1,82 @@
 import React from "react";
 import { createFileRoute, useParams } from "@tanstack/react-router";
+import { Badge, Banner, Card, Page, Section } from "../../../components/ds";
 
 export const Route = createFileRoute("/o/$orgSlug/settings")({
   component: SettingsRoute,
 });
 
+/**
+ * Organization policy is a protected configuration: permissions, sign-off
+ * policy, source-authority tiers and retention are human-only and Owner
+ * governed. There is no write endpoint for them in this build, so this surface
+ * reports the active policy rather than offering controls.
+ *
+ * It previously rendered checked checkboxes with no handler and no request
+ * behind them, which invited a reader to believe they had changed a governance
+ * rule when nothing was recorded.
+ */
+const GOVERNANCE_POLICY: readonly {
+  name: string;
+  description: string;
+  value: string;
+  active: boolean;
+}[] = [
+  {
+    name: "Dual legal sign-off",
+    description: "Require two qualified reviewers before a release export.",
+    value: "Required",
+    active: true,
+  },
+  {
+    name: "Strict source authority",
+    description:
+      "Reject non-canonical sources during automated evidence extraction; a rejected source becomes a review item, never a silent pass.",
+    value: "Enforced",
+    active: true,
+  },
+  {
+    name: "Retention horizon",
+    description: "Days before inactive audit payloads are archived.",
+    value: "365 days",
+    active: true,
+  },
+];
+
 export function SettingsRoute() {
   const { orgSlug } = useParams({ from: "/o/$orgSlug/settings" });
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Workspace Settings</h1>
-        <p className="text-sm text-slate-400">
-          Organization policies, retention periods, and verification thresholds.
-        </p>
-      </div>
-
-      <div className="p-5 bg-slate-900 border border-slate-800 rounded-lg space-y-4">
-        <h2 className="text-sm font-bold text-slate-200">Clearance Governance</h2>
-
-        <div className="flex items-center justify-between py-2 border-b border-slate-800">
-          <div>
-            <div className="text-xs font-semibold text-slate-300">Dual Legal Sign-Off</div>
-            <div className="text-[11px] text-slate-500">Require 2 qualified reviewers before final release export</div>
-          </div>
-          <input type="checkbox" defaultChecked className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-amber-500" />
-        </div>
-
-        <div className="flex items-center justify-between py-2 border-b border-slate-800">
-          <div>
-            <div className="text-xs font-semibold text-slate-300">Strict Source Authority</div>
-            <div className="text-[11px] text-slate-500">Reject non-canonical sources during automated evidence extraction</div>
-          </div>
-          <input type="checkbox" defaultChecked className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-amber-500" />
-        </div>
-
-        <div className="flex items-center justify-between py-2">
-          <div>
-            <div className="text-xs font-semibold text-slate-300">Retention Horizon</div>
-            <div className="text-[11px] text-slate-500">Number of days before inactive audit payloads are archived</div>
-          </div>
-          <span className="text-xs px-2 py-1 bg-slate-800 rounded text-slate-300 font-mono">365 days</span>
-        </div>
-      </div>
-    </div>
+    <Page
+      trail={[{ label: "Settings" }]}
+      eyebrow={orgSlug}
+      title="Workspace Settings"
+      lede="Organization policies, retention periods, and verification thresholds."
+      notice={
+        <Banner
+          icon="⚖"
+          title="Protected configuration"
+          message="These are human-only, Owner-governed rules. Changing them is a governed action that writes an audit event, and it is not exposed in this build — so they are shown here as the active policy rather than as controls."
+        />
+      }
+    >
+      <Section
+        title="Clearance governance"
+        description="The policy every governed decision in this organization is evaluated against."
+      >
+        <Card>
+          {GOVERNANCE_POLICY.map((policy) => (
+            <div className="toggle-row" key={policy.name}>
+              <div>
+                <strong className="small">{policy.name}</strong>
+                <p className="field-hint">{policy.description}</p>
+              </div>
+              <Badge tone={policy.active ? "is-success" : ""}>{policy.value}</Badge>
+            </div>
+          ))}
+        </Card>
+      </Section>
+    </Page>
   );
 }
 

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { api, type Membership, type UserRole } from "@clearcut/contracts";
+import { Badge, Banner, Card, EmptyState, Page, Section } from "../../../components/ds";
+import { humanizeStatus } from "../../../features/clearance/itemPresentation";
 
 export const Route = createFileRoute("/o/$orgSlug/team")({
   component: TeamRoute,
@@ -63,84 +65,92 @@ export function TeamRoute() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Team & Access</h1>
-        <p className="text-sm text-slate-400">
-          Manage workspace members, roles, and invitation access.
-        </p>
-      </div>
+    <Page
+      trail={[{ label: "Team & roles" }]}
+      eyebrow={orgSlug}
+      title="Team & Access"
+      lede="Manage workspace members, roles, and invitation access. Roles are fixed and enforced in the backend, not by hiding controls."
+      notice={
+        error ? (
+          <Banner tone="is-danger" icon="⚠" title="Action failed" message={error} role="alert" />
+        ) : success ? (
+          <Banner tone="is-success" icon="✓" message={success} role="status" />
+        ) : undefined
+      }
+    >
+      <Section title="Invite team member">
+        <Card>
+          <form onSubmit={handleInvite}>
+            <div className="form-grid">
+              <label className="field" htmlFor="invitee-email">
+                <span className="field-label">Invitee email</span>
+                <input
+                  id="invitee-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="colleague@studio.com"
+                  aria-label="Invitee email"
+                />
+              </label>
+              <label className="field" htmlFor="invitation-role">
+                <span className="field-label">Invitation role</span>
+                <select
+                  id="invitation-role"
+                  value={role}
+                  aria-label="Invitation role"
+                  onChange={(event) => setRole(event.target.value as UserRole)}
+                >
+                  <option value="reviewer">Reviewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+            </div>
+            <div className="cluster gap-t-4">
+              <button className="button button-primary" type="submit" disabled={inviting}>
+                {inviting ? "Inviting…" : "Send Invitation"}
+              </button>
+            </div>
+          </form>
+        </Card>
+      </Section>
 
-      <div className="p-4 bg-slate-900 border border-slate-800 rounded-lg">
-        <h2 className="text-sm font-bold text-slate-200 mb-3">Invite Team Member</h2>
-        {error ? (
-          <div role="alert" className="mb-3 p-2.5 bg-red-950/50 border border-red-900 text-xs text-red-400 rounded">
-            {error}
-          </div>
-        ) : null}
-        {success ? (
-          <div role="status" className="mb-3 p-2.5 bg-emerald-950/50 border border-emerald-900 text-xs text-emerald-400 rounded">
-            {success}
-          </div>
-        ) : null}
-
-        <form onSubmit={handleInvite} className="flex flex-wrap gap-3 items-center">
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="colleague@studio.com"
-            aria-label="Invitee email"
-            className="flex-1 min-w-[240px] px-3 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
-          <select
-            value={role}
-            aria-label="Invitation role"
-            onChange={(event) => setRole(event.target.value as UserRole)}
-            className="px-3 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="reviewer">Reviewer</option>
-            <option value="editor">Editor</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button
-            type="submit"
-            disabled={inviting}
-            className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-xs font-bold text-white rounded focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            {inviting ? "Inviting..." : "Send Invitation"}
-          </button>
-        </form>
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-400">
-          Current Members ({members.length})
-        </div>
+      <Section title={`Current Members (${members.length})`}>
         {loading ? (
-          <div className="p-6 text-center text-xs text-slate-500">Loading team...</div>
+          <p role="status" className="small muted">
+            Loading team…
+          </p>
         ) : members.length === 0 ? (
-          <div className="p-6 text-center text-xs text-slate-500">No members found.</div>
+          <EmptyState
+            icon="◉"
+            title="No members found"
+            description="Invite a colleague to give them a fixed role in this organization."
+          />
         ) : (
-          <div className="divide-y divide-slate-800">
+          <div className="list">
             {members.map((member) => (
-              <div key={member.membershipId} className="px-4 py-3 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-slate-200">{member.email}</div>
-                  <div className="text-xs text-slate-400 capitalize">{member.role}</div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-[11px] px-2 py-0.5 bg-emerald-950 border border-emerald-900 text-emerald-400 rounded-full font-medium">
-                    {member.active ? "Active" : "Inactive"}
+              <div className="list-row is-static" key={member.membershipId}>
+                <div className="list-main">
+                  <span className="list-title">{member.email}</span>
+                  <span className="list-meta">
+                    <span>{humanizeStatus(member.role)}</span>
                   </span>
+                </div>
+                <div className="list-aside">
+                  {/* Inactive is not a success state; it previously rendered in
+                      the same green as Active. */}
+                  <Badge tone={member.active ? "is-success" : ""}>
+                    {member.active ? "Active" : "Inactive"}
+                  </Badge>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </Section>
+    </Page>
   );
 }
 
