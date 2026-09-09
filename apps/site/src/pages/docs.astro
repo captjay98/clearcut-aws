@@ -1,30 +1,242 @@
 ---
 import PublicLayout from '../layouts/PublicLayout.astro';
+
+// Mirrors renderDocs() in the canonical prototype (misc/clearcut-flow/assets/app.js).
+// The prototype documents two deployable services on port 3000 with required
+// provider keys. This implementation ships ONE portable `clearcut` image that
+// serves the public site, the workspace, and the API from a single process on
+// port 8000, and paid providers are disabled until an operator enables them.
+const sections = [
+  { id: 'quickstart', title: 'Quick start' },
+  { id: 'requirements', title: 'Requirements' },
+  { id: 'configuration', title: 'Configuration' },
+  { id: 'architecture', title: 'Architecture' },
+  { id: 'roles', title: 'Roles' },
+  { id: 'formats', title: 'Script formats' },
+  { id: 'deploy-gcp', title: 'Deploy to Google Cloud' },
+  { id: 'deploy-docker', title: 'Deploy to any Docker host' },
+  { id: 'updating', title: 'Updating' },
+];
+
+const requirements = [
+  ['Docker', 'REQUIRED', 'Docker Compose v2+ for local development and single-server deployments.'],
+  ['PostgreSQL 15+', 'REQUIRED', 'Stores users, organizations, scripts, evidence, decisions, and audit records. Included in docker compose.'],
+  ['Gemini API key', 'OPTIONAL', 'Enables detection, search planning, and evaluation. Disabled by default; the UI and API run without it and unresearched items stay unresolved.'],
+  ['Parallel API key', 'OPTIONAL', 'Enables live source retrieval with provenance. Disabled by default; enabling it requires an explicit cost acknowledgement.'],
+  ['Cloud Storage', 'OPTIONAL', 'For script uploads and report exports. Local filesystem works for development and single-host installs.'],
+  ['Firebase', 'OPTIONAL', 'Validated as an optional identity boundary. Built-in server sessions are the default and the only wired mode.'],
+  ['Email provider', 'OPTIONAL', 'SMTP or an API provider for invitations and notifications. In-app delivery works without email.'],
+];
+
+const roles = [
+  ['Owner', 'Organization lifecycle, protected settings, all governed review and report actions'],
+  ['Admin', 'Members, projects, providers, operational settings, governed review and report actions'],
+  ['Editor', 'Script import, research, assignments, comments, rewrite proposals'],
+  ['Reviewer', 'Evidence decisions, referrals, dispositions, rewrite approval, report generation and release'],
+  ['Viewer', 'Read-only access to authorized projects and released reports'],
+];
+
+const formats = [
+  ['Fountain', 'Deterministic', 'Plain-text screenplay syntax'],
+  ['FDX', 'Deterministic', 'Final Draft XML. DTDs and entities disabled.'],
+  ['Paste', 'Deterministic', 'Paste screenplay text directly.'],
+  ['PDF', 'Unavailable', 'Rejected with a typed error until a deterministic PDF parser is configured.'],
+];
+
+const gcp = [
+  ['Cloud Run', 'One public `clearcut` service serving the site, workspace, and API from a single image.'],
+  ['Cloud SQL', 'Managed PostgreSQL 15+ for evidence and audit, enabled with an explicit acknowledgement.'],
+  ['Cloud Storage', 'Script artifacts, snapshots, and exports.'],
+  ['Secret Manager', 'API keys and credentials.'],
+  ['Cloud Tasks', 'Durable async work: detection, research, selective rescan, export.'],
+  ['Cloud Scheduler', 'Scheduled reconciliation and recurring runs.'],
+];
 ---
 
-<PublicLayout title="ClearCut Documentation & Architecture">
-  <div class="page narrow">
-    <header class="page-head">
-      <span class="eyebrow">Architecture &amp; governance</span>
-      <h1 class="lp-h2">How ClearCut is built.</h1>
-      <p class="page-lede">
-        ClearCut uses Google ADK / Gemini for candidate detection and Parallel Search/Extract for
-        source-backed evidence gathering.
-      </p>
-    </header>
-    <div class="stack">
-      <article class="card">
-        <h2 class="lp-note-title">Mandatory Parallel Search</h2>
-        <p>The web research path always begins with real Parallel Search.</p>
-      </article>
-      <article class="card">
-        <h2 class="lp-note-title">Provenance mandatory</h2>
-        <p>Every claim cites an immutable snapshot with a SHA-256 hash.</p>
-      </article>
-      <article class="card">
-        <h2 class="lp-note-title">Human governance</h2>
-        <p>AI models never make binding legal conclusions or clearance decisions.</p>
-      </article>
+<PublicLayout title="Documentation">
+  <div class="docs-layout">
+    <div class="docs-main">
+      <header class="docs-section">
+        <p class="lp-section-eyebrow">Self-hosted setup</p>
+        <h1 id="route-heading" tabindex="-1" class="lp-h2">Documentation</h1>
+        <p class="lp-lede">
+          From zero to running in three commands. Deploy on Google Cloud, any Docker host, or
+          locally.
+        </p>
+      </header>
+
+      <section class="docs-section" id="doc-quickstart" aria-labelledby="doc-h-quickstart">
+        <h2 id="doc-h-quickstart" class="lp-h2">Quick start</h2>
+        <div class="lp-code-block">
+          <pre class="mono"><code>git clone https://github.com/captjay98/clearcut.git
+cd clearcut
+./clearcut start</code></pre>
+        </div>
+        <p class="gap-t-4">
+          Then open <span class="mono">http://localhost:8000</span>. The first user creates the
+          organization and becomes Owner.
+        </p>
+        <p class="small muted gap-t-2">
+          This starts a local PostgreSQL database, runs the one-shot migration service, and then
+          starts the single <span class="mono">clearcut</span> runtime, which serves the public
+          site, the <span class="mono">/app</span> workspace, and the
+          <span class="mono">/api</span> endpoints from one process.
+        </p>
+      </section>
+
+      <section class="docs-section" id="doc-requirements" aria-labelledby="doc-h-requirements">
+        <h2 id="doc-h-requirements" class="lp-h2">Requirements</h2>
+        <div class="lp-notes">
+          {
+            requirements.map(([what, tag, why]) => (
+              <article class="lp-note-card">
+                <header><strong>{what}</strong><span class="lp-note-tag">{tag}</span></header>
+                <p>{why}</p>
+              </article>
+            ))
+          }
+        </div>
+      </section>
+
+      <section class="docs-section" id="doc-configuration" aria-labelledby="doc-h-configuration">
+        <h2 id="doc-h-configuration" class="lp-h2">Configuration</h2>
+        <p>
+          Set environment variables for the <span class="mono">clearcut</span> runtime. Use a
+          local <span class="mono">.env</span> file for development; never commit API keys to
+          source control.
+        </p>
+        <div class="lp-code-block gap-t-4">
+          <pre class="mono"><code># Required
+DATABASE_URL=postgresql+asyncpg://clearcut:change-me@postgres:5432/clearcut
+
+# Deployment profile: local | portable | gcp
+CLEARCUT_DEPLOYMENT_PROFILE=local
+
+# Paid providers are disabled until acknowledged
+CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED=false
+GEMINI_API_KEY=
+PARALLEL_API_KEY=</code></pre>
+        </div>
+        <p class="small muted gap-t-4">
+          Enabling Gemini or Parallel requires both a credential and
+          <span class="mono">CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED=true</span>, plus a positive
+          per-provider concurrency limit. A missing or failing provider always becomes visible
+          review work rather than invented evidence.
+        </p>
+      </section>
+
+      <section class="docs-section" id="doc-architecture" aria-labelledby="doc-h-architecture">
+        <h2 id="doc-h-architecture" class="lp-h2">Architecture</h2>
+        <p>One immutable image and its dependencies:</p>
+        <div class="lp-code-block gap-t-4">
+          <pre class="mono"><code>clearcut       &#8594; one image: Astro site + TanStack workspace + FastAPI
+
+/            &#8594; public marketing site
+/app/*       &#8594; authenticated workspace
+/api/*       &#8594; application API
+/api/internal&#8594; protected service delivery
+
+PostgreSQL     &#8594; evidence, decisions, audit trail
+Object storage &#8594; scripts, snapshots, exports
+Gemini         &#8594; detection, evaluation, judge (opt-in)
+Parallel       &#8594; live source retrieval with provenance (opt-in)</code></pre>
+        </div>
+        <p class="small muted gap-t-4">
+          The API is one modular monolith with bounded modules &mdash; not backend microservices.
+          The migration job reuses the exact application image digest; application startup never
+          migrates.
+        </p>
+      </section>
+
+      <section class="docs-section" id="doc-roles" aria-labelledby="doc-h-roles">
+        <h2 id="doc-h-roles" class="lp-h2">Roles</h2>
+        <p>Five fixed roles, backend-enforced.</p>
+        <table class="data-table gap-t-4">
+          <caption class="sr-only">Role capabilities</caption>
+          <thead><tr><th scope="col">Role</th><th scope="col">Capabilities</th></tr></thead>
+          <tbody>
+            {roles.map(([role, can]) => (
+              <tr><td><strong>{role}</strong></td><td>{can}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="docs-section" id="doc-formats" aria-labelledby="doc-h-formats">
+        <h2 id="doc-h-formats" class="lp-h2">Script formats</h2>
+        <table class="data-table">
+          <caption class="sr-only">Accepted import formats</caption>
+          <thead>
+            <tr><th scope="col">Format</th><th scope="col">Parser</th><th scope="col">Notes</th></tr>
+          </thead>
+          <tbody>
+            {formats.map(([format, parser, notes]) => (
+              <tr><td><span class="mono">{format}</span></td><td>{parser}</td><td>{notes}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="docs-section" id="doc-deploy-gcp" aria-labelledby="doc-h-deploy-gcp">
+        <h2 id="doc-h-deploy-gcp" class="lp-h2">Deploy to Google Cloud</h2>
+        <p>The GCP Starter profile uses:</p>
+        <div class="lp-notes gap-t-4">
+          {
+            gcp.map(([what, why]) => (
+              <div class="lp-stack-item">
+                <strong class="small">{what}</strong>
+                <span class="small muted">{why}</span>
+              </div>
+            ))
+          }
+        </div>
+        <p class="small muted gap-t-4">
+          Infrastructure definitions live under <span class="mono">infra/gcp/</span>. They are
+          unapplied controls: publishing them does not prove that cloud resources, hosted URLs,
+          backups, or image digests exist. Cloud usage can incur charges.
+        </p>
+      </section>
+
+      <section class="docs-section" id="doc-deploy-docker" aria-labelledby="doc-h-deploy-docker">
+        <h2 id="doc-h-deploy-docker" class="lp-h2">Deploy to any Docker host</h2>
+        <ol class="stack-sm gap-t-2">
+          <li>Run the <span class="mono">clearcut</span> image and PostgreSQL with persistent volumes.</li>
+          <li>Put a TLS-terminating reverse proxy in front of the service.</li>
+          <li>
+            Leave storage on the local filesystem for a single host, or set an S3-compatible or
+            GCS bucket for durability.
+          </li>
+          <li>Provide a durable worker or queue so async jobs progress on their own.</li>
+          <li>Back up PostgreSQL and object storage regularly.</li>
+        </ol>
+      </section>
+
+      <section class="docs-section" id="doc-updating" aria-labelledby="doc-h-updating">
+        <h2 id="doc-h-updating" class="lp-h2">Updating</h2>
+        <div class="lp-code-block">
+          <pre class="mono"><code>cd clearcut
+git pull
+docker compose build
+docker compose up -d</code></pre>
+        </div>
+        <p class="small muted gap-t-4">
+          Migrations run as an explicit one-shot service against the same image digest, never on
+          application startup. Back up PostgreSQL before upgrading.
+        </p>
+      </section>
     </div>
+
+    <aside class="docs-rail" aria-label="On this page">
+      <div class="docs-rail-inner">
+        <span class="docs-rail-title">On this page</span>
+        {
+          sections.map((section) => (
+            <a class="docs-rail-link" href={`#doc-${section.id}`} data-section={`doc-${section.id}`}>
+              {section.title}
+            </a>
+          ))
+        }
+      </div>
+    </aside>
   </div>
 </PublicLayout>

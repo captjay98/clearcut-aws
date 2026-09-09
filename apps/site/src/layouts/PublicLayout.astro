@@ -10,6 +10,17 @@ const {
   title,
   description = "ClearCut - Screenplay pre-clearance evidence desk for independent cinema",
 } = Astro.props;
+
+const REPO_URL = "https://github.com/captjay98/clearcut";
+
+// The prototype varies its footer nav per surface so the current page is never a
+// self-link. Same behaviour here, derived from the route rather than hardcoded.
+const path = Astro.url.pathname.replace(/\/+$/, "") || "/";
+const footerLinks = [
+  { href: "/", label: "Home" },
+  { href: "/features", label: "Features" },
+  { href: "/docs", label: "Docs" },
+].filter((link) => link.href !== path);
 ---
 
 <!doctype html>
@@ -60,9 +71,9 @@ const {
           <span>ClearCut</span>
         </a>
         <nav class="public-nav" aria-label="Explore ClearCut">
-          <a href="/features">Features</a>
-          <a href="/docs">Docs</a>
-          <a href="/features">Product tour</a>
+          <a href="/features" aria-current={path === "/features" ? "page" : undefined}>Features</a>
+          <a href="/docs" aria-current={path === "/docs" ? "page" : undefined}>Docs</a>
+          <a href={REPO_URL} target="_blank" rel="noopener">Source</a>
         </nav>
         <div class="header-spacer"></div>
         <div class="header-actions public-header-actions">
@@ -81,26 +92,29 @@ const {
       <span class="revision-bar" aria-hidden="true"></span>
     </header>
 
-    <main id="main-content">
-      <slot />
-    </main>
+    <!-- The prototype scopes --lp-max / --lp-gutter and the page background on .lp
+         and keeps the footer inside it. The wrapper lives here rather than in each
+         page so the footer resolves the same custom properties it does in the mock. -->
+    <div class="lp">
+      <main id="main-content">
+        <slot />
+      </main>
 
-    <footer class="lp-footer">
-      <div class="lp-footer-brand">
-        <strong>ClearCut</strong>
-        <span>Open-source screenplay clearance evidence workspace.</span>
-      </div>
-      <nav class="lp-footer-nav" aria-label="Footer navigation">
-        <a href="/features">Features</a>
-        <a href="/docs">Docs</a>
-        <a href="https://github.com/captjay98/clearcut" target="_blank" rel="noopener">GitHub</a>
-        <a href="/features">Product tour</a>
-      </nav>
-      <p class="lp-footer-legal">
-        &copy; 2026 ClearCut &middot; MIT License &middot; Nothing here is legal advice; clearance
-        decisions belong to qualified humans.
-      </p>
-    </footer>
+      <footer class="lp-footer">
+        <div class="lp-footer-brand">
+          <strong>ClearCut</strong>
+          <span>Open-source, self-hosted screenplay clearance evidence workspace.</span>
+        </div>
+        <nav class="lp-footer-nav" aria-label="Footer navigation">
+          {footerLinks.map((link) => <a href={link.href}>{link.label}</a>)}
+          <a href={REPO_URL} target="_blank" rel="noopener">GitHub</a>
+        </nav>
+        <p class="lp-footer-legal">
+          &copy; 2026 ClearCut &middot; MIT License &middot; Nothing here is legal advice; clearance
+          decisions belong to qualified humans.
+        </p>
+      </footer>
+    </div>
 
     <script is:inline>
       (() => {

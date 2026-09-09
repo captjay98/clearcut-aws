@@ -1,39 +1,253 @@
 ---
 import PublicLayout from '../layouts/PublicLayout.astro';
 
-const categories = [
-  ['1. Real Persons (Living)', 'Defamation, privacy, and living public figure rights.'],
-  ['2. Real Persons (Deceased)', 'Right of publicity and post-mortem estate protections.'],
-  ['3. Corporate Entities', 'Company names, business registrations, and studio trademarks.'],
-  ['4. Products & Trademarks', 'Commercial brands, logos, product placements, and trade dress.'],
-  ['5. Copyrighted Works', 'Books, movies, TV shows, paintings, and artistic works.'],
-  ['6. Music & Lyrics', 'Song titles, lyrics, compositions, and master recording cues.'],
-  ['7. Locations & Landmarks', 'Protected buildings, private estates, and architectural rights.'],
-  ['8. Vehicles & Insignia', 'Police badges, military emblems, vehicle models, and logos.'],
-  ['9. Sensitive Historical Events', 'Recent tragedies, active crimes, and contested historical facts.'],
-  ['10. Contact Information', 'Phone numbers, email addresses, websites, and physical addresses.'],
+// Mirrors renderFeatures() in the canonical prototype (misc/clearcut-flow/assets/app.js).
+// Copy is corrected where the prototype describes capabilities this implementation
+// does not have: PDF import is rejected until a deterministic parser is
+// configured, and Parallel Monitor is not enabled.
+const bands = [
+  {
+    id: 'import',
+    tag: 'Script ingestion',
+    reversed: false,
+    title: 'Every draft becomes a permanent record.',
+    lead:
+      'Import Fountain, Final Draft, or pasted text. ClearCut parses the screenplay into stable elements and saves an immutable version the workflow never overwrites.',
+    points: [
+      ['Three parsers', 'Fountain, FDX, and paste, each deterministic. PDF is rejected until a deterministic parser is configured.'],
+      ['Stable spans', 'Scenes, characters, and dialogue get identities that survive rewrites.'],
+      ['Coloured stock', 'White pages, then blue, pink, yellow \u2014 the film convention for revisions.'],
+    ],
+    visual: `<div class="fv-sheet">
+      <span class="fv-stock" aria-hidden="true"></span>
+      <span class="fv-holes" aria-hidden="true"><i></i><i></i><i></i></span>
+      <p class="fv-page-no">2.</p>
+      <p class="fv-slug">INT. VELEZ CAMERA SHOP &mdash; DUSK</p>
+      <p class="fv-action">Dust hangs in the last bar of window light.</p>
+      <p class="fv-action"><span class="fv-mark">&#9650; MARK</span>She lifts the <span class="fv-flag is-high">Vega Camera</span> from a glass case.</p>
+      <p class="fv-char">MINA</p>
+      <p class="fv-dial">We only borrow the light.</p>
+      <div class="fv-caption"><span class="fv-chip">v1 &middot; white pages</span><span class="fv-chip mono">9c7a23d08e41</span></div>
+    </div>`,
+  },
+  {
+    id: 'research',
+    tag: 'Detection & evidence',
+    reversed: true,
+    title: 'Live sources, full provenance, conflicts intact.',
+    lead:
+      'Gemini detects items across ten clearance categories. Parallel retrieves current sources with authority tiers and retrieval timestamps. Disagreement is shown, never smoothed over.',
+    points: [
+      ['Ten categories', 'Brands, people, places, music, quotes, names, privacy, products, insignia, artwork.'],
+      ['Complete provenance', 'URL, retrieval time, excerpt, publisher class, stance, query identity, snapshot ID.'],
+      ['Zero evidence is unresolved', 'A failed search creates a review item \u2014 never a clear result.'],
+    ],
+    visual: `<div class="fv-stack">
+      <div class="fv-evidence">
+        <div class="fv-ev-top"><span class="fv-badge is-primary">Primary registry</span><span class="fv-time mono">Aug 19 &middot; 15:42</span></div>
+        <strong class="fv-ev-title">USPTO TSDR record 8850142</strong>
+        <p class="fv-ev-body">VEGA registered in class 009 for professional motion-picture camera equipment; status live.</p>
+        <div class="fv-ev-foot"><span class="fv-stance supports">Supports</span><span class="mono">SRC-001</span></div>
+      </div>
+      <div class="fv-evidence is-conflict">
+        <div class="fv-ev-top"><span class="fv-badge">Secondary</span><span class="fv-time mono">Aug 19 &middot; 15:43</span></div>
+        <strong class="fv-ev-title">Trade article, Camera Quarterly</strong>
+        <p class="fv-ev-body">Describes the VEGA mark as abandoned after the 2021 product line was retired.</p>
+        <div class="fv-ev-foot"><span class="fv-stance disagrees">Disagrees</span><span class="mono">SRC-003</span></div>
+      </div>
+      <div class="fv-conflict-note"><span aria-hidden="true">&#9888;</span>Conflict retained, not resolved automatically</div>
+    </div>`,
+  },
+  {
+    id: 'team',
+    tag: 'Workflow & collaboration',
+    reversed: false,
+    title: 'Every call has a name, a version, and a reason.',
+    lead:
+      'Five fixed roles with backend-enforced authorization. Assignments, due dates, threaded comments, and governed decisions that commit with their audit event in one transaction.',
+    points: [
+      ['Fixed roles', 'Owner, Admin, Editor, Reviewer, Viewer. Not UI-only gating.'],
+      ['Governed decisions', 'Verify, rule out, refer, rewrite \u2014 each with rationale and audit.'],
+      ['Threaded discussion', 'Replies, edit history, @mentions, and system action entries in one timeline.'],
+    ],
+    visual: `<div class="fv-stack">
+      <div class="fv-row">
+        <span class="fv-dot is-warning" aria-hidden="true"></span>
+        <div class="fv-row-main"><strong>Vega Camera</strong><span class="fv-row-meta"><span class="mono">CC-101</span><span>Scene 3</span><span class="fv-chip">4 sources &middot; conflict</span></span></div>
+        <div class="fv-row-aside"><span class="fv-avatar">MV</span><span class="fv-badge is-warning">Needs your call</span></div>
+      </div>
+      <div class="fv-comment">
+        <div class="fv-comment-head"><span class="fv-avatar sm">MV</span><strong>Mara Voss</strong><span class="fv-time">Aug 19</span></div>
+        <p>Primary registry says active, but the trade article says abandoned. Verifying on the registry.</p>
+      </div>
+      <div class="fv-comment is-reply">
+        <div class="fv-comment-head"><span class="fv-avatar sm">EC</span><strong>Eli Chen</strong><span class="fv-time">Aug 19</span></div>
+        <p>Check for a later filing first &mdash; that article is from 2021.</p>
+      </div>
+      <div class="fv-action-entry"><span aria-hidden="true">&#10227;</span>Mara Voss verified this source &middot; Aug 20</div>
+    </div>`,
+  },
+  {
+    id: 'watch',
+    tag: 'Revisions & selective rescan',
+    reversed: true,
+    title: 'A rewrite never edits the old copy.',
+    lead:
+      'Upload a revised draft and ClearCut commits it as the next immutable version, diffs it passage by passage, and re-checks only what changed \u2014 everything you settled stays settled.',
+    points: [
+      ['Immutable versions', 'A revision is a new version with a recorded predecessor. Earlier drafts are never overwritten.'],
+      ['Selective re-scan', 'Only modified and added passages re-run. Untouched evidence carries forward with its original provenance.'],
+      ['Confirmation required', 'Carried evidence is marked for human confirmation; a prior decision stays attached to the version that made it.'],
+    ],
+    visual: `<div class="fv-diff">
+      <div class="fv-diff-side">
+        <span class="fv-diff-label">v1 &middot; original <span class="fv-badge sm">Locked</span></span>
+        <p class="fv-diff-text"><del>Her relapse began after she left the East Mercer clinic, room 214.</del></p>
+        <span class="fv-diff-note">Blocked by the privacy rule.</span>
+      </div>
+      <div class="fv-diff-side is-new">
+        <span class="fv-diff-label">v2 &middot; approved <span class="fv-badge sm is-success">Current</span></span>
+        <p class="fv-diff-text"><ins>She struggled again after she left treatment.</ins></p>
+        <span class="fv-diff-note">Approved by Jamie Park with a recorded rationale.</span>
+      </div>
+      <div class="fv-diff-stats"><span><strong>1</strong> passage changed</span><span><strong>2</strong> flags re-checked</span><span><strong>8</strong> sources reused</span></div>
+    </div>`,
+  },
+  {
+    id: 'report',
+    tag: 'Reports & export',
+    reversed: false,
+    title: 'A package your lawyer can actually use.',
+    lead:
+      'Generation freezes every item, cited source, conflict, and human decision into one self-contained document, bound to a SHA-256 hash of its canonical manifest. Release is a separate human attestation. The released document never silently changes.',
+    points: [
+      ['Frozen snapshots', 'Post-release changes cannot alter a released report.'],
+      ['Full evidence chain', 'Per item: category, status, every claim with source URL, publisher, authority tier, stance, and quoted excerpt \u2014 plus conflicts, decisions, and open items disclosed rather than hidden.'],
+      ['Deterministic HTML', 'One print-ready HTML file, byte-identical for identical input. Generated PDF output is not implemented; print to PDF from the browser.'],
+    ],
+    visual: `<div class="fv-report">
+      <div class="fv-report-head"><span class="fv-report-eyebrow">Screenplay Clearance Report</span><strong>Borrowed Light</strong><span class="fv-badge is-success sm">Released</span></div>
+      <div class="fv-exhibit-tabs"><span class="is-active">A &middot; Versions</span><span>B &middot; Flags</span><span>C &middot; Sources</span><span>D &middot; Decisions</span><span>E &middot; Trust</span></div>
+      <table class="fv-table"><thead><tr><th>Version</th><th>Source</th><th>Snapshot</th></tr></thead><tbody>
+        <tr><td>v2</td><td>Approved rewrite</td><td class="mono">b2fd7a61c918</td></tr>
+        <tr><td>v1</td><td>FDX import</td><td class="mono">9c7a23d08e41</td></tr>
+      </tbody></table>
+      <div class="fv-binding"><span class="fv-binding-label">Binding</span><span class="mono">script v2 &middot; policy 3.2 &middot; rubric 2.4</span></div>
+    </div>`,
+  },
+  {
+    id: 'security',
+    tag: 'Security & governance',
+    reversed: true,
+    title: 'Protected rules only a person can change.',
+    lead:
+      'Permissions, approval policy, category definitions, source-authority tiers, and legal-boundary language are human-only and Owner-governed. No automated process touches them.',
+    points: [
+      ['Same-transaction audit', 'Every governed action commits with its immutable AuditEvent.'],
+      ['Tenant isolation', 'Organization and project scope enforced in repositories, not just routes.'],
+      ['Hardened uploads', 'Magic-byte validation and FDX entity blocking on every import.'],
+    ],
+    visual: `<div class="fv-stack">
+      <table class="fv-table"><thead><tr><th>Role</th><th>Governed actions</th><th>Protected</th></tr></thead><tbody>
+        <tr><td><strong>Owner</strong></td><td><span class="fv-tick">&#10003;</span></td><td><span class="fv-tick">&#10003;</span></td></tr>
+        <tr><td><strong>Admin</strong></td><td><span class="fv-tick">&#10003;</span></td><td><span class="fv-lock">&#128274;</span></td></tr>
+        <tr><td><strong>Reviewer</strong></td><td><span class="fv-tick">&#10003;</span></td><td><span class="fv-lock">&#128274;</span></td></tr>
+        <tr><td><strong>Editor</strong></td><td><span class="fv-lock">&#128274;</span></td><td><span class="fv-lock">&#128274;</span></td></tr>
+        <tr><td><strong>Viewer</strong></td><td><span class="fv-lock">&#128274;</span></td><td><span class="fv-lock">&#128274;</span></td></tr>
+      </tbody></table>
+      <div class="fv-gate-note"><span aria-hidden="true">&#9878;</span>A suggestion to loosen the privacy rule was blocked automatically.</div>
+    </div>`,
+  },
+  {
+    id: 'trust',
+    tag: 'AI trust & evaluation',
+    reversed: false,
+    title: 'The system grades its own work \u2014 and shows you.',
+    lead:
+      'A separate judge model scores ten dimensions. Deterministic gates run first and a high score never overrides a blocker. Improvements go through regression, shadow, and canary with automatic rollback.',
+    points: [
+      ['Ten judged dimensions', 'Recall, grounding, authority, conflict, uncertainty, rewrites, re-scan, legal boundary, efficiency.'],
+      ['Deterministic gates first', 'Blockers cannot be overridden by a good score.'],
+      ['Bounded learning', 'Only query phrasing, examples, prompts, and preferences. Never permissions or policy.'],
+    ],
+    visual: `<div class="fv-stack">
+      <div class="fv-score-row">
+        <div class="fv-ring" style="--pct:90"><span>90</span></div>
+        <div><strong>Strong, no warnings</strong><p class="fv-score-note">Mean of 10 graded dimensions. Weakest: source freshness at 84.</p></div>
+      </div>
+      <div class="fv-gates">
+        <div class="fv-gate"><span>Claim grounding</span><span class="fv-badge is-success sm">Pass</span></div>
+        <div class="fv-gate"><span>Citation completeness</span><span class="fv-badge is-success sm">Pass</span></div>
+        <div class="fv-gate"><span>Legal boundary</span><span class="fv-badge is-success sm">Pass</span></div>
+        <div class="fv-gate"><span>Source freshness</span><span class="fv-badge is-warning sm">Warn</span></div>
+      </div>
+      <div class="fv-learn"><span class="fv-badge is-accent sm">Candidate</span>Better music searches &middot; 148/148 past cases pass &middot; +6.1% retrieval</div>
+    </div>`,
+  },
 ];
 ---
 
-<PublicLayout title="ClearCut Features & Ten Categories">
-  <div class="page narrow">
-    <header class="page-head">
-      <span class="eyebrow">Detection coverage</span>
-      <h1 class="lp-h2">Ten protected clearance categories.</h1>
-      <p class="page-lede">
-        ClearCut reads scene by scene across ten clearance categories, connecting each flagged
-        passage to retained source evidence.
+<PublicLayout title="Features">
+  <section class="feat-hero">
+    <div class="feat-hero-inner">
+      <p class="lp-eyebrow">
+        <span class="lp-kicker-mark" aria-hidden="true"></span>Everything ClearCut does
       </p>
-    </header>
-    <div class="lp-notes">
-      {
-        categories.map(([name, desc]) => (
-          <article class="card">
-            <h2 class="lp-note-title">{name}</h2>
-            <p>{desc}</p>
-          </article>
-        ))
-      }
+      <h1 id="route-heading" tabindex="-1" class="lp-h1">Built for evidence, not opinions.</h1>
+      <p class="lp-sub">
+        Seven capability areas, from script import through a reproducible clearance report. Every
+        one designed so a human stays accountable and the record survives scrutiny.
+      </p>
+      <nav class="feat-jump" aria-label="Jump to a capability area">
+        {bands.map((band) => <a href={`#feat-${band.id}`}>{band.tag}</a>)}
+      </nav>
     </div>
-  </div>
+  </section>
+
+  {
+    bands.map((band) => (
+      <section
+        class={`feat-band ${band.reversed ? 'is-reversed' : ''}`}
+        id={`feat-${band.id}`}
+        aria-labelledby={`feat-h-${band.id}`}
+      >
+        <div class="feat-band-copy">
+          <span class="lp-section-eyebrow">{band.tag}</span>
+          <h2 id={`feat-h-${band.id}`} class="lp-h2">{band.title}</h2>
+          <p class="lp-lede">{band.lead}</p>
+          <ul class="feat-points">
+            {band.points.map(([term, detail]) => (
+              <li><strong>{term}</strong><span>{detail}</span></li>
+            ))}
+          </ul>
+        </div>
+        <figure class="feat-band-visual" aria-hidden="true" set:html={band.visual} />
+      </section>
+    ))
+  }
+
+  <section class="lp-section lp-section-compact">
+    <aside class="lp-boundary" aria-label="ClearCut product boundary">
+      <span class="lp-boundary-label">Not legal advice</span>
+      <div>
+        <p>
+          ClearCut organizes evidence and records decisions. It does not give legal advice, clear
+          a work on its own, or replace counsel or an insurer&rsquo;s review.
+        </p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="lp-end" aria-labelledby="feat-close">
+    <div class="lp-end-inner">
+      <p class="lp-fadeout">FADE OUT.</p>
+      <h2 id="feat-close">See it working on a real screenplay.</h2>
+      <p>Walk through a complete fictional production &mdash; or deploy your own instance.</p>
+      <div class="lp-ctas lp-end-ctas">
+        <a class="button button-primary" href="/app/auth/sign-in">Explore the live demo</a>
+        <a class="button button-secondary" href="/docs">Read the docs</a>
+      </div>
+      <span class="lp-end-note">MIT License &middot; Self-hosted</span>
+    </div>
+  </section>
 </PublicLayout>
