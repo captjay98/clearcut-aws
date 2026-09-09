@@ -159,7 +159,7 @@ class VertexDetectionRuntime(ModelRuntimePort):
             error = DetectionSafeError(
                 code="invalid_response",
                 message="The detection provider returned an invalid structured response.",
-                retryable=False,
+                retryable=True,
             )
             return DetectionFailure(
                 error=error,

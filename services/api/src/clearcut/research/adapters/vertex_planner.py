@@ -125,7 +125,7 @@ class VertexResearchPlanner(ResearchPlannerPort):
                     message=(
                         "The research planner returned an invalid structured response."
                     ),
-                    retryable=False,
+                    retryable=True,
                 ),
                 latency_ms=latency_ms,
                 returned_model=returned_model,

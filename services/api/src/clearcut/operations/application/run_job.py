@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -102,6 +103,16 @@ class RunJobService:
             )
             return self._terminal_result_or_raise(failed, expected=RunStatus.FAILED)
         except Exception:
+            # The typed SafeJobError deliberately carries no internal detail, so
+            # log the real traceback here or an unexpected failure is undiagnosable.
+            logging.getLogger(__name__).exception(
+                "Job execution raised an unhandled exception: job_id=%s job_type=%s "
+                "org_id=%s project_id=%s",
+                job_id,
+                getattr(claimed, "job_type", None),
+                org_id,
+                project_id,
+            )
             failed = await self._repository.fail(
                 org_id=org_id,
                 project_id=project_id,
