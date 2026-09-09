@@ -324,14 +324,21 @@ async def test_upload_rejects_spoofed_oversized_and_mismatched_content() -> None
         assert spoofed.status_code == 415
         assert spoofed.json()["error"]["code"] == "validation_failed"
 
-        unsupported_pdf = await client.post(
+        # A file whose header passes magic-byte validation now reaches the parser,
+        # which is where a PDF that carries no readable screenplay is caught.
+        structurally_broken = await client.post(
             f"/api/v1/organizations/{org_id}/projects/{project_id}/"
             f"import-artifacts/{pdf_capability['capabilityId']}:finalize",
             headers={"X-Upload-Nonce": pdf_capability["nonce"]},
             files={"file": ("screenplay.pdf", b"%PDF-1.7 screenplay", "application/pdf")},
         )
-        assert unsupported_pdf.status_code == 415
-        assert unsupported_pdf.json()["error"]["code"] == "validation_failed"
+        assert structurally_broken.status_code == 200, structurally_broken.text
+        broken_parse = await client.post(
+            f"/api/v1/organizations/{org_id}/projects/{project_id}/"
+            f"import-artifacts/{structurally_broken.json()['data']['artifactId']}:parse"
+        )
+        assert broken_parse.status_code == 422, broken_parse.text
+        assert broken_parse.json()["error"]["code"] == "validation_failed"
 
         text_capability = await _create_capability(
             client,

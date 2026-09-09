@@ -61,6 +61,7 @@ function copyForPurpose(purpose: "initial" | "revision", nextVersionNumber: numb
 function contentTypeForFile(file: File): string {
   const lowerName = file.name.toLowerCase();
   if (lowerName.endsWith(".fdx")) return "application/xml";
+  if (lowerName.endsWith(".pdf")) return "application/pdf";
   return "text/plain";
 }
 
@@ -335,7 +336,7 @@ export function ScriptUploadModal({
                     onClick={() => setMode("file")}
                     aria-pressed={mode === "file"}
                   >
-                    File Upload (.Fountain, .FDX, .TXT)
+                    File Upload (.Fountain, .FDX, .PDF, .TXT)
                   </button>
                   <button
                     className="tab"
@@ -356,14 +357,17 @@ export function ScriptUploadModal({
                     <span className="empty-icon" aria-hidden="true">
                       ⌑
                     </span>
-                    <h3>Drag and drop a Fountain, Final Draft, or text screenplay</h3>
-                    <p>Up to 25MB. PDF import is unavailable until a deterministic parser is configured.</p>
+                    <h3>Drag and drop a Fountain, Final Draft, PDF, or text screenplay</h3>
+                    <p>
+                      Up to 25MB. A PDF must carry extractable text; scanned pages are
+                      reported, never guessed at.
+                    </p>
                     <label className="button button-secondary">
                       Browse Files
                       <input
                         type="file"
                         aria-label="Screenplay file"
-                        accept=".fountain,.fdx,.txt"
+                        accept=".fountain,.fdx,.pdf,.txt"
                         className="sr-only"
                         onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                       />

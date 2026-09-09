@@ -15,6 +15,7 @@ import uuid6
 from clearcut.scripts.adapters.fdx_parser import FdxParser
 from clearcut.scripts.adapters.fountain_parser import FountainParser
 from clearcut.scripts.adapters.paste_parser import PasteParser
+from clearcut.scripts.adapters.pdf_parser import PdfParser
 from clearcut.scripts.adapters.sql_import_repository import (
     AdjacentDiffRecord,
     ElementLineageRecord,
@@ -168,6 +169,7 @@ class ImportScriptService:
         self._fountain_parser = FountainParser()
         self._fdx_parser = FdxParser()
         self._paste_parser = PasteParser()
+        self._pdf_parser = PdfParser()
 
     async def create_upload_capability(
         self,
@@ -505,11 +507,6 @@ class ImportScriptService:
                 f"File size exceeds {MAX_SCRIPT_SIZE_BYTES} bytes.", status_code=413
             )
         lower_filename = filename.lower()
-        if lower_filename.endswith(".pdf") or "pdf" in content_type:
-            raise ImportValidationError(
-                "PDF import is unavailable until a deterministic PDF parser is configured.",
-                status_code=415,
-            )
         if lower_filename.endswith((".fountain", ".txt")) or content_type.startswith("text/"):
             try:
                 data.decode("utf-8")
@@ -540,9 +537,12 @@ class ImportScriptService:
         )
 
     def _parser_for(self, artifact: ImportArtifactRecord):
-        if artifact.filename.lower().endswith(".fdx"):
+        lower_filename = artifact.filename.lower()
+        if lower_filename.endswith(".fdx"):
             return self._fdx_parser
-        if artifact.filename.lower().startswith("paste-"):
+        if lower_filename.endswith(".pdf"):
+            return self._pdf_parser
+        if lower_filename.startswith("paste-"):
             return self._paste_parser
         return self._fountain_parser
 

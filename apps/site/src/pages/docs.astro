@@ -40,7 +40,7 @@ const formats = [
   ['Fountain', 'Deterministic', 'Plain-text screenplay syntax'],
   ['FDX', 'Deterministic', 'Final Draft XML. DTDs and entities disabled.'],
   ['Paste', 'Deterministic', 'Paste screenplay text directly.'],
-  ['PDF', 'Unavailable', 'Rejected with a typed error until a deterministic PDF parser is configured.'],
+  ['PDF', 'Deterministic', 'Layout-aware extraction. Elements recovered from screenplay indentation. Encrypted files and pages without extractable text are reported, never inferred.'],
 ];
 
 const gcp = [
