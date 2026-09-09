@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-export type Theme = "day-shoot" | "night-shoot" | "high-contrast";
+export type Theme = "script" | "night";
 
 interface ThemeContextType {
   theme: Theme;
@@ -10,15 +10,23 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// Migrate legacy stored values to the mock's two-theme vocabulary.
+function normalizeTheme(saved: string | null): Theme {
+  if (saved === "script" || saved === "day-shoot") {
+    return "script";
+  }
+  if (saved === "night" || saved === "night-shoot" || saved === "high-contrast") {
+    return "night";
+  }
+  return "script";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("clearcut_theme") as Theme | null;
-      if (saved === "day-shoot" || saved === "night-shoot" || saved === "high-contrast") {
-        return saved;
-      }
+      return normalizeTheme(localStorage.getItem("clearcut_theme"));
     }
-    return "day-shoot";
+    return "script";
   });
 
   const applyTheme = (t: Theme) => {
@@ -26,9 +34,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       localStorage.setItem("clearcut_theme", t);
       document.documentElement.setAttribute("data-theme", t);
-      document.documentElement.classList.remove("day-shoot", "night-shoot", "high-contrast", "dark");
+      document.documentElement.classList.remove("script", "night", "dark");
       document.documentElement.classList.add(t);
-      if (t === "night-shoot" || t === "high-contrast") {
+      if (t === "night") {
         document.documentElement.classList.add("dark");
       }
     }
@@ -39,13 +47,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   const toggleTheme = () => {
-    if (theme === "day-shoot") {
-      applyTheme("night-shoot");
-    } else if (theme === "night-shoot") {
-      applyTheme("high-contrast");
-    } else {
-      applyTheme("day-shoot");
-    }
+    applyTheme(theme === "script" ? "night" : "script");
   };
 
   return (

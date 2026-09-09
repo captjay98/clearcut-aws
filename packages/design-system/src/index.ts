@@ -9,8 +9,8 @@ export * from "./adapters/dialog.tsx";
 export * from "./adapters/combobox.tsx";
 
 export const THEMES = {
-  DAY_SHOOT: "day-shoot",
-  NIGHT_SHOOT: "night-shoot",
+  SCRIPT: "script",
+  NIGHT: "night",
 } as const;
 
 export type Theme = typeof THEMES[keyof typeof THEMES];

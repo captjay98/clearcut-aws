@@ -2,21 +2,45 @@
 import PublicLayout from '../layouts/PublicLayout.astro';
 ---
 
-<PublicLayout title="Screenplay Pre-Clearance Evidence Desk">
-  <div class="max-w-5xl mx-auto px-4 py-16 text-center">
-    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-      Screenplay Pre-Clearance <span class="text-blue-600">Evidence Desk</span>
-    </h1>
-    <p class="mt-6 text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-      Parse screenplays, detect candidate items across ten protected categories, run mandatory Parallel Search with bounded Extract, and coordinate qualified human review.
-    </p>
-    <div class="mt-8 flex justify-center gap-4">
-      <a href="/app/auth/sign-in" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow">
-        Enter Clearance Workspace
-      </a>
-      <a href="/features" class="px-6 py-3 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium rounded-lg">
-        Explore 10 Categories
-      </a>
-    </div>
+<PublicLayout title="Screenplay clearance with a paper trail">
+  <div class="lp">
+    <section class="lp-hero" aria-labelledby="route-heading">
+      <div class="lp-hero-copy">
+        <p class="lp-eyebrow">
+          <span class="lp-kicker-mark" aria-hidden="true"></span>Screenplay clearance &middot; Open source &middot; Self-hosted
+        </p>
+        <h1 id="route-heading" tabindex="-1" class="lp-h1">
+          Clear the script before it becomes a production problem.
+        </h1>
+        <p class="lp-sub">
+          ClearCut finds brands, people, places, music, and other clearance concerns; brings
+          flagged passages together with retained source evidence; and keeps the team&rsquo;s final
+          call attached to the exact line. Open source and self-hosted &mdash; your scripts and
+          evidence never leave your servers.
+        </p>
+        <div class="lp-ctas">
+          <a class="button button-primary" href="/app/auth/sign-in">Explore the live demo</a>
+          <a
+            class="button button-secondary"
+            href="https://github.com/clearcut"
+            target="_blank"
+            rel="noopener"
+          >
+            View on GitHub
+          </a>
+        </div>
+        <dl class="lp-hero-proof" aria-label="What the sample project contains">
+          <div><dt>10</dt><dd>clearance categories checked</dd></div>
+          <div><dt>10</dt><dd>flagged passages, each with a source</dd></div>
+          <div><dt>4</dt><dd>where the sources disagree</dd></div>
+          <div><dt>1</dt><dd>blocked until it is fixed</dd></div>
+        </dl>
+        <p class="lp-micro">
+          Pre-loaded with the fictional feature <strong>Borrowed Light</strong>. No account
+          required; nothing leaves your browser. See the <a href="/features">ten clearance
+          categories</a>.
+        </p>
+      </div>
+    </section>
   </div>
 </PublicLayout>

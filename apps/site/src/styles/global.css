@@ -1,6 +1,15 @@
-/* Design-system tokens first so the theme custom properties resolve, then the
-   Tailwind utility layers the marketing pages are authored against. */
-@import "@clearcut/design-system/tokens.css";
+/* Declare the cascade-layer order up front. Tailwind's own base/components/
+   utilities layers are registered by the @tailwind directives below; the
+   design-system layer is declared last so its authored paper theme, marketing
+   classes, and component rules win over Tailwind's preflight. Astro's CSS
+   bundler otherwise collapses same-named design-system layers into Tailwind's,
+   which dropped the paper hero typography and dark primary button. Importing
+   the design system into its own dedicated `clearcut-ds` layer keeps every
+   token and class intact and ranked above Tailwind. */
+@layer base, components, utilities, clearcut-ds;
+
+/* Design-system tokens and classes (paper theme, marketing surface). */
+@import "@clearcut/design-system/tokens.css" layer(clearcut-ds);
 
 @tailwind base;
 @tailwind components;

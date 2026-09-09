@@ -13,11 +13,13 @@ const indexCssPath = path.join(webRoot, "src", "index.css");
 const tailwindConfigPath = path.join(webRoot, "tailwind.config.js");
 
 /**
- * The runtime emits exactly these three theme names (ThemeProvider + index.html).
- * The stylesheet MUST define the core visual tokens for each of the three so that
- * background, foreground and font never fall back to unstyled UA defaults.
+ * The runtime emits exactly these two theme names (ThemeProvider + index.html),
+ * matching the mock's vocabulary. The stylesheet MUST define the core visual
+ * tokens for each so that background, foreground and font never fall back to
+ * unstyled UA defaults.
  */
-const EMITTED_THEMES = ["day-shoot", "night-shoot", "high-contrast"] as const;
+const EMITTED_THEMES = ["script", "night"] as const;
+const ABSENT_THEMES = ["day-shoot", "night-shoot", "high-contrast"] as const;
 const CORE_TOKENS = ["--canvas", "--ink", "--sans"] as const;
 
 function tokenBlockFor(css: string, theme: string): string {
@@ -48,9 +50,13 @@ describe("Theme tokens resolve for every emitted theme", () => {
   }
 
   it("does not key core tokens to the stale theme names", () => {
-    // The old (broken) selectors were data-theme="script" / "night".
-    expect(tokenBlockFor(css, "script")).toBe("");
-    expect(tokenBlockFor(css, "night")).toBe("");
+    // The old (invented) selectors were day-shoot / night-shoot / high-contrast.
+    for (const theme of ABSENT_THEMES) {
+      expect(
+        tokenBlockFor(css, theme),
+        `stale theme block for data-theme="${theme}" should be removed`,
+      ).toBe("");
+    }
   });
 });
 
@@ -93,7 +99,7 @@ describe("Utility CSS pipeline generates every emitted utility/variant", () => {
 
   it("wires the emitted themes' dark mode to the class strategy", () => {
     const configSource = readFileSync(tailwindConfigPath, "utf8");
-    // ThemeProvider toggles a `dark` class for night-shoot/high-contrast, so the
+    // ThemeProvider toggles a `dark` class for the night theme, so the
     // pipeline must resolve dark: variants against a class, not the OS preference.
     expect(configSource).toMatch(/darkMode\s*:\s*["']class["']/);
   });

@@ -4,15 +4,9 @@ import { useTheme } from "./ThemeProvider";
 export function ThemeSwitcher() {
   const { theme, toggleTheme } = useTheme();
 
-  const label =
-    theme === "night-shoot"
-      ? "Night Shoot (Dark)"
-      : theme === "high-contrast"
-      ? "High Contrast"
-      : "Day Shoot (Light)";
+  const label = theme === "night" ? "Night (Dark)" : "Script (Light)";
 
-  const icon =
-    theme === "night-shoot" ? "🌙" : theme === "high-contrast" ? "👁️" : "☀️";
+  const icon = "◐";
 
   return (
     <button

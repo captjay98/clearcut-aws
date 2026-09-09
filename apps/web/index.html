@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="day-shoot" class="day-shoot">
+<html lang="en" data-theme="script" class="script">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -9,10 +9,10 @@
   <script>
     try {
       var saved = localStorage.getItem("clearcut_theme");
-      if (saved === "night-shoot" || saved === "high-contrast" || saved === "day-shoot") {
-        document.documentElement.setAttribute("data-theme", saved);
-        document.documentElement.className = saved + (saved !== "day-shoot" ? " dark" : "");
-      }
+      var migrated = { "day-shoot": "script", "night-shoot": "night", "high-contrast": "night" }[saved] || saved;
+      var theme = (migrated === "script" || migrated === "night") ? migrated : "script";
+      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.className = theme + (theme === "night" ? " dark" : "");
     } catch (e) {}
   </script>
 </head>

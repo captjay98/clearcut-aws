@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  // ThemeProvider toggles a `dark` class on <html> for night-shoot / high-contrast,
+  // ThemeProvider toggles a `dark` class on <html> for the night theme,
   // so dark: variants resolve against the class, never the OS preference.
   darkMode: "class",
   content: [
