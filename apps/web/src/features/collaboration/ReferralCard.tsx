@@ -1,5 +1,7 @@
 import type { ItemCapability, ItemReferral } from "@clearcut/contracts";
 import React, { useState } from "react";
+import { Badge, Banner, Card } from "../../components/ds";
+import { humanizeStatus } from "../clearance/itemPresentation";
 
 export interface ReferralCardProps {
   itemId: string;
@@ -53,37 +55,38 @@ function ReferralAcknowledgementForm({
   };
 
   return (
-    <form onSubmit={handleAcknowledge} className="mt-3 space-y-2 border-t border-slate-800 pt-3">
-      <label htmlFor={`referral-response-${referralId}`} className="block text-slate-400">
-        Referral response
-      </label>
-      <textarea
-        id={`referral-response-${referralId}`}
-        rows={2}
-        required
-        value={response}
-        onChange={(event) => setResponse(event.target.value)}
-        className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-      />
-      <label htmlFor={`acknowledgement-rationale-${referralId}`} className="block text-slate-400">
-        Acknowledgement rationale
-      </label>
-      <textarea
-        id={`acknowledgement-rationale-${referralId}`}
-        rows={2}
-        required
-        value={rationale}
-        onChange={(event) => setRationale(event.target.value)}
-        className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-      />
-      {error ? <p role="alert" className="text-red-400">{error}</p> : null}
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="rounded bg-slate-700 px-3 py-1.5 font-semibold text-white disabled:opacity-50"
-      >
-        {isSubmitting ? "Acknowledging…" : "Acknowledge Referral"}
-      </button>
+    <form onSubmit={handleAcknowledge} className="stack-sm gap-t-4">
+      <div className="divider" />
+      <div className="field">
+        <label className="field-label" htmlFor={`referral-response-${referralId}`}>
+          Referral response
+        </label>
+        <textarea
+          id={`referral-response-${referralId}`}
+          rows={2}
+          required
+          value={response}
+          onChange={(event) => setResponse(event.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label className="field-label" htmlFor={`acknowledgement-rationale-${referralId}`}>
+          Acknowledgement rationale
+        </label>
+        <textarea
+          id={`acknowledgement-rationale-${referralId}`}
+          rows={2}
+          required
+          value={rationale}
+          onChange={(event) => setRationale(event.target.value)}
+        />
+      </div>
+      {error && <Banner tone="is-danger" icon="⚠" message={error} role="alert" />}
+      <div className="cluster">
+        <button className="button button-secondary button-sm" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Acknowledging…" : "Acknowledge Referral"}
+        </button>
+      </div>
     </form>
   );
 }
@@ -124,53 +127,58 @@ export function ReferralCard({
   };
 
   return (
-    <div
-      data-testid="referral-section"
-      data-item-id={itemId}
-      className="space-y-4 font-sans"
-    >
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs font-bold text-slate-300 uppercase tracking-wider">
-        <span>Specialist Referral Workflow</span>
-        <span className="text-[10px] text-slate-500 font-normal">
-          Multi-Discipline Sign-Off
-        </span>
+    <section className="section" data-testid="referral-section" data-item-id={itemId}>
+      <div className="section-head">
+        <div>
+          <h2>Specialist referral</h2>
+          <p>
+            A referral hands the question to a named role and is acknowledged by a different
+            accountable person.
+          </p>
+        </div>
       </div>
 
       {referrals.length > 0 ? (
-        <ol aria-label="Referral history" className="space-y-2">
+        <ol
+          className="stack gap-b-4"
+          aria-label="Referral history"
+          style={{ listStyle: "none", padding: 0 }}
+        >
           {referrals.map((referral) => (
-            <li
-              key={referral.referralId}
-              className="rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300"
-            >
-              <div className="flex justify-between gap-3">
-                <span className="font-semibold text-white">{referral.targetRole}</span>
-                <span className="uppercase text-slate-500">{referral.status}</span>
+            <li className="source-card" key={referral.referralId}>
+              <div className="cluster-between">
+                <strong className="small">{humanizeStatus(referral.targetRole)}</strong>
+                {/* The server's own status token, shown verbatim rather than
+                    prettified, so what is displayed is what was recorded. */}
+                <Badge tone={referral.status === "acknowledged" ? "is-success" : "is-warning"}>
+                  {referral.status}
+                </Badge>
               </div>
-              <p className="mt-2">{referral.question}</p>
-              {referral.notes ? <p className="mt-1 text-slate-400">{referral.notes}</p> : null}
-              {referral.status !== "acknowledged" && onAcknowledge ? (
+              <p className="small gap-t-2">{referral.question}</p>
+              {referral.notes && <p className="small muted gap-t-1">{referral.notes}</p>}
+              {referral.status !== "acknowledged" && onAcknowledge && (
                 <ReferralAcknowledgementForm
                   referralId={referral.referralId}
                   onAcknowledge={onAcknowledge}
                 />
-              ) : null}
+              )}
             </li>
           ))}
         </ol>
       ) : (
-        <p className="text-xs text-slate-500">No referrals have been recorded.</p>
+        <p className="small muted gap-b-4">No referrals have been recorded.</p>
       )}
 
-      <div className="p-4 bg-slate-900 border border-slate-800 rounded-lg space-y-3 shadow-sm">
-        <p tabIndex={0} className="text-xs text-slate-400">
+      <Card>
+        <p className="small muted" tabIndex={0}>
           {referralCapability?.explanation ??
             "Referral capability is unavailable for this item and current role."}
         </p>
-        <form onSubmit={handleRefer} className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label htmlFor="target-role" className="block text-slate-400 font-medium mb-1">
+
+        <form onSubmit={handleRefer} className="gap-t-4">
+          <div className="form-grid">
+            <div className="field">
+              <label className="field-label" htmlFor="target-role">
                 Refer To Specialist Role
               </label>
               <select
@@ -178,61 +186,60 @@ export function ReferralCard({
                 value={targetRole}
                 disabled={!referralAllowed}
                 onChange={(event) => setTargetRole(event.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option value="reviewer">Project Reviewer (Internal)</option>
                 <option value="counsel">Legal Counsel (External/Production)</option>
-                <option value="trademark_specialist">Trademark & Title Specialist</option>
+                <option value="trademark_specialist">Trademark &amp; Title Specialist</option>
                 <option value="music_supervisor">Music Clearance Supervisor</option>
                 <option value="lead_producer">Lead Production Executive</option>
               </select>
             </div>
+
+            <div className="field field-full">
+              <label className="field-label" htmlFor="referral-question">
+                Referral question
+              </label>
+              <textarea
+                id="referral-question"
+                required
+                rows={2}
+                value={question}
+                disabled={!referralAllowed}
+                onChange={(event) => setQuestion(event.target.value)}
+              />
+            </div>
+
+            <div className="field field-full">
+              <label className="field-label" htmlFor="referral-rationale">
+                Accountable rationale
+              </label>
+              <textarea
+                id="referral-rationale"
+                required
+                rows={2}
+                value={rationale}
+                disabled={!referralAllowed}
+                onChange={(event) => setRationale(event.target.value)}
+              />
+            </div>
           </div>
 
-          <div>
-            <label htmlFor="referral-question" className="block text-slate-400 font-medium mb-1 text-xs">
-              Referral question
-            </label>
-            <textarea
-              id="referral-question"
-              required
-              rows={2}
-              value={question}
-              disabled={!referralAllowed}
-              onChange={(event) => setQuestion(event.target.value)}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </div>
+          {error && (
+            <Banner tone="is-danger" icon="⚠" message={error} role="alert" className="gap-t-3" />
+          )}
 
-          <div>
-            <label htmlFor="referral-rationale" className="block text-slate-400 font-medium mb-1 text-xs">
-              Accountable rationale
-            </label>
-            <textarea
-              id="referral-rationale"
-              required
-              rows={2}
-              value={rationale}
-              disabled={!referralAllowed}
-              onChange={(event) => setRationale(event.target.value)}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </div>
-
-          {error ? <p role="alert" className="text-xs text-red-400">{error}</p> : null}
-
-          <div className="flex justify-end">
+          <div className="cluster gap-t-4" style={{ justifyContent: "flex-end" }}>
             <button
+              className="button button-primary"
               type="submit"
               disabled={isSubmitting || !onRefer || !referralAllowed}
-              className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 text-white font-bold text-xs rounded shadow"
             >
               {isSubmitting ? "Submitting…" : "Send Formal Referral"}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </Card>
+    </section>
   );
 }
 

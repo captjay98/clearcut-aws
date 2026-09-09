@@ -552,7 +552,12 @@ export function ItemDetailRoute() {
         </Section>
       )}
 
-      <RewriteProposalCard originalText={item.contextText ?? item.entityName} />
+      <RewriteProposalCard
+        orgSlug={orgSlug}
+        projectId={projectId}
+        itemId={item.itemId}
+        originalText={item.contextText ?? item.entityName}
+      />
       <ReferralCard
         itemId={item.itemId}
         referrals={item.referrals}
