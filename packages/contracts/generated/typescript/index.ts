@@ -256,6 +256,7 @@ export interface ItemEvidence {
 
 export interface AssignClearanceItemRequest {
   assigneeId?: UUIDv7 | null;
+  dueAt?: string | null;
   expectedVersion: number;
   intentHash: string;
 }

@@ -169,6 +169,7 @@ async def test_commit_cas_miss_on_present_item_raises_stale_version_conflict() -
                 project_id=project_id,
                 item_id=item_id,
                 assigned_to_user_id=None,
+                due_at=None,
                 # The row is at version 1; guard on a version that no longer
                 # matches so the CAS misses while the item still exists.
                 expected_version=99,
@@ -221,6 +222,7 @@ async def test_commit_cas_miss_after_concurrent_version_bump_is_stale_conflict()
                 project_id=project_id,
                 item_id=item_id,
                 assigned_to_user_id=None,
+                due_at=None,
                 expected_version=loaded.version,
                 resulting_version=loaded.version + 1,
             )
@@ -275,6 +277,7 @@ async def test_commit_cas_miss_after_row_deletion_is_not_found() -> None:
                 project_id=project_id,
                 item_id=item_id,
                 assigned_to_user_id=None,
+                due_at=None,
                 expected_version=loaded.version,
                 resulting_version=loaded.version + 1,
             )

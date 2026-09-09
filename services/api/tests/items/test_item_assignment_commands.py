@@ -815,3 +815,102 @@ async def test_authoritative_audit_failure_rolls_back_version_and_receipt(
     assert row["version"] == 1
     assert row["assigned_to_user_id"] is None
     assert receipts == 0
+
+
+
+async def test_assign_with_due_at_persists_and_clearing_it_works() -> None:
+    """An optional ``dueAt`` is persisted onto the item in the same governed
+    transaction as the assignment, is recorded in the authoritative audit
+    payload, and a later assignment with ``dueAt`` null clears it. The due date
+    is operational scheduling; it never changes assignee semantics."""
+    await init_and_seed_db(seed_if_empty=False)
+    due_at = datetime(2030, 6, 1, 12, 0, tzinfo=UTC)
+    async with await _client() as client:
+        fixture = await _setup(client, suffix="due-at")
+        await _set_membership_role(org_id=fixture.org_id, user_id=fixture.actor_id, role="reviewer")
+
+        # Assign with a due date at version 1.
+        first = await _post_assign(
+            client,
+            fixture,
+            body={
+                "assigneeId": str(fixture.assignee_id),
+                "dueAt": due_at.isoformat(),
+                "expectedVersion": 1,
+                "intentHash": _intent_hash("assign", str(fixture.assignee_id), "1"),
+            },
+            idempotency_key=_idempotency_key("due-at-set"),
+        )
+        assert first.status_code == 200, first.text
+        assert first.json()["data"]["version"] == 2
+        assert first.json()["data"]["assignedTo"] == str(fixture.assignee_id)
+
+        # The due date is persisted onto the row and recorded in the audit payload.
+        async with session_scope() as session:
+            persisted_due = (
+                await session.execute(
+                    sa.text("SELECT due_at FROM clearance_items WHERE id = :id"),
+                    {"id": str(fixture.item_id)},
+                )
+            ).scalar_one()
+            audit_payload = (
+                await session.execute(
+                    sa.text(
+                        "SELECT payload_redacted FROM authoritative_audit_events "
+                        "WHERE target_id = :item_id AND action = 'item.assignment.assigned' "
+                        "ORDER BY occurred_at DESC LIMIT 1"
+                    ),
+                    {"item_id": str(fixture.item_id)},
+                )
+            ).scalar_one()
+        assert persisted_due is not None
+        # Compare instant-in-time; storage may normalize timezone representation.
+        assert _as_utc(persisted_due) == due_at
+        assert _payload_due_at(audit_payload) == due_at.isoformat()
+
+        # Re-assign at the advanced version with dueAt null to clear it.
+        cleared = await _post_assign(
+            client,
+            fixture,
+            body={
+                "assigneeId": str(fixture.assignee_id),
+                "dueAt": None,
+                "expectedVersion": 2,
+                "intentHash": _intent_hash("assign", str(fixture.assignee_id), "2"),
+            },
+            idempotency_key=_idempotency_key("due-at-clear"),
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["data"]["version"] == 3
+        # Assignee is unchanged; only the due date was cleared.
+        assert cleared.json()["data"]["assignedTo"] == str(fixture.assignee_id)
+
+    async with session_scope() as session:
+        row = (
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT due_at, assigned_to_user_id FROM clearance_items WHERE id = :id"
+                    ),
+                    {"id": str(fixture.item_id)},
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["due_at"] is None
+    assert UUID(str(row["assigned_to_user_id"])) == fixture.assignee_id
+
+
+def _as_utc(value: object) -> datetime:
+    parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
+    assert isinstance(parsed, datetime)
+    return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _payload_due_at(payload: object) -> str | None:
+    import json
+
+    data = json.loads(payload) if isinstance(payload, str) else payload
+    assert isinstance(data, dict)
+    return data.get("dueAt")

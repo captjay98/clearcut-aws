@@ -75,7 +75,9 @@ _ACTIVE_MEMBER_EXISTS = sa.text(
 _ASSIGN_ITEM = sa.text(
     """
     UPDATE clearance_items
-    SET version = :resulting_version, assigned_to_user_id = :assigned_to_user_id
+    SET version = :resulting_version,
+        assigned_to_user_id = :assigned_to_user_id,
+        due_at = :due_at
     WHERE id = :item_id AND org_id = :org_id AND project_id = :project_id
       AND version = :expected_version
     """
@@ -149,6 +151,7 @@ class SqlItemCommandRepository:
         project_id: UUID,
         item_id: UUID,
         assigned_to_user_id: UUID | None,
+        due_at: datetime | None,
         expected_version: int,
         resulting_version: int,
     ) -> None:
@@ -159,6 +162,7 @@ class SqlItemCommandRepository:
                 "assigned_to_user_id": (
                     str(assigned_to_user_id) if assigned_to_user_id is not None else None
                 ),
+                "due_at": due_at,
                 "item_id": str(item_id),
                 "org_id": str(org_id),
                 "project_id": str(project_id),

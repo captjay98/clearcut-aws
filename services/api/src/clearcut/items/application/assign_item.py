@@ -64,8 +64,9 @@ class AssignItemCommand:
 
     ``actor_role`` is the server-derived membership role; capability is never
     taken from the client. ``assignee_id`` is the target member, or ``None`` to
-    unassign. ``expected_version`` and ``intent_hash`` are the optimistic-
-    concurrency and intent inputs the shared kernel validates.
+    unassign. ``due_at`` is the optional due date to persist, or ``None`` to
+    leave/clear it as specified. ``expected_version`` and ``intent_hash`` are
+    the optimistic-concurrency and intent inputs the shared kernel validates.
     """
 
     org_id: UUID
@@ -74,6 +75,7 @@ class AssignItemCommand:
     actor_id: UUID
     actor_role: str
     assignee_id: UUID | None
+    due_at: datetime | None
     expected_version: int
     intent_hash: str
     idempotency_key: str
@@ -164,6 +166,7 @@ class AssignItemService:
             project_id=command.project_id,
             item_id=command.item_id,
             assigned_to_user_id=command.assignee_id,
+            due_at=command.due_at,
             expected_version=item.version,
             resulting_version=resulting_version,
         )
@@ -225,6 +228,7 @@ class AssignItemService:
                     "assigneeId": (
                         str(command.assignee_id) if command.assignee_id is not None else None
                     ),
+                    "dueAt": (command.due_at.isoformat() if command.due_at is not None else None),
                     "expectedVersion": item.version,
                     "resultingVersion": resulting_version,
                 }

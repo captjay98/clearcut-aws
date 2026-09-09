@@ -119,6 +119,7 @@ class ItemCommandRepositoryPort(Protocol):
         project_id: UUID,
         item_id: UUID,
         assigned_to_user_id: UUID | None,
+        due_at: datetime | None,
         expected_version: int,
         resulting_version: int,
     ) -> None:
@@ -126,7 +127,8 @@ class ItemCommandRepositoryPort(Protocol):
 
         The item update is a version-guarded compare-and-swap on
         ``expected_version``; the caller has already classified the command as a
-        fresh write at that version. All statements run inside the caller's
+        fresh write at that version. ``due_at`` is persisted onto the same row in
+        the same statement (``None`` clears it). All statements run inside the caller's
         transaction. When the compare-and-swap affects zero rows the row moved
         concurrently: a still-present item raises a typed
         :class:`~clearcut.commanding.errors.StaleVersionConflictError`, while a

@@ -4908,6 +4908,16 @@ components:
           anyOf:
             - $ref: '#/components/schemas/UUIDv7'
             - type: 'null'
+        dueAt:
+          description: >-
+            Optional due date for the assignment as an ISO 8601 date-time, or
+            null to clear it. Absent or null leaves/clears the due date as
+            specified, consistent with how assigneeId behaves; a due date is
+            operational scheduling and never asserts a legal conclusion.
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
         expectedVersion:
           type: integer
           minimum: 0

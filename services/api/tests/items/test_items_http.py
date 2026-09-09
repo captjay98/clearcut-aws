@@ -178,6 +178,10 @@ async def test_list_and_get_clearance_items_enforce_tenant_and_project_scope() -
             "status": "unresolved",
             "disposition": "undisposed",
             "claimCount": 0,
+            "severity": "Medium",
+            "confidence": 70,
+            "sourcesDisagree": False,
+            "displayStatus": "Needs research",
         }
     ]
     assert listed.json()["meta"]["totalCount"] == 1

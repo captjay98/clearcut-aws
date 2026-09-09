@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -38,18 +39,75 @@ _read_repository = SqlItemReadRepository()
 
 LIST_ITEMS_QUERY = sa.text("""
     SELECT i.id, i.project_id, i.version_id, i.version, i.category, i.text, i.status,
-           i.disposition_status, i.assigned_to_user_id, e.text AS context_text,
+           i.disposition_status, i.assigned_to_user_id, i.due_at,
+           e.text AS context_text, e.scene_number AS scene_number,
+           dc.uncertainty AS uncertainty,
            (SELECT count(*) FROM evidence_claims c
             WHERE c.item_id = i.id
               AND c.org_id = i.org_id
-              AND c.project_id = i.project_id) as claims_count
+              AND c.project_id = i.project_id) as claims_count,
+           (SELECT count(*) FROM evidence_claims c
+            WHERE c.item_id = i.id AND c.org_id = i.org_id
+              AND c.project_id = i.project_id AND c.stance = 'disagrees') as disagree_count
     FROM clearance_items i
     LEFT JOIN script_elements e ON e.id = i.element_id
+    LEFT JOIN detection_candidates dc ON dc.id = i.detection_candidate_id
     WHERE i.org_id = :org_id AND i.project_id = :project_id
       AND (CAST(:category AS text) IS NULL OR i.category = CAST(:category AS text))
       AND (CAST(:item_status AS text) IS NULL OR i.status = CAST(:item_status AS text))
     ORDER BY e.ordinal ASC, i.created_at ASC
 """)
+
+# Categories whose clearance failure most often blocks a production.
+_HIGH_RISK_CATEGORIES = {
+    "real_persons_living",
+    "products_and_trademarks",
+    "copyrighted_works",
+    "music_and_lyrics",
+}
+
+# Detection emits an ordinal uncertainty; invert it to a comparable confidence
+# for the worklist. These are derived presentation values, not stored facts.
+_CONFIDENCE_BY_UNCERTAINTY = {"low": 90, "medium": 70, "high": 45}
+
+
+def _derive_display_status(
+    status: str,
+    disposition: str | None,
+    claim_count: int,
+    sources_disagree: bool,
+) -> str:
+    """Map the domain state triple to the worklist's human-readable status.
+
+    The raw `status` is preserved on the item; this is the reviewer-facing label
+    the mock worklist shows and filters on. A disposition is a settled human
+    decision and always wins over the automated state beneath it.
+    """
+    disposition_labels = {
+        "approved_as_is": "Accepted",
+        "rewrite_required": "Rewrite required",
+        "refer_to_counsel": "With specialist",
+        "declined": "Declined",
+    }
+    if disposition and disposition not in {"undisposed", ""}:
+        return disposition_labels.get(disposition, "Resolved")
+    if status in {"cleared", "resolved", "verified"}:
+        return "Verified"
+    if sources_disagree:
+        return "Sources disagree"
+    if claim_count > 0:
+        return "Needs your call"
+    return "Could not verify" if status == "researched" else "Needs research"
+
+
+def _derive_severity(category: str, uncertainty: str | None) -> str:
+    """Worst-first triage hint from category risk and detection uncertainty."""
+    high_risk = category in _HIGH_RISK_CATEGORIES
+    if uncertainty == "high":
+        return "High" if high_risk else "Medium"
+    if uncertainty == "medium":
+        return "High" if high_risk else "Medium"
+    return "Medium" if high_risk else "Low"
 
 
 class AssignClearanceItemBody(BaseModel):
@@ -57,11 +115,14 @@ class AssignClearanceItemBody(BaseModel):
 
     ``assigneeId`` is the target member; ``null`` unassigns the item. Assignment
     is operational, so both assign and unassign are first-class outcomes.
+    ``dueAt`` is an optional ISO 8601 due date; ``null`` or absent leaves/clears
+    the due date as specified, consistent with how ``assigneeId`` behaves.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     assignee_id: Annotated[str | None, Field(alias="assigneeId")] = None
+    due_at: Annotated[datetime | None, Field(alias="dueAt")] = None
     expected_version: Annotated[int, Field(ge=1, alias="expectedVersion")]
     intent_hash: Annotated[str, Field(min_length=1, alias="intentHash")]
 
@@ -104,6 +165,7 @@ async def list_items(
         rows = result.fetchall()
         items = []
         for r in rows:
+            confidence = _CONFIDENCE_BY_UNCERTAINTY.get(r.uncertainty or "", 70)
             item = {
                 "itemId": str(r.id),
                 "projectId": str(r.project_id),
@@ -114,7 +176,20 @@ async def list_items(
                 "status": r.status,
                 "disposition": r.disposition_status or "undisposed",
                 "claimCount": r.claims_count,
+                "severity": _derive_severity(r.category, r.uncertainty),
+                "confidence": confidence,
+                "sourcesDisagree": bool(r.disagree_count),
+                "displayStatus": _derive_display_status(
+                    r.status,
+                    r.disposition_status,
+                    r.claims_count,
+                    bool(r.disagree_count),
+                ),
             }
+            if r.scene_number is not None:
+                item["scene"] = int(r.scene_number)
+            if r.due_at is not None:
+                item["dueAt"] = r.due_at.isoformat()
             if r.context_text is not None:
                 item["contextText"] = r.context_text
             if r.assigned_to_user_id is not None:
@@ -251,6 +326,7 @@ async def assign_item(
         actor_id=scope.user_id,
         actor_role=scope.role or "",
         assignee_id=parsed_assignee_id,
+        due_at=body.due_at,
         expected_version=body.expected_version,
         intent_hash=body.intent_hash,
         idempotency_key=idempotency_key,

@@ -224,6 +224,7 @@ class AssignClearanceItemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     assigneeId: Optional[UUIDv7] = None
+    dueAt: Optional[str] = None
     expectedVersion: Annotated[int, Field(ge=0)]
     intentHash: Annotated[str, Field(min_length=1)]
 
