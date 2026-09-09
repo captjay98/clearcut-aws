@@ -1,5 +1,80 @@
 ---
 import PublicLayout from '../layouts/PublicLayout.astro';
+
+// Mirrors LP_EVIDENCE in the canonical prototype (misc/clearcut-flow/assets/app.js).
+// Each flag in the sample screenplay page maps to one source-evidence card; the
+// first is shown by default and the rest are revealed by choosing their term.
+const evidence = [
+  {
+    id: 'CC-101',
+    mark: 'MARK',
+    term: 'Vega Camera',
+    before: 'She lifts the ',
+    after: ' from a glass case.',
+    authority: 'primary registry',
+    source: 'USPTO TSDR record 8850142',
+    claim: 'VEGA is registered for professional motion-picture camera equipment in class 009.',
+    conflict: 'A trade article describes the mark as abandoned; the primary registry record is current.',
+    decision: 'Waiting on a human call',
+    tone: 'is-open',
+  },
+  {
+    id: 'CC-108',
+    mark: 'ART',
+    term: 'Glass House poster',
+    before: 'A faded ',
+    after: ' watches from the wall.',
+    authority: 'primary registry',
+    source: 'Copyright Office record PA000224189',
+    claim: 'Poster artwork is registered to Halcyon Archive LLC.',
+    conflict: '',
+    decision: 'Verified by Mara Voss',
+    tone: 'is-cleared',
+  },
+  {
+    id: 'CC-104',
+    mark: 'MUSIC',
+    term: 'Blue Monday',
+    before: 'A radio host announces \u201c',
+    after: '\u201d over the PA. Mina reaches for the dial.',
+    authority: 'primary',
+    source: 'PRO repertory search',
+    claim: 'Multiple compositions share the title. The lyric fragment match is inconclusive.',
+    conflict: 'No definitive publisher match from the supplied fragment.',
+    decision: 'Referred to a music specialist',
+    tone: 'is-referred',
+  },
+];
+
+const problems = [
+  [
+    'A familiar can on a desk',
+    'TRADEMARK',
+    'A recognizable package can become a clearance question long after the set is struck.',
+    'Flagged in scene context; registry source attached.',
+  ],
+  [
+    'A song playing on a radio',
+    'MUSIC',
+    'One cue can involve both the recording and the composition, with different owners and terms.',
+    'Publisher and recording-owner checks kept together.',
+  ],
+  [
+    'A character with a real person\u2019s name',
+    'PRIVACY',
+    'A close real-world match needs a documented review before the portrayal travels any further.',
+    'Public-record checks and the team\u2019s decision recorded.',
+  ],
+];
+
+const steps = [
+  ['Import', 'Paste or upload Fountain, FDX, or PDF. ClearCut creates a versioned snapshot the workflow never overwrites.'],
+  ['Detect', 'ClearCut reads scene by scene across ten clearance categories: brands, people, places, music, quotes, names, privacy, products, insignia, and artwork.'],
+  ['Research', 'Parallel retrieves current sources with authority tiers, retrieval timestamps, and provenance. Conflicts are shown, not hidden.'],
+  ['Decide', 'Your team verifies, rewrites, or refers. Every call is recorded with a name, the script version, and a reason.'],
+  ['Monitor', 'Sources change. ClearCut watches them and asks you to review \u2014 it never changes a decision on its own.'],
+  ['Report', 'A version-bound clearance report packages everything for lawyers, insurers, and distributors.'],
+];
 ---
 
 <PublicLayout title="Screenplay clearance with a paper trail">
@@ -22,7 +97,7 @@ import PublicLayout from '../layouts/PublicLayout.astro';
           <a class="button button-primary" href="/app/auth/sign-in">Explore the live demo</a>
           <a
             class="button button-secondary"
-            href="https://github.com/clearcut"
+            href="https://github.com/captjay98/clearcut"
             target="_blank"
             rel="noopener"
           >
@@ -52,53 +127,192 @@ import PublicLayout from '../layouts/PublicLayout.astro';
           <p class="lp-fade">FADE IN:</p>
           <p class="lp-slug">INT. VELEZ CAMERA SHOP &mdash; DUSK</p>
           <p class="lp-action">Dust hangs in the last bar of window light.</p>
-          <p class="lp-action lp-demo-line">
-            <span class="lp-margin-mark" aria-hidden="true">MARK</span>
-            <span class="lp-demo-copy">
-              She lifts the <span class="lp-flag lp-flag-live">Vega Camera</span> from a glass case.
-            </span>
-          </p>
-          <p class="lp-action lp-demo-line">
-            <span class="lp-margin-mark" aria-hidden="true">ART</span>
-            <span class="lp-demo-copy">
-              A faded <span class="lp-flag lp-flag-live">Glass House poster</span> watches from the wall.
-            </span>
-          </p>
-          <p class="lp-action lp-demo-line">
-            <span class="lp-margin-mark" aria-hidden="true">MUSIC</span>
-            <span class="lp-demo-copy">
-              A radio host announces &ldquo;<span class="lp-flag lp-flag-live">Blue Monday</span>&rdquo;
-              over the PA. Mina reaches for the dial.
-            </span>
-          </p>
+          {
+            evidence.map((flag, index) => (
+              <p class="lp-action lp-demo-line">
+                <span class="lp-margin-mark" aria-hidden="true">{flag.mark}</span>
+                <span class="lp-demo-copy">
+                  {flag.before}<button
+                    class="lp-flag lp-flag-live"
+                    type="button"
+                    data-action="lp-show-evidence"
+                    data-flag={flag.id}
+                    aria-pressed={index === 0 ? 'true' : 'false'}
+                    aria-controls={`lp-ev-${flag.id}`}
+                  >{flag.term}</button>{flag.after}
+                </span>
+              </p>
+            ))
+          }
           <p class="lp-pageno" aria-hidden="true">1.</p>
         </div>
-        <aside
-          class="lp-note"
-          data-flag="CC-101"
-          data-shown="true"
-          aria-label="Source evidence for Vega Camera"
-        >
-          <div class="lp-note-top">
-            <span class="lp-note-stamp">Sample &middot; primary registry</span>
-            <time datetime="2026-08-19">Retrieved Aug 19, 2026</time>
-          </div>
-          <strong class="lp-note-title">USPTO TSDR record 8850142</strong>
-          <p>VEGA is registered for professional motion-picture camera equipment in class 009.</p>
-          <p class="lp-note-conflict">
-            <span aria-hidden="true">&ne;</span>A trade article describes the mark as abandoned; the
-            primary registry record is current.
-          </p>
-          <div class="lp-note-foot">
-            <span class="lp-note-verdict is-open">Waiting on a human call</span>
-            <span>CC-101 &middot; snapshot retained</span>
-          </div>
-        </aside>
+        {
+          evidence.map((flag, index) => (
+            <aside
+              class="lp-note"
+              id={`lp-ev-${flag.id}`}
+              data-flag={flag.id}
+              data-shown={index === 0 ? 'true' : 'false'}
+              aria-label={`Source evidence for ${flag.term}`}
+            >
+              <div class="lp-note-top">
+                <span class="lp-note-stamp">Sample &middot; {flag.authority}</span>
+                <time datetime="2026-08-19">Retrieved Aug 19, 2026</time>
+              </div>
+              <strong class="lp-note-title">{flag.source}</strong>
+              <p>{flag.claim}</p>
+              {
+                flag.conflict && (
+                  <p class="lp-note-conflict">
+                    <span aria-hidden="true">&ne;</span>{flag.conflict}
+                  </p>
+                )
+              }
+              <div class="lp-note-foot">
+                <span class={`lp-note-verdict ${flag.tone}`}>{flag.decision}</span>
+                <span>{flag.id} &middot; snapshot retained</span>
+              </div>
+            </aside>
+          ))
+        }
         <figcaption class="lp-artifact-caption">
           Choose any highlighted term to see the source behind it. The gutter mark names the
           category; the blue edge is its version.
         </figcaption>
       </figure>
     </section>
+
+    <section class="lp-assurance" aria-labelledby="assurance-heading">
+      <div class="lp-assurance-heading">
+        <p class="lp-section-eyebrow">One connected record</p>
+        <h2 id="assurance-heading">
+          Nothing important gets separated from the line that raised it.
+        </h2>
+      </div>
+      <dl class="lp-assurance-list">
+        <div><dt>01 &middot; Passage</dt><dd>The exact words and scene context.</dd></div>
+        <div><dt>02 &middot; Evidence</dt><dd>Authority, retrieval date, and conflicts.</dd></div>
+        <div><dt>03 &middot; Decision</dt><dd>Who made the call, when, and why.</dd></div>
+      </dl>
+    </section>
+
+    <section class="lp-section" id="the-problem" aria-labelledby="problem-heading">
+      <header class="lp-section-head">
+        <p class="lp-section-eyebrow">The problem</p>
+        <h2 id="problem-heading" class="lp-h2">Small things sink films.</h2>
+        <p class="lp-lede">
+          Not the volcano stunt. A can on a desk. A song on a radio. A name in one scene. They
+          surface after the shoot, when fixing them costs the most.
+        </p>
+      </header>
+      <div class="lp-notes">
+        {
+          problems.map(([what, tag, why, fix], index) => (
+            <article class="lp-note-card">
+              <span class="lp-card-index" aria-hidden="true">0{index + 1}</span>
+              <header><strong>{what}</strong><span class="lp-note-tag">{tag}</span></header>
+              <p>{why}</p>
+              <p class="lp-note-fix"><span aria-hidden="true">&#10003;</span>{fix}</p>
+            </article>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="lp-section" id="how-it-works" aria-labelledby="workflow-heading">
+      <header class="lp-section-head">
+        <p class="lp-section-eyebrow">How it works</p>
+        <h2 id="workflow-heading" class="lp-h2">Six steps from script to clearance report.</h2>
+        <p class="lp-lede">
+          The workflow stays simple for the team while preserving the details a later review
+          needs.
+        </p>
+      </header>
+      <ol class="lp-steps">
+        {
+          steps.map(([title, detail], index) => (
+            <li class="lp-step">
+              <span class="lp-step-no" aria-hidden="true">0{index + 1}</span>
+              <h3>{title}</h3>
+              <p>{detail}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+
+    <section
+      class="lp-section lp-section-compact"
+      id="how-its-built"
+      aria-labelledby="built-heading"
+    >
+      <header class="lp-section-head">
+        <p class="lp-section-eyebrow">How it&rsquo;s built</p>
+        <h2 id="built-heading" class="lp-h2">
+          Gemini reads the script. Parallel finds the sources. The record stays yours.
+        </h2>
+      </header>
+      <p class="lp-build-note">
+        <span aria-hidden="true">&#8505;</span>Detection runs on Gemini and source research runs
+        on Parallel Search with bounded Extract. Providers are disabled until an operator enables
+        them with an explicit cost acknowledgement, and a missing or failing provider always
+        becomes visible review work rather than invented evidence.
+      </p>
+      <aside class="lp-boundary" aria-label="ClearCut product boundary">
+        <span class="lp-boundary-label">Product boundary</span>
+        <div>
+          <strong>Humans remain accountable.</strong>
+          <p>
+            ClearCut organizes evidence and records decisions. It does not give legal advice,
+            clear a work on its own, or replace counsel or an insurer&rsquo;s review.
+          </p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="lp-end" aria-labelledby="closing-heading">
+      <div class="lp-end-inner">
+        <p class="lp-fadeout">FADE OUT.</p>
+        <h2 id="closing-heading">Tape the pages before the shoot, not after.</h2>
+        <p>Walk through a complete fictional production &mdash; or deploy your own instance.</p>
+        <div class="lp-ctas lp-end-ctas">
+          <a class="button button-primary" href="/app/auth/sign-in">Explore the live demo</a>
+          <a
+            class="button button-secondary"
+            href="https://github.com/captjay98/clearcut"
+            target="_blank"
+            rel="noopener"
+          >
+            View on GitHub
+          </a>
+        </div>
+        <span class="lp-end-note"
+          >MIT License &middot; No account required for the demo &middot; Sample data only</span
+        >
+      </div>
+    </section>
+
   </div>
 </PublicLayout>
+
+<script>
+  // Mirrors the prototype's `lp-show-evidence` action. Every card stays in the
+  // same grid cell so swapping the visible one cannot shift the page height or
+  // nudge the reader's scroll position.
+  const flagButtons = document.querySelectorAll<HTMLButtonElement>(
+    '[data-action="lp-show-evidence"]',
+  );
+  const notes = document.querySelectorAll<HTMLElement>('.lp-note[data-flag]');
+
+  for (const button of flagButtons) {
+    button.addEventListener('click', () => {
+      const selected = button.dataset.flag;
+      for (const other of flagButtons) {
+        other.setAttribute('aria-pressed', String(other.dataset.flag === selected));
+      }
+      for (const note of notes) {
+        note.dataset.shown = String(note.dataset.flag === selected);
+      }
+    });
+  }
+</script>
