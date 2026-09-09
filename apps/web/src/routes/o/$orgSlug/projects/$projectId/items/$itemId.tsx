@@ -22,6 +22,12 @@ import {
 } from "../../../../../../mutations/clearanceItemCommands";
 import { clearanceItemDetailQueryOptions } from "../../../../../../queries/clearanceItems";
 import { organizationMentionRecipientsQueryOptions } from "../../../../../../queries/organizationMembers";
+import { Badge, Banner, Card, Page, Section } from "../../../../../../components/ds";
+import {
+  humanizeCategory,
+  humanizeStatus,
+  statusTone,
+} from "../../../../../../features/clearance/itemPresentation";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/items/$itemId")({
   component: ItemDetailRoute,
@@ -300,25 +306,34 @@ export function ItemDetailRoute() {
   };
 
   if (itemQuery.isPending) {
-    return <div className="p-6 text-xs text-slate-400 font-sans">Loading clearance item…</div>;
+    return (
+      <div className="page">
+        <p role="status" className="small muted">
+          Loading clearance item…
+        </p>
+      </div>
+    );
   }
 
   if (itemQuery.isError || !item) {
     return (
-      <div className="p-6 max-w-2xl font-sans space-y-3">
-        <Link
-          to="/o/$orgSlug/projects/$projectId/workspace"
-          params={{ orgSlug, projectId }}
-          className="text-xs text-amber-500 hover:underline inline-block"
-        >
-          ← Back to Screenplay Workspace
-        </Link>
-        <div
+      <div className="page narrow">
+        <header className="page-head">
+          <Link
+            to="/o/$orgSlug/projects/$projectId/workspace"
+            params={{ orgSlug, projectId }}
+          >
+            ← Back to Screenplay Workspace
+          </Link>
+        </header>
+        <Banner
+          tone="is-danger"
+          icon="⚠"
+          title="Clearance item unavailable"
+          message={itemQuery.error?.message || "This clearance item is not available."}
           role="alert"
-          className="p-4 rounded bg-red-950/50 border border-red-900 text-red-400 text-xs"
-        >
-          {itemQuery.error?.message || "This clearance item is not available."}
-        </div>
+          titleIsHeading
+        />
       </div>
     );
   }
@@ -326,81 +341,93 @@ export function ItemDetailRoute() {
   const snapshots = new Map(item.snapshots.map((snapshot) => [snapshot.snapshotId, snapshot]));
 
   return (
-    <div className="space-y-6 max-w-4xl font-sans">
-      <header>
-        <Link
-          to="/o/$orgSlug/projects/$projectId/workspace"
-          params={{ orgSlug, projectId }}
-          className="text-xs text-amber-500 hover:underline mb-1 inline-block"
-        >
-          ← Back to Screenplay Workspace
-        </Link>
-        <h1 className="text-2xl font-bold text-white flex items-center space-x-3">
-          <span>{item.entityName}</span>
-          <span className="text-xs px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-normal">
-            {item.category}
+    <Page
+      trail={[
+        { label: "Flags", to: "/o/$orgSlug/projects/$projectId/items", params: { orgSlug, projectId } },
+        { label: item.entityName },
+      ]}
+      eyebrow={humanizeCategory(item.category)}
+      title={item.entityName}
+      lede={
+        <>
+          {item.scene !== undefined ? `Scene ${item.scene} · ` : ""}
+          {item.page !== undefined ? `Page ${item.page} · ` : ""}
+          Status: {humanizeStatus(item.status)}
+        </>
+      }
+      actions={
+        <>
+          <Badge tone={statusTone(item.status)}>{humanizeStatus(item.status)}</Badge>
+          <Link
+            className="button button-quiet"
+            to="/o/$orgSlug/projects/$projectId/workspace"
+            params={{ orgSlug, projectId }}
+          >
+            ← Back to Screenplay Workspace
+          </Link>
+        </>
+      }
+      notice={
+        <p role="note" className="banner">
+          <span className="banner-icon" aria-hidden="true">
+            ⚖
           </span>
-        </h1>
-        <p className="text-xs text-slate-400 mt-1">
-          {item.scene !== undefined ? `Scene ${item.scene} • ` : ""}
-          {item.page !== undefined ? `Page ${item.page} • ` : ""}
-          Status: <span className="font-bold text-amber-400 uppercase">{item.status}</span>
+          <span className="banner-body">
+            ClearCut provides sourced findings for qualified human review. It does not provide legal
+            advice or final legal clearance.
+          </span>
         </p>
-      </header>
-
-      <p
-        role="note"
-        className="rounded border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-300"
+      }
+    >
+      <Section
+        title={`Source snapshots & evidence claims (${item.evidenceState.claimCount})`}
+        description={item.evidenceState.reason}
       >
-        ClearCut provides sourced findings for qualified human review. It does not provide
-        legal advice or final legal clearance.
-      </p>
-
-      <section className="space-y-3" aria-labelledby="evidence-heading">
-        <div>
-          <h2 id="evidence-heading" className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Source Snapshots & Evidence Claims ({item.evidenceState.claimCount})
-          </h2>
-          <p className="mt-1 text-xs text-slate-400">{item.evidenceState.reason}</p>
-        </div>
-
         {item.claims.length === 0 ? (
-          <div className="rounded border border-amber-900 bg-amber-950/30 p-4 text-xs text-amber-200">
-            Zero cited evidence remains unresolved. No fallback evidence has been invented.
-          </div>
+          <Banner
+            tone="is-warning"
+            icon="⚠"
+            message="Zero cited evidence remains unresolved. No fallback evidence has been invented."
+          />
         ) : (
-          item.claims.map((claim) => {
-            const snapshot = snapshots.get(claim.snapshotId);
-            return (
-              <article
-                key={claim.claimId}
-                className="p-4 bg-slate-900 border border-slate-800 rounded-lg space-y-2"
-              >
-                {snapshot ? (
-                  <a
-                    href={snapshot.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-bold text-amber-400 hover:underline"
-                  >
-                    {snapshot.title} ↗
-                  </a>
-                ) : (
-                  <p className="text-xs text-amber-300">Cited source snapshot unavailable.</p>
-                )}
-                <p className="text-[10px] text-slate-400">
-                  {claim.authorityTier} • {claim.stance}
-                  {snapshot ? ` • ${snapshot.publisher}` : ""}
-                </p>
-                <blockquote className="text-xs text-slate-300 italic border-l-2 border-slate-700 pl-3">
-                  “{claim.provenanceExcerpt}”
-                </blockquote>
-                <p className="text-xs text-slate-300">{claim.claimText}</p>
-              </article>
-            );
-          })
+          <div className="stack">
+            {item.claims.map((claim) => {
+              const snapshot = snapshots.get(claim.snapshotId);
+              return (
+                <article className="source-card" key={claim.claimId}>
+                  {snapshot ? (
+                    <a href={snapshot.url} target="_blank" rel="noopener noreferrer">
+                      {snapshot.title} ↗
+                    </a>
+                  ) : (
+                    <p className="small">Cited source snapshot unavailable.</p>
+                  )}
+                  <div className="cluster gap-t-2">
+                    <span className="mono small">{claim.authorityTier}</span>
+                    <span className="muted" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="small muted">{claim.stance}</span>
+                    {snapshot && (
+                      <>
+                        <span className="muted" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="small muted">{snapshot.publisher}</span>
+                      </>
+                    )}
+                  </div>
+                  {/* Quoted: this is the attributable excerpt lifted from the
+                      source, distinct from the claim ClearCut derives from it.
+                      The two can carry identical text. */}
+                  <blockquote>&ldquo;{claim.provenanceExcerpt}&rdquo;</blockquote>
+                  <p className="small">{claim.claimText}</p>
+                </article>
+              );
+            })}
+          </div>
         )}
-      </section>
+      </Section>
 
       <ItemGovernanceControls
         assignedTo={item.assignedTo}
@@ -411,114 +438,118 @@ export function ItemDetailRoute() {
         onSetDisposition={handleSetDisposition}
       />
 
-      <section
-        data-testid="decision-action-bar"
-        className="p-5 bg-slate-900 border border-slate-800 rounded-lg space-y-4 shadow-sm"
-      >
-        <h2 className="text-sm font-bold text-white">Record Evidence-Review Decision</h2>
-        <p tabIndex={0} className="text-xs text-slate-400">
-          {decisionCapability?.explanation ??
-            "Decision capability is unavailable for this item and current role."}
-        </p>
-        {feedback && (
-          <div
-            role="alert"
-            className={`p-3 rounded text-xs ${
-              feedback.startsWith("Decision not") || feedback.startsWith("This item changed")
-                ? "bg-red-950/50 border border-red-900 text-red-400"
-                : "bg-emerald-950/50 border border-emerald-900 text-emerald-400"
-            }`}
-          >
-            {feedback}
+      <section className="section" data-testid="decision-action-bar">
+        <div className="section-head">
+          <div>
+            <h2>Record evidence-review decision</h2>
+            {/* The server's own explanation of why this action is or is not
+                permitted. Focusable so a denial can be read without a mouse. */}
+            <p tabIndex={0}>
+              {decisionCapability?.explanation ??
+                "Decision capability is unavailable for this item and current role."}
+            </p>
           </div>
-        )}
+        </div>
 
-        <form onSubmit={handleRecordDecision} className="space-y-3">
-          <fieldset disabled={!decisionCapability?.allowed || decisionMutation.isPending}>
-            <legend className="sr-only">Evidence-review outcome</legend>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                {
-                  id: "accepted" as const,
-                  label: "Accept cited evidence",
-                  description: "Use the cited material in continued human review",
-                },
-                {
-                  id: "rejected" as const,
-                  label: "Reject cited evidence",
-                  description: "Record why the cited material is not reliable",
-                },
-                {
-                  id: "further_review_required" as const,
-                  label: "Further review required",
-                  description: "Keep unresolved risk open for qualified review",
-                },
-              ].map((option) => (
-                <label
-                  key={option.id}
-                  className={`p-3 rounded border cursor-pointer transition-all ${
-                    decision === option.id
-                      ? "bg-amber-950/30 border-amber-500 text-white"
-                      : "bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="decision"
-                    value={option.id}
-                    checked={decision === option.id}
-                    onChange={() => setDecision(option.id)}
-                    className="sr-only"
-                  />
-                  <span className="block text-xs font-bold">{option.label}</span>
-                  <span className="block text-[10px] text-slate-400 mt-0.5">
-                    {option.description}
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <label htmlFor="rationale" className="block text-xs font-medium text-slate-300 mt-3">
-              Accountable rationale
-            </label>
-            <textarea
-              id="rationale"
-              required
-              rows={3}
-              value={rationale}
-              onChange={(event) => setRationale(event.target.value)}
-              className="mt-1 w-full px-3 py-2 text-xs bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+        <Card>
+          {feedback && (
+            <Banner
+              tone={
+                feedback.startsWith("Decision not") || feedback.startsWith("This item changed")
+                  ? "is-danger"
+                  : "is-success"
+              }
+              icon={
+                feedback.startsWith("Decision not") || feedback.startsWith("This item changed")
+                  ? "⚠"
+                  : "✓"
+              }
+              message={feedback}
+              role="alert"
+              className="gap-b-4"
             />
-            <div className="mt-3 flex justify-end">
-              <button
-                type="submit"
-                disabled={!rationale.trim()}
-                className="px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-xs font-bold text-white rounded shadow focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                {decisionMutation.isPending ? "Recording…" : "Record Review Decision"}
-              </button>
-            </div>
-          </fieldset>
-        </form>
+          )}
+
+          <form onSubmit={handleRecordDecision}>
+            <fieldset disabled={!decisionCapability?.allowed || decisionMutation.isPending}>
+              <legend className="sr-only">Evidence-review outcome</legend>
+              <div className="grid grid-3">
+                {[
+                  {
+                    id: "accepted" as const,
+                    label: "Accept cited evidence",
+                    description: "Use the cited material in continued human review",
+                  },
+                  {
+                    id: "rejected" as const,
+                    label: "Reject cited evidence",
+                    description: "Record why the cited material is not reliable",
+                  },
+                  {
+                    id: "further_review_required" as const,
+                    label: "Further review required",
+                    description: "Keep unresolved risk open for qualified review",
+                  },
+                ].map((option) => (
+                  <div className="stack-sm" key={option.id}>
+                    {/* The design system stretches .choice inputs across the pill
+                        so the whole chip is clickable. That makes the input the
+                        hit target for its own visible label, so it is taken out
+                        of the flow here and the wrapping label forwards clicks
+                        natively. The :checked + span styling is unaffected. */}
+                    <label className="choice">
+                      <input
+                        className="sr-only"
+                        type="radio"
+                        name="decision"
+                        value={option.id}
+                        checked={decision === option.id}
+                        onChange={() => setDecision(option.id)}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                    <span className="field-hint">{option.description}</span>
+                  </div>
+                ))}
+              </div>
+
+              <label className="field gap-t-5" htmlFor="rationale">
+                <span className="field-label">Accountable rationale</span>
+                <textarea
+                  id="rationale"
+                  required
+                  rows={3}
+                  value={rationale}
+                  onChange={(event) => setRationale(event.target.value)}
+                />
+              </label>
+
+              <div className="cluster gap-t-4" style={{ justifyContent: "flex-end" }}>
+                <button className="button button-primary" type="submit" disabled={!rationale.trim()}>
+                  {decisionMutation.isPending ? "Recording…" : "Record Review Decision"}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </Card>
       </section>
 
       {item.decisions.length > 0 && (
-        <section className="space-y-2" aria-labelledby="decision-history-heading">
-          <h2 id="decision-history-heading" className="text-xs font-bold uppercase text-slate-400">
-            Attributable decision history
-          </h2>
-          {item.decisions.map((record) => (
-            <article key={record.recordId} className="rounded border border-slate-800 bg-slate-900 p-3 text-xs">
-              <p className="font-bold text-slate-200">
-                {record.kind}: {record.value}
-              </p>
-              <p className="mt-1 text-slate-400">{record.rationale}</p>
-              <p className="mt-1 font-mono text-[10px] text-slate-500">
-                Actor {record.actorId} • version {record.resultingVersion}
-              </p>
-            </article>
-          ))}
-        </section>
+        <Section title="Attributable decision history">
+          <div className="stack">
+            {item.decisions.map((record) => (
+              <article className="source-card" key={record.recordId}>
+                <strong>
+                  {record.kind}: {record.value}
+                </strong>
+                <p className="small gap-t-1">{record.rationale}</p>
+                <p className="mono small muted gap-t-1">
+                  Actor {record.actorId} · version {record.resultingVersion}
+                </p>
+              </article>
+            ))}
+          </div>
+        </Section>
       )}
 
       <RewriteProposalCard originalText={item.contextText ?? item.entityName} />
@@ -536,7 +567,7 @@ export function ItemDetailRoute() {
         onReply={handleReplyToComment}
         onRevise={handleReviseComment}
       />
-    </div>
+    </Page>
   );
 }
 

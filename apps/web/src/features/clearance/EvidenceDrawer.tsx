@@ -207,7 +207,7 @@ export function EvidenceDrawer({
                       )}
                     </div>
 
-                    <blockquote>{claim.provenanceExcerpt}</blockquote>
+                    <blockquote>&ldquo;{claim.provenanceExcerpt}&rdquo;</blockquote>
 
                     {snapshot && (
                       <div className="source-foot">

@@ -59,7 +59,10 @@ export function CategoryFilterBar({
           const count = category === "All" ? total : categoryCounts[category];
           return (
             <label className="choice" key={category}>
+              {/* sr-only so the visible chip text is the click target rather than
+                  the input the design system stretches over it. */}
               <input
+                className="sr-only"
                 type="radio"
                 name="clearance-category"
                 data-testid="category-filter-chip"
