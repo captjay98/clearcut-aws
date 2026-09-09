@@ -99,11 +99,16 @@ corepack prepare pnpm@9.15.0 --activate
 pnpm install --frozen-lockfile
 uv sync --all-packages --dev
 pnpm verify
-uv run pytest services/api/tests -q
+uv run pytest services/api/tests tests -q
 pnpm --filter clearcut-web test
 pnpm build
 bun scripts/verify-submission.mjs
 ```
+
+`uv run pytest services/api/tests tests -q` runs both suites: the API tests under
+`services/api/tests` and the repository-level foundation, contract and submission
+tests under `tests/`. Running only the first skips the contract-drift and
+public-claim checks.
 
 Browser tests additionally require Playwright browsers:
 
@@ -111,6 +116,23 @@ Browser tests additionally require Playwright browsers:
 pnpm exec playwright install
 pnpm --filter clearcut-web test:e2e -- --workers=1
 ```
+
+The browser suite runs every spec across four configured projects
+(`chromium-desktop-1440`, `firefox-desktop-1024`, `webkit-tablet-768`,
+`mobile-375`). To iterate on one spec quickly:
+
+```bash
+cd apps/web
+pnpm exec playwright test tests/e2e/evidence-access.spec.ts \
+  --project=chromium-desktop-1440 --reporter=line
+```
+
+Two notes that save time. The API suite shares one SQLite file and truncates
+every table between tests, so two concurrent `pytest` runs corrupt each other —
+give each run its own `DATABASE_URL` if you need them in parallel. And
+`tsc --noEmit` does not parse-check the TanStack route files under
+`apps/web/src/routes`; only `pnpm --filter clearcut-web build` catches a syntax
+error there, so treat the build as the authoritative frontend gate.
 
 These commands validate a checkout; they do not establish remote-SHA parity, deployed-image provenance, or live-provider proof.
 
@@ -132,23 +154,53 @@ The demo seed is not provider evidence and must not be presented as a Gemini or 
 
 ## Manual development
 
-> After pulling changes that add or change dependencies, reinstall first: `pnpm install --frozen-lockfile`. A stale `node_modules` (for example, missing `tailwindcss`) causes the web build to fail with `Cannot find module 'tailwindcss'`.
+> After pulling changes that add or change dependencies, reinstall first: `pnpm install --frozen-lockfile`. A stale `node_modules` causes the web or site build to fail on a missing module.
 
-Run migrations explicitly before starting the API. Alembic configuration lives in `services/api`, so run it from there (or pass `-c services/api/alembic.ini`):
+Run migrations explicitly before starting the API. Alembic's `script_location`
+is relative to `services/api`, so the command must run from that directory —
+passing `-c services/api/alembic.ini` from the repository root fails with
+`Path doesn't exist: alembic`:
 
 ```bash
-# from the repository root
-uv run alembic -c services/api/alembic.ini upgrade head
+# migrations: from services/api
+cd services/api
+uv run alembic upgrade head
+cd ../..
+
+# API: from the repository root
 uv run uvicorn clearcut.main:app --app-dir services/api/src --reload --port 8000
 ```
 
-The API defaults to a local SQLite database at `/tmp/clearcut.db`. Override it with `DATABASE_URL` (for example `DATABASE_URL="sqlite+aiosqlite:////tmp/clearcut-dev.db"`).
+The API defaults to a local SQLite database at `/tmp/clearcut.db`. Override it with `DATABASE_URL` (for example `DATABASE_URL="sqlite+aiosqlite:////tmp/clearcut-dev.db"`). Set the same value for both commands, or the API will migrate one database and read another.
 
 In another terminal:
 
 ```bash
 pnpm --filter clearcut-web dev -- --host 127.0.0.1
 ```
+
+### Serving the built site and workspace from the API
+
+To exercise the same-origin delivery the deployed image uses, build both
+frontends first and point the API at their `dist` directories. The paths are
+read once at startup, so restart the API after every rebuild:
+
+```bash
+pnpm --filter clearcut-web build
+pnpm --filter clearcut-site build
+
+cd services/api && DATABASE_URL="sqlite+aiosqlite:////tmp/clearcut-dev.db" \
+  uv run alembic upgrade head && cd ../..
+
+CLEARCUT_STATIC_DELIVERY_ENABLED=true \
+CLEARCUT_SITE_DIST_PATH="$PWD/apps/site/dist" \
+CLEARCUT_WORKSPACE_DIST_PATH="$PWD/apps/web/dist" \
+DATABASE_URL="sqlite+aiosqlite:////tmp/clearcut-dev.db" \
+uv run uvicorn clearcut.main:app --app-dir services/api/src --port 8080
+```
+
+The marketing site is then at `http://127.0.0.1:8080/`, the workspace at
+`http://127.0.0.1:8080/app/`, and the API under `http://127.0.0.1:8080/api/v1/`.
 
 ## Security and provenance boundaries
 
