@@ -367,9 +367,22 @@ ${generateTask10TsDeclarations()}
 export interface RewriteProposal {
   proposalId: UUIDv7;
   itemId: UUIDv7;
+  projectId?: UUIDv7;
+  sourceVersionId?: UUIDv7;
+  elementId?: UUIDv7;
+  proposerId?: UUIDv7;
+  proposerEmail?: string;
+  approverId?: UUIDv7;
+  originalText?: string;
   proposedText: string;
   rationale?: string;
-  status: 'proposed' | 'approved' | 'rejected' | 'withdrawn' | string;
+  rejectionReason?: string;
+  /** Present only once a separate materialization step binds the successor version. */
+  resultingVersionId?: UUIDv7;
+  itemVersion?: number;
+  status: 'proposed' | 'approved' | 'rejected' | 'withdrawn' | 'materialized' | string;
+  createdAt?: ISODateTime;
+  updatedAt?: ISODateTime;
 }
 
 export interface MonitoringPolicy {
@@ -1416,9 +1429,21 @@ class ItemEvidence(BaseModel):
 class RewriteProposal(BaseModel):
     proposalId: UUIDv7
     itemId: UUIDv7
+    projectId: Optional[UUIDv7] = None
+    sourceVersionId: Optional[UUIDv7] = None
+    elementId: Optional[UUIDv7] = None
+    proposerId: Optional[UUIDv7] = None
+    proposerEmail: Optional[str] = None
+    approverId: Optional[UUIDv7] = None
+    originalText: Optional[str] = None
     proposedText: str
     rationale: Optional[str] = None
+    rejectionReason: Optional[str] = None
+    resultingVersionId: Optional[UUIDv7] = None
+    itemVersion: Optional[int] = None
     status: str
+    createdAt: Optional[ISODateTime] = None
+    updatedAt: Optional[ISODateTime] = None
 
 class MonitoringPolicy(BaseModel):
     projectId: UUIDv7

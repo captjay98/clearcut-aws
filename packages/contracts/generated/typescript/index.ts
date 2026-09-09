@@ -477,9 +477,22 @@ export interface Comment {
 export interface RewriteProposal {
   proposalId: UUIDv7;
   itemId: UUIDv7;
+  projectId?: UUIDv7;
+  sourceVersionId?: UUIDv7;
+  elementId?: UUIDv7;
+  proposerId?: UUIDv7;
+  proposerEmail?: string;
+  approverId?: UUIDv7;
+  originalText?: string;
   proposedText: string;
   rationale?: string;
-  status: 'proposed' | 'approved' | 'rejected' | 'withdrawn' | string;
+  rejectionReason?: string;
+  /** Present only once a separate materialization step binds the successor version. */
+  resultingVersionId?: UUIDv7;
+  itemVersion?: number;
+  status: 'proposed' | 'approved' | 'rejected' | 'withdrawn' | 'materialized' | string;
+  createdAt?: ISODateTime;
+  updatedAt?: ISODateTime;
 }
 
 export interface MonitoringPolicy {
@@ -875,6 +888,7 @@ export interface Operations {
   approveRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:approve' };
   rejectRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:reject' };
   withdrawRewrite: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw' };
+  listRewriteProposals: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/rewrite-proposals' };
   startSelectiveRescan: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan' };
   getMonitoringPolicy: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy' };
   changeMonitoringCadence: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence' };
@@ -1733,6 +1747,20 @@ export function createApiClient(config: ApiClientConfig = {}) {
     ): Promise<ApiResult<RewriteProposal>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<RewriteProposal>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/rewrite-proposals/{proposalId}:withdraw', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** List the rewrite proposals raised against a clearance item */
+    listRewriteProposals: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7; itemId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Array<RewriteProposal>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<RewriteProposal>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/rewrite-proposals', {
         params: args?.params,
         headers,
       });

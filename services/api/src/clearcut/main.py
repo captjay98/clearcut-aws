@@ -28,6 +28,7 @@ from clearcut.collaboration.delivery.http import router as collaboration_router
 from clearcut.collaboration.delivery.notifications_http import router as notifications_router
 from clearcut.database import DATABASE_URL as CONFIGURED_DATABASE_URL
 from clearcut.database import session_scope
+from clearcut.decisions.delivery.http import rewrites_router
 from clearcut.decisions.delivery.http import router as decisions_router
 from clearcut.delivery_errors import error_response
 from clearcut.detection.adapters.sql_candidate_repository import SqlCandidateRepository
@@ -245,12 +246,14 @@ class _SqlActivePolicyGate:
 
 
 class _SelectiveRescanItemLineageCoordinator:
-    """Resolves each carryable element's predecessor item, then materializes.
+    """Resolves every carryable element's predecessor items, then materializes.
 
     The scripts diff yields element-only carryable pairs; the orchestration passes
-    the ``before_element_id`` as the join key. This coordinator resolves the real
-    predecessor clearance item bound to that before element/version within scope,
-    then delegates to the detection-owned :class:`SqlItemLineageAdapter`. A
+    the ``before_element_id`` as the join key. This coordinator resolves ALL real
+    predecessor clearance items bound to that before element/version within scope
+    — a single passage can hold several items — then delegates to the
+    detection-owned :class:`SqlItemLineageAdapter`, which creates exactly one
+    successor per predecessor. A
     carryable-by-lineage element with no predecessor item in scope is an
     unchanged/moved narrative passage that never held a clearance item (detection
     only creates items on brand/entity lines): there is nothing to carry, so it is
@@ -276,14 +279,15 @@ class _SelectiveRescanItemLineageCoordinator:
         resolved: list[CarryableElement] = []
         async with session_scope() as session:
             for element in carryable_elements:
-                row = (
+                rows = (
                     (
                         await session.execute(
                             sa.text(
                                 "SELECT id, category, text FROM clearance_items "
                                 "WHERE org_id = :org_id AND project_id = :project_id "
                                 "AND script_id = :script_id AND version_id = :version_id "
-                                "AND element_id = :element_id"
+                                "AND element_id = :element_id "
+                                "ORDER BY created_at, id"
                             ),
                             {
                                 "org_id": str(org_id),
@@ -295,9 +299,9 @@ class _SelectiveRescanItemLineageCoordinator:
                         )
                     )
                     .mappings()
-                    .first()
+                    .all()
                 )
-                if row is None:
+                if not rows:
                     # A carryable-by-lineage element is an exact/contextual
                     # unchanged or moved passage. Detection only creates clearance
                     # items on brand/entity lines, so an unchanged NARRATIVE line
@@ -306,7 +310,15 @@ class _SelectiveRescanItemLineageCoordinator:
                     # scope violation (the org/project/script/before-version scope
                     # is enforced in the query above); the row just does not exist.
                     continue
-                resolved.append(
+                # One passage can hold MANY clearance items (two brands on one
+                # action line, a brand plus a landmark, the same entity named
+                # twice). Every scoped predecessor row becomes its own carryable
+                # element so exactly one successor item is materialized per
+                # predecessor: reading a single row silently dropped every finding
+                # but one. Distinct items are never collapsed by passage text or
+                # category — two findings on one line are two findings. The
+                # ``created_at, id`` ordering makes the carry order deterministic.
+                resolved.extend(
                     CarryableElement(
                         before_element_id=element.before_element_id,
                         after_element_id=element.after_element_id,
@@ -314,6 +326,7 @@ class _SelectiveRescanItemLineageCoordinator:
                         category=str(row["category"]),
                         text=str(row["text"]),
                     )
+                    for row in rows
                 )
         if not resolved:
             # No carryable element carried a predecessor item: nothing to
@@ -822,6 +835,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.include_router(scripts_router)
     app.include_router(items_router)
     app.include_router(decisions_router)
+    app.include_router(rewrites_router)
     app.include_router(collaboration_router)
     app.include_router(detection_router)
     app.include_router(research_router)

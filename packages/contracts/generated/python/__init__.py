@@ -487,9 +487,21 @@ class ItemEvidence(BaseModel):
 class RewriteProposal(BaseModel):
     proposalId: UUIDv7
     itemId: UUIDv7
+    projectId: Optional[UUIDv7] = None
+    sourceVersionId: Optional[UUIDv7] = None
+    elementId: Optional[UUIDv7] = None
+    proposerId: Optional[UUIDv7] = None
+    proposerEmail: Optional[str] = None
+    approverId: Optional[UUIDv7] = None
+    originalText: Optional[str] = None
     proposedText: str
     rationale: Optional[str] = None
+    rejectionReason: Optional[str] = None
+    resultingVersionId: Optional[UUIDv7] = None
+    itemVersion: Optional[int] = None
     status: str
+    createdAt: Optional[ISODateTime] = None
+    updatedAt: Optional[ISODateTime] = None
 
 class MonitoringPolicy(BaseModel):
     projectId: UUIDv7

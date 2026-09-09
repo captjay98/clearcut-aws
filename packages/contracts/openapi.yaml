@@ -2248,6 +2248,63 @@ paths:
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/rewrite-proposals:
+    get:
+      summary: List the rewrite proposals raised against a clearance item
+      description: >-
+        Return the persisted rewrite proposals for one clearance item, oldest
+        first, within the authorized organization and project scope. Each proposal
+        carries its own identity, the item and source script version it was
+        written against, the proposer, the status and timestamps, the original and
+        proposed passages, the rationale, and the resulting version identity once a
+        separate materialization step has bound one. Another tenant's proposals are
+        never visible, and an item that is not visible in scope is a neutral
+        not-found rather than an empty list. Personal data is limited to the
+        proposer identity the collaboration surface already exposes.
+      operationId: listRewriteProposals
+      tags:
+        - rewrites
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: Rewrite proposals for the item, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RewriteProposal'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks project read capability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Item is not found in the authorized project scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/organizations/{orgId}/projects/{projectId}/script-versions/{versionId}:startSelectiveRescan:
     post:
       summary: Start selective rescan of affected items for revision
@@ -5083,13 +5140,50 @@ components:
           $ref: '#/components/schemas/UUIDv7'
         itemId:
           $ref: '#/components/schemas/UUIDv7'
+        projectId:
+          $ref: '#/components/schemas/UUIDv7'
+        sourceVersionId:
+          description: >-
+            The script version the proposal was written against. A proposal whose
+            source version is no longer the version its item is bound to is refused
+            on approval as a visible conflict rather than silently rebased.
+          $ref: '#/components/schemas/UUIDv7'
+        elementId:
+          $ref: '#/components/schemas/UUIDv7'
+        proposerId:
+          $ref: '#/components/schemas/UUIDv7'
+        proposerEmail:
+          type: string
+        approverId:
+          $ref: '#/components/schemas/UUIDv7'
+        originalText:
+          description: >-
+            The passage as it exists in the source version, read from the server's
+            own record; never a client-supplied claim about the original text.
+          type: string
         proposedText:
           type: string
         rationale:
           type: string
+        rejectionReason:
+          type: string
+        resultingVersionId:
+          description: >-
+            The successor script version this proposal produced. Absent until a
+            separate accountable materialization step binds one: approval alone
+            never creates a version and never starts paid research.
+          $ref: '#/components/schemas/UUIDv7'
+        itemVersion:
+          description: The clearance item's optimistic concurrency version after the action.
+          type: integer
+          minimum: 1
         status:
           type: string
-          enum: [proposed, approved, rejected, withdrawn]
+          enum: [proposed, approved, rejected, withdrawn, materialized]
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+        updatedAt:
+          $ref: '#/components/schemas/ISODateTime'
 
     MonitoringPolicy:
       type: object
