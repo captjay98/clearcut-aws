@@ -1,0 +1,66 @@
+# Build context exclusions for the single `clearcut` image.
+#
+# The Dockerfile installs Python dependencies and builds both frontends inside
+# the image, so host-side dependency trees and build output must never leak into
+# the context. Without this file the context is roughly 1 GB; with it, tens of MB.
+#
+# Only paths the Dockerfile never COPYs are excluded. The Dockerfile does COPY
+# services/api/README.md, so nested README files are deliberately not excluded.
+
+# Version control
+.git
+.gitattributes
+.gitignore
+
+# Dependency trees, reinstalled inside the image
+**/node_modules
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Host build output; frontends are built inside the image and stale copies
+# would silently shadow a fresh build
+apps/*/dist
+apps/*/.astro
+apps/*/.output
+**/.vite
+**/.turbo
+
+# Tool caches
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.cache
+**/.eslintcache
+**/test-results
+**/playwright-report
+**/blob-report
+
+# Credentials must never enter the build context. Mount them at runtime.
+.env
+.env.*
+!.env.example
+**/*.pem
+**/*.key
+**/*credentials*.json
+**/*service-account*.json
+
+# Local runtime state and operator-owned scratch directories
+.clearcut
+.salvage-from-b
+semantic-review
+
+# Not required to build or run the image
+docs
+infra
+misc
+demo
+.agents
+.kiro
+.github
+.vscode
+cloudbuild.yaml
+docker-compose.yml
+docker-compose.override.yml

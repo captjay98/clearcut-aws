@@ -6,12 +6,40 @@ x-clearcut-runtime: &clearcut-runtime
   environment: &clearcut-environment
     DATABASE_URL: postgresql+asyncpg://clearcut:clearcut_dev_password@db:5432/clearcut
     PORT: 8080
-    PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
-    GCP_PROJECT: ${GCP_PROJECT:-clearcut-workspace}
-    VERTEX_LOCATION: ${VERTEX_LOCATION:-global}
     CLEARCUT_SEED_DEMO: ${CLEARCUT_SEED_DEMO:-false}
     CLEARCUT_JOB_DISPATCH_MODE: ${CLEARCUT_JOB_DISPATCH_MODE:-local}
     CLEARCUT_API_WORKERS: ${CLEARCUT_API_WORKERS:-1}
+
+    # --- Capability: can this deployment physically reach the providers? ---
+    # Operator-set. Left blank on purpose: with no project, detection and
+    # research return a 503 explaining they are unavailable, and no evidence is
+    # invented. Setting these alone does NOT authorise spending -- see the
+    # policy gate below.
+    GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+    GOOGLE_CLOUD_QUOTA_PROJECT: ${GOOGLE_CLOUD_QUOTA_PROJECT:-}
+    CLEARCUT_VERTEX_LOCATION: ${CLEARCUT_VERTEX_LOCATION:-global}
+    # The image runs as uid 1001 with no home directory, so the well-known ADC
+    # path does not exist. Point this at the credentials file mounted under the
+    # app service below.
+    GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+    PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
+
+    # --- Pinned model roles (verified present in Model Garden) ---
+    # Pinned explicitly, including the judge, because reports bind the exact
+    # judge version into immutable evidence. Relying on a code default would let
+    # a future default change alter what a frozen report claims it used.
+    CLEARCUT_GEMINI_DETECTION_MODEL: ${CLEARCUT_GEMINI_DETECTION_MODEL:-gemini-3.8-flash}
+    CLEARCUT_GEMINI_RESEARCH_MODEL: ${CLEARCUT_GEMINI_RESEARCH_MODEL:-gemini-3.5-flash-lite}
+    CLEARCUT_GEMINI_JUDGE_MODEL: ${CLEARCUT_GEMINI_JUDGE_MODEL:-gemini-3.1-pro-preview}
+
+    # --- Policy: is this deployment authorised to spend money? ---
+    # Fail-closed. Both providers stay off until a human enables them AND
+    # acknowledges the cost. Concurrency must be positive; 1 keeps a runaway
+    # loop from multiplying paid calls.
+    CLEARCUT_PAID_PROVIDERS_ENABLED: ${CLEARCUT_PAID_PROVIDERS_ENABLED:-}
+    CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED: ${CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED:-false}
+    CLEARCUT_GEMINI_CONCURRENCY_LIMIT: ${CLEARCUT_GEMINI_CONCURRENCY_LIMIT:-1}
+    CLEARCUT_PARALLEL_CONCURRENCY_LIMIT: ${CLEARCUT_PARALLEL_CONCURRENCY_LIMIT:-1}
 
 services:
   db:
@@ -54,6 +82,11 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8080"
+    # To enable live Gemini detection locally, mount a credentials file and set
+    # GOOGLE_APPLICATION_CREDENTIALS to the path below in your .env. Read-only,
+    # never COPYed into the image.
+    # volumes:
+    #   - ${HOME}/.config/gcloud/application_default_credentials.json:/var/run/secrets/gcp/adc.json:ro
     depends_on:
       db:
         condition: service_healthy

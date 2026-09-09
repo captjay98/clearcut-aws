@@ -22,7 +22,7 @@ steps:
       - "-ceu"
       - |
         IMAGE="${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut:sha-$COMMIT_SHA"
-        test "$$(docker inspect --format='{{ index .Config.Labels \"org.opencontainers.image.revision\" }}' "$$IMAGE")" = "$COMMIT_SHA"
+        test "$$(docker inspect --format='{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$$IMAGE")" = "$COMMIT_SHA"
 
 images:
   - "${_REGISTRY_HOST}/$PROJECT_ID/${_REPOSITORY}/clearcut:sha-$COMMIT_SHA"

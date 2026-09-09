@@ -92,3 +92,6 @@ override.tf.json
 
 # Misc Prototype / Reference Directory
 misc/
+
+# Local-only compose overrides (ADC mounts, port remaps)
+docker-compose.override.yml
