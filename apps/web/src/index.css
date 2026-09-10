@@ -505,6 +505,9 @@
   /* A row that is a container rather than a control: the worklist wraps its own
      checkbox and link, so the row itself is not clickable. */
   .list-row.is-static { cursor: default; }
+  /* The bulk-select checkbox sits flush-left in a static worklist row and must
+     not stretch under the flex layout. */
+  .list-check { display: flex; align-items: center; flex: 0 0 auto; }
   /* A compact row for lists nested inside a card. */
   .list-row.list-row-tight { padding: var(--space-2) 0; }
 

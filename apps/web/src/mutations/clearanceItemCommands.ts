@@ -5,6 +5,8 @@ import {
   type AddCommentRequest,
   type AssignClearanceItemRequest,
   type ApiError,
+  type BulkAssignClearanceItemsRequest,
+  type BulkAssignResult,
   type ClearanceItem,
   type Comment as CommentResult,
   type Job,
@@ -18,10 +20,12 @@ import {
 import {
   clearanceItemKeys,
   type ClearanceItemScope,
+  type ClearanceProjectScope,
 } from "../queries/clearanceItems";
 
 type EvidenceDecisionClient = Pick<typeof api, "recordEvidenceDecision">;
 type AssignmentClient = Pick<typeof api, "assignClearanceItem">;
+type BulkAssignmentClient = Pick<typeof api, "bulkAssignClearanceItems">;
 type DispositionClient = Pick<typeof api, "setDisposition">;
 type AddCommentClient = Pick<typeof api, "addComment">;
 type ReferralClient = Pick<typeof api, "referClearanceItem">;
@@ -35,6 +39,10 @@ export interface RecordEvidenceDecisionInput extends RecordEvidenceDecisionReque
 }
 
 export interface AssignClearanceItemInput extends AssignClearanceItemRequest {
+  idempotencyKey: string;
+}
+
+export interface BulkAssignClearanceItemsInput extends BulkAssignClearanceItemsRequest {
   idempotencyKey: string;
 }
 
@@ -85,6 +93,29 @@ export async function executeAssignClearanceItem(
       ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
       expectedVersion: input.expectedVersion,
       intentHash: input.intentHash,
+    },
+  });
+  if (!result.ok) throw toCommandError(result.error);
+  return result.value;
+}
+
+/**
+ * Assign several items to one member in a single governed request. The body
+ * omits `assigneeId`/`dueAt` unless supplied so an unassign (null) stays
+ * distinct from "leave unchanged" (absent), matching the single-item command.
+ */
+export async function executeBulkAssignClearanceItems(
+  scope: ClearanceProjectScope,
+  input: BulkAssignClearanceItemsInput,
+  client: BulkAssignmentClient = api,
+): Promise<BulkAssignResult> {
+  const result = await client.bulkAssignClearanceItems({
+    params: { orgId: scope.orgId, projectId: scope.projectId },
+    headers: { "Idempotency-Key": input.idempotencyKey },
+    body: {
+      itemIds: input.itemIds,
+      ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+      ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
     },
   });
   if (!result.ok) throw toCommandError(result.error);
@@ -390,6 +421,26 @@ export function assignClearanceItemMutationOptions(
     mutationFn: (input: AssignClearanceItemInput) =>
       executeAssignClearanceItem(scope, input, client),
     onSuccess: () => invalidateAuthoritativeItemState(queryClient, scope),
+  };
+}
+
+export function bulkAssignClearanceItemsMutationOptions(
+  scope: ClearanceProjectScope,
+  queryClient: QueryClient,
+  client: BulkAssignmentClient = api,
+) {
+  return {
+    retry: false as const,
+    mutationFn: (input: BulkAssignClearanceItemsInput) =>
+      executeBulkAssignClearanceItems(scope, input, client),
+    // The batch spans many items, so refresh the whole project list rather than
+    // any single detail view; the record ledger may also have grown.
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: clearanceItemKeys.list(scope.orgId, scope.projectId),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["records", scope.orgId] });
+    },
   };
 }
 

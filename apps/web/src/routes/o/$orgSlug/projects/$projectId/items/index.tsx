@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import type { ClearanceItem } from "@clearcut/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ClearanceItem, type Membership } from "@clearcut/contracts";
 import { clearanceItemsQueryOptions } from "../../../../../../queries/clearanceItems";
+import { sessionContextQueryOptions } from "../../../../../../queries/session";
+import { assignableMembersQueryOptions } from "../../../../../../queries/organizationMembers";
+import { bulkAssignClearanceItemsMutationOptions } from "../../../../../../mutations/clearanceItemCommands";
 import {
   Badge,
   Banner,
@@ -104,9 +107,42 @@ export function ClearanceItemsRoute() {
   const { orgSlug, projectId } = Route.useParams();
   const routeSearch = Route.useSearch();
   const navigate = Route.useNavigate();
+  const queryClient = useQueryClient();
   const itemsQuery = useQuery(clearanceItemsQueryOptions({ orgId: orgSlug, projectId }));
+  const sessionQuery = useQuery(sessionContextQueryOptions());
   const [filter, setFilter] = useState(routeSearch.status ?? "all");
   const [search, setSearch] = useState("");
+
+  // Bulk selection is transient client state; it deliberately does not live in
+  // the URL — a deep link restores the worklist, not a half-made batch.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [batchSummary, setBatchSummary] = useState<{
+    assignedCount: number;
+    totalCount: number;
+    unresolved: { itemId: string; outcome: string }[];
+  } | null>(null);
+
+  // A local reading of the caller's role, used only to decide whether to offer
+  // the bulk-assign controls. The server authorizes the batch again and returns
+  // 403 for a forbidden actor, so a stale reading can only over-offer.
+  const viewerRole = sessionQuery.data?.role ?? null;
+  const canAssign =
+    viewerRole === null ||
+    viewerRole === "owner" ||
+    viewerRole === "admin" ||
+    viewerRole === "reviewer";
+
+  const membersQuery = useQuery({
+    ...assignableMembersQueryOptions({ orgId: orgSlug, projectId }),
+    enabled: canAssign && assignOpen,
+  });
+
+  const bulkAssign = useMutation(
+    bulkAssignClearanceItemsMutationOptions({ orgId: orgSlug, projectId }, queryClient),
+  );
 
   const sort = routeSearch.sort;
   const dir = routeSearch.dir;
@@ -184,6 +220,57 @@ export function ClearanceItemsRoute() {
     }
     return [...buckets.entries()].map(([label, groupItems]) => ({ label, items: groupItems }));
   }, [sorted, group]);
+
+  const toggleSelected = (itemId: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+
+  // 'Clear' is a client-side deselect only — it never calls the server.
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setAssignOpen(false);
+  };
+
+  const submitAssign = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const itemIds = [...selectedIds];
+    if (itemIds.length === 0) {
+      return;
+    }
+    setBatchSummary(null);
+    const result = await bulkAssign.mutateAsync({
+      itemIds,
+      // Empty picker value means "unassign"; the server treats null as clearing
+      // the assignee. A chosen member sends their user id.
+      assigneeId: assigneeId === "" ? null : assigneeId,
+      dueAt: dueAt === "" ? null : new Date(dueAt).toISOString(),
+      // Fresh key per batch submit so a retry of the same batch is idempotent
+      // but a new intent is a new request.
+      idempotencyKey: crypto.randomUUID(),
+    });
+    setBatchSummary({
+      assignedCount: result.assignedCount,
+      totalCount: result.totalCount,
+      unresolved: result.results
+        .filter((r) => r.outcome !== "assigned")
+        .map((r) => ({ itemId: r.itemId, outcome: r.outcome })),
+    });
+    // Success: drop the selection and close the form; the mutation already
+    // invalidated the list so the rows refetch with their new assignee.
+    setSelectedIds(new Set());
+    setAssignOpen(false);
+    setAssigneeId("");
+    setDueAt("");
+  };
+
+  const selectedCount = selectedIds.size;
 
   return (
     <Page
@@ -284,6 +371,148 @@ export function ClearanceItemsRoute() {
             </label>
           </div>
 
+          {batchSummary && (
+            <Banner
+              tone={batchSummary.unresolved.length === 0 ? "is-success" : "is-warning"}
+              icon={batchSummary.unresolved.length === 0 ? "✓" : "⚠"}
+              title={`Assigned ${batchSummary.assignedCount} of ${batchSummary.totalCount} selected item${batchSummary.totalCount === 1 ? "" : "s"}`}
+              titleIsHeading
+              role="status"
+              message={
+                batchSummary.unresolved.length > 0 && (
+                  <>
+                    {batchSummary.unresolved.length} item
+                    {batchSummary.unresolved.length === 1 ? "" : "s"} were not
+                    assigned:{" "}
+                    {batchSummary.unresolved
+                      .map((r) => `${r.itemId} (${humanizeStatus(r.outcome)})`)
+                      .join(", ")}
+                    .
+                  </>
+                )
+              }
+              action={
+                <button
+                  type="button"
+                  className="button button-quiet button-sm"
+                  onClick={() => setBatchSummary(null)}
+                >
+                  Dismiss
+                </button>
+              }
+            />
+          )}
+
+          {canAssign && selectedCount > 0 && (
+            <Banner
+              tone="is-accent"
+              icon="☑"
+              title={`${selectedCount} item${selectedCount === 1 ? "" : "s"} selected`}
+              titleIsHeading
+              role="status"
+              className="gap-b-4"
+              action={
+                <>
+                  <button
+                    type="button"
+                    className="button button-primary button-sm"
+                    onClick={() => {
+                      setBatchSummary(null);
+                      setAssignOpen((open) => !open);
+                    }}
+                    aria-expanded={assignOpen}
+                    disabled={bulkAssign.isPending}
+                  >
+                    Assign…
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-quiet button-sm"
+                    onClick={clearSelection}
+                    disabled={bulkAssign.isPending}
+                  >
+                    Clear
+                  </button>
+                </>
+              }
+            />
+          )}
+
+          {canAssign && selectedCount > 0 && assignOpen && (
+            <form
+              className="card gap-b-4"
+              onSubmit={submitAssign}
+              aria-label="Assign selected items"
+            >
+              {bulkAssign.isError && (
+                <Banner
+                  tone="is-danger"
+                  icon="⚠"
+                  title="Bulk assignment failed"
+                  message={(bulkAssign.error as Error).message}
+                  role="alert"
+                  titleIsHeading
+                  className="gap-b-4"
+                />
+              )}
+              <div className="form-grid">
+                <label className="field" htmlFor="bulk-assignee">
+                  <span className="field-label">Assignee</span>
+                  <select
+                    id="bulk-assignee"
+                    value={assigneeId}
+                    onChange={(event) => setAssigneeId(event.target.value)}
+                    disabled={bulkAssign.isPending}
+                  >
+                    <option value="">Unassign</option>
+                    {membersQuery.data?.map((member: Membership) => (
+                      <option key={member.membershipId} value={member.userId}>
+                        {member.email ?? member.userId} · {humanizeStatus(member.role)}
+                      </option>
+                    ))}
+                  </select>
+                  {membersQuery.isPending && (
+                    <span className="small muted">Loading members…</span>
+                  )}
+                  {membersQuery.isError && (
+                    <span className="small muted" role="alert">
+                      Could not load members: {(membersQuery.error as Error).message}
+                    </span>
+                  )}
+                </label>
+                <label className="field" htmlFor="bulk-due">
+                  <span className="field-label">Due date (optional)</span>
+                  <input
+                    id="bulk-due"
+                    type="date"
+                    value={dueAt}
+                    onChange={(event) => setDueAt(event.target.value)}
+                    disabled={bulkAssign.isPending}
+                  />
+                </label>
+              </div>
+              <div className="cluster gap-t-4">
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  disabled={bulkAssign.isPending}
+                >
+                  {bulkAssign.isPending
+                    ? "Assigning…"
+                    : `Assign ${selectedCount} item${selectedCount === 1 ? "" : "s"}`}
+                </button>
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  onClick={() => setAssignOpen(false)}
+                  disabled={bulkAssign.isPending}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
           <Section>
             {sorted.length === 0 ? (
               <EmptyState
@@ -306,8 +535,19 @@ export function ClearanceItemsRoute() {
                   >
                     {bucket.items.map((item) => {
                       const tone = rowTone(item);
+                      const selected = selectedIds.has(item.itemId);
                       return (
                         <li className={`list-row is-static ${tone}`.trim()} key={item.itemId}>
+                          {canAssign && (
+                            <label className="list-check">
+                              <span className="sr-only">Select {item.entityName}</span>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleSelected(item.itemId)}
+                              />
+                            </label>
+                          )}
                           <div className="list-main">
                             <h3 className="list-title">{item.entityName}</h3>
                             <span className="list-meta">
