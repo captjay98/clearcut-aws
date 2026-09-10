@@ -2,12 +2,22 @@ import React, { useEffect, useState } from "react";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import {
   api,
+  type ClearanceItem,
+  type MonitoringPolicy,
+  type MonitoringRun,
+  type Project,
   type ReportPreview,
   type ReportRelease,
   type ReportSnapshot,
+  type ScriptVersion,
+  type TrustEvaluation,
 } from "@clearcut/contracts";
 import { ReportReceiptView } from "../../../../../features/reports/ReportReceiptView";
 import { ReportSnapshotBuilder } from "../../../../../features/reports/ReportSnapshotBuilder";
+import {
+  ReportDocument,
+  type ReportSourceRow,
+} from "../../../../../features/reports/ReportDocument";
 import { Banner, Page } from "../../../../../components/ds";
 
 const LEGAL_BOUNDARY =
@@ -27,6 +37,18 @@ export function ReportRoute() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackIsError, setFeedbackIsError] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Exhibit data for the live report document. Each holds only what the
+  // clearance service returned; nothing here is fabricated on failure.
+  const [versions, setVersions] = useState<ScriptVersion[]>([]);
+  const [items, setItems] = useState<ClearanceItem[]>([]);
+  const [sources, setSources] = useState<ReportSourceRow[]>([]);
+  const [sourcesComplete, setSourcesComplete] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [monitoringRuns, setMonitoringRuns] = useState<MonitoringRun[]>([]);
+  const [monitoringPolicy, setMonitoringPolicy] = useState<MonitoringPolicy | null>(null);
+  const [trustEvaluations, setTrustEvaluations] = useState<TrustEvaluation[]>([]);
+  const [documentLoading, setDocumentLoading] = useState(true);
 
   const showError = (message: string) => {
     setFeedbackIsError(true);
@@ -129,6 +151,94 @@ export function ReportRoute() {
     };
   }, [orgSlug, projectId]);
 
+  // Exhibit data loads independently of the snapshot lifecycle so the live
+  // document renders even before any snapshot exists. Exhibit C has no
+  // project-wide sources endpoint, so it is aggregated from per-item detail
+  // (getClearanceItem carries authorityTier + url/publisher/excerpt/stance)
+  // and flattened across every item. Failures surface as honest empty/partial
+  // states rather than fabricated rows.
+  useEffect(() => {
+    let active = true;
+
+    const loadDocument = async () => {
+      setDocumentLoading(true);
+      setSourcesComplete(false);
+
+      const [
+        versionsResult,
+        itemsResult,
+        projectResult,
+        runsResult,
+        policyResult,
+        evaluationsResult,
+      ] = await Promise.all([
+        api.listProjectVersions({ params: { orgId: orgSlug, projectId } }),
+        api.listClearanceItems({ params: { orgId: orgSlug, projectId } }),
+        api.getProject({ params: { orgId: orgSlug, projectId } }),
+        api.listMonitoringRuns({ params: { orgId: orgSlug, projectId } }),
+        api.getMonitoringPolicy({ params: { orgId: orgSlug, projectId } }),
+        api.listTrustEvaluations({ params: { orgId: orgSlug, projectId } }),
+      ]);
+      if (!active) return;
+
+      setVersions(versionsResult.ok ? versionsResult.value : []);
+      const loadedItems = itemsResult.ok ? itemsResult.value : [];
+      setItems(loadedItems);
+      setProject(projectResult.ok ? projectResult.value : null);
+      setMonitoringRuns(runsResult.ok ? runsResult.value : []);
+      setMonitoringPolicy(policyResult.ok ? policyResult.value : null);
+      setTrustEvaluations(evaluationsResult.ok ? evaluationsResult.value : []);
+
+      // Exhibit C: fetch each item's detail and flatten its cited snapshots +
+      // claims into source rows. ItemDetailEvidenceClaim carries authorityTier
+      // and stance; ItemDetailSourceSnapshot carries url/publisher/excerpt.
+      const detailResults = await Promise.all(
+        loadedItems.map((item) =>
+          api.getClearanceItem({
+            params: { orgId: orgSlug, projectId, itemId: item.itemId },
+          }),
+        ),
+      );
+      if (!active) return;
+
+      const aggregated: ReportSourceRow[] = [];
+      let everyItemResolved = true;
+      detailResults.forEach((result, index) => {
+        if (!result.ok) {
+          everyItemResolved = false;
+          return;
+        }
+        const detail = result.value;
+        const snapshotsById = new Map(
+          detail.snapshots.map((snapshot) => [snapshot.snapshotId, snapshot]),
+        );
+        detail.claims.forEach((claim) => {
+          const cited = snapshotsById.get(claim.snapshotId);
+          aggregated.push({
+            key: `${detail.itemId}-${claim.claimId}`,
+            itemId: detail.itemId,
+            entityName: detail.entityName,
+            authorityTier: claim.authorityTier,
+            publisher: cited?.publisher ?? "",
+            url: cited?.url ?? "",
+            retrievedAt: cited?.retrievedAt ?? "",
+            excerpt: cited?.excerpt ?? "",
+            stance: claim.stance,
+          });
+        });
+      });
+
+      setSources(aggregated);
+      setSourcesComplete(everyItemResolved);
+      setDocumentLoading(false);
+    };
+
+    void loadDocument();
+    return () => {
+      active = false;
+    };
+  }, [orgSlug, projectId]);
+
   const handleCreateSnapshot = async () => {
     setFeedback(null);
     setLoading(true);
@@ -225,6 +335,19 @@ export function ReportRoute() {
         onRelease={handleRelease}
         onCreateSnapshot={handleCreateSnapshot}
         loading={loading}
+      />
+
+      <ReportDocument
+        versions={versions}
+        items={items}
+        sources={sources}
+        sourcesComplete={sourcesComplete}
+        project={project}
+        monitoringRuns={monitoringRuns}
+        monitoringPolicy={monitoringPolicy}
+        trustEvaluations={trustEvaluations}
+        snapshot={snapshot}
+        loading={documentLoading}
       />
 
       {release && (

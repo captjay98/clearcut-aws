@@ -214,6 +214,7 @@ export function ProjectOverviewRoute() {
                   className="button button-quiet button-sm"
                   to="/o/$orgSlug/projects/$projectId/items"
                   params={{ orgSlug, projectId }}
+                  search={{ status: "attention", sort: "severity", dir: "desc", group: "none" }}
                 >
                   View all flags
                 </Link>

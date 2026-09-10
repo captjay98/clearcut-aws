@@ -304,6 +304,7 @@ export function JobProgress({
             className="button button-secondary"
             to="/o/$orgSlug/projects/$projectId/items"
             params={{ orgSlug, projectId }}
+            search={{ sort: "severity", dir: "desc", group: "none" }}
           >
             Review detected items
           </Link>
