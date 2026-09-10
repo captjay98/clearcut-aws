@@ -2551,6 +2551,40 @@ paths:
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources:register:
+    post:
+      summary: Register a monitored source for a project
+      operationId: registerMonitoredSource
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterMonitoredSourceRequest'
+      responses:
+        '201':
+          description: Monitored source registered
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MonitoredSource'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
   /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-changes:
     get:
       summary: List pending monitoring change signals for a project
@@ -5424,6 +5458,29 @@ components:
           type: integer
         createdAt:
           $ref: '#/components/schemas/ISODateTime'
+
+    RegisterMonitoredSourceRequest:
+      type: object
+      required:
+        - itemId
+      properties:
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        cadence:
+          type: string
+          enum: [off, manual, daily, weekly]
+        watchKind:
+          type: string
+          enum: [exact_source, new_event_topic]
+        targetUrl:
+          type: string
+          nullable: true
+        queryText:
+          type: string
+          nullable: true
+        baselineExcerpt:
+          type: string
+          nullable: true
 
     MonitoredSource:
       type: object

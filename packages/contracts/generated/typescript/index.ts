@@ -321,6 +321,15 @@ export interface ReviseCommentRequest {
   intentHash: string;
 }
 
+export interface RegisterMonitoredSourceRequest {
+  itemId: UUIDv7;
+  cadence?: 'off' | 'manual' | 'daily' | 'weekly';
+  watchKind?: 'exact_source' | 'new_event_topic';
+  targetUrl?: string | null;
+  queryText?: string | null;
+  baselineExcerpt?: string | null;
+}
+
 export interface ItemCapability {
   action: string;
   allowed: boolean;
@@ -937,6 +946,7 @@ export interface Operations {
   listMonitoringRuns: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs' };
   startMonitoringRun: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs' };
   listMonitoredSources: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources' };
+  registerMonitoredSource: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources:register' };
   listMonitoringChanges: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-changes' };
   reviewMonitoringChange: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision' };
   listNotifications: { method: 'GET'; path: '/api/v1/organizations/{orgId}/notifications' };
@@ -1910,6 +1920,23 @@ export function createApiClient(config: ApiClientConfig = {}) {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<Array<MonitoredSource>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources', {
         params: args?.params,
+        headers,
+      });
+    },
+
+    /** Register a monitored source for a project */
+    registerMonitoredSource: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        body: RegisterMonitoredSourceRequest;
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<MonitoredSource>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<MonitoredSource>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources:register', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },

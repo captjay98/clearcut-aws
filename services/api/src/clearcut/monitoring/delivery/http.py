@@ -13,10 +13,16 @@ from clearcut.database import session_scope
 from clearcut.delivery_errors import error_response
 from clearcut.identity.delivery.scope import get_request_scope
 from clearcut.monitoring.adapters.sql_review_repository import SqlMonitoringReviewRepository
+from clearcut.monitoring.adapters.sql_watch_repository import SqlMonitoringWatchRepository
 from clearcut.monitoring.application.review_change import MonitoringReviewService
-from clearcut.monitoring.domain.materiality import MonitoringReviewAction
+from clearcut.monitoring.application.run_scheduled_watch import ScheduledWatchService
+from clearcut.monitoring.domain.materiality import ChangeMateriality, MonitoringReviewAction
+from clearcut.monitoring.domain.models import WatchCadence, WatchConfig, WatchKind
 from clearcut.monitoring.ports.review_repository import PendingChangeSignal
 from clearcut.organizations.delivery.http import verify_csrf_origin
+from clearcut.research.adapters.hermetic_extract import HermeticExtractAdapter
+from clearcut.research.adapters.hermetic_search import HermeticSearchAdapter
+from clearcut.research.domain.snapshots import SourceSnapshot
 from fastapi import APIRouter, Path, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,9 +49,21 @@ _REVIEW_CHANGE_PATH = (
     "/api/v1/organizations/{orgId}/projects/{projectId}"
     "/monitoring-reviews/{reviewId}:recordDecision"
 )
+_REGISTER_SOURCE_PATH = (
+    "/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources:register"
+)
 
 _review_repository = SqlMonitoringReviewRepository()
 _review_service = MonitoringReviewService(repository=_review_repository)
+_watch_repository = SqlMonitoringWatchRepository()
+# The recheck adapters are hermetic (no paid provider call): a recheck always
+# re-derives the same deterministic excerpt, so a change is detected only when a
+# registered baseline was recorded with a *different* excerpt. No fabricated
+# provider traffic and no fabricated change.
+_scheduled_watch_service = ScheduledWatchService(
+    extract_port=HermeticExtractAdapter(),
+    search_port=HermeticSearchAdapter(),
+)
 
 # The contract exposes a neutral review vocabulary (accepted/rejected/escalated);
 # the domain records the operational triage action. This is the single mapping
@@ -77,6 +95,32 @@ class ReviewMonitoringChangeBody(BaseModel):
 
     decision: Literal["accepted", "rejected", "escalated"]
     rationale: Annotated[str, Field(min_length=1)] = "Monitoring change reviewed."
+
+
+class RegisterMonitoredSourceBody(BaseModel):
+    """Contract-aligned request body for ``registerMonitoredSource``.
+
+    A registration records *what* to watch (an item-scoped source) and captures
+    an initial baseline snapshot as the prior a later recheck compares against.
+    ``baselineExcerpt`` seeds that baseline's content: because the hermetic
+    recheck re-derives a fixed excerpt, a baseline recorded with a different
+    excerpt makes the first recheck legitimately detect a change through the real
+    comparison, without fabricating a delta. Omitting it stores the same excerpt
+    the recheck produces, so the first recheck is correctly non-material.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    item_id: Annotated[str, Field(alias="itemId")]
+    cadence: Literal["off", "manual", "daily", "weekly"] = "weekly"
+    watch_kind: Annotated[
+        Literal["exact_source", "new_event_topic"], Field(alias="watchKind")
+    ] = "exact_source"
+    target_url: Annotated[str | None, Field(alias="targetUrl", min_length=1)] = None
+    query_text: Annotated[str | None, Field(alias="queryText", min_length=1)] = None
+    baseline_excerpt: Annotated[
+        str | None, Field(alias="baselineExcerpt", min_length=1)
+    ] = None
 
 
 @router.get("/monitoring-cadence")
@@ -117,10 +161,55 @@ async def update_watch_config(
 async def run_monitoring_check(
     org_id: str, project_id: str, request: Request
 ) -> dict:
+    """Run a monitoring check across the project's registered watches.
+
+    For each registered watch this loads the item's most recent persisted
+    snapshot as the prior, re-retrieves the source via
+    :meth:`ScheduledWatchService.execute_watch_recheck`, persists the fresh
+    snapshot and its :class:`MonitoringRun`, and — only when the real
+    ``compare_snapshots`` comparison yields a MATERIAL delta — persists that
+    delta as a pending review signal. ``signalsDetected`` is the exact number of
+    material signals persisted this run; a project with no watches, or one whose
+    sources are unchanged, honestly reports ``0`` and persists no signal.
+    """
     verify_csrf_origin(request)
     scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    assert scope.org_id is not None
+    assert scope.project_id is not None
     job_id = uuid6.uuid7()
     now = datetime.now(UTC)
+
+    signals_detected = 0
+    async with session_scope() as session:
+        watches = await _watch_repository.list_watches(
+            session,
+            org_id=scope.org_id,
+            project_id=scope.project_id,
+        )
+        for watch in watches:
+            prior = await _watch_repository.latest_snapshot_for_watch(
+                session, watch=watch
+            )
+            run, snapshot, delta = await _scheduled_watch_service.execute_watch_recheck(
+                watch, prior_snapshot=prior
+            )
+            await _watch_repository.persist_recheck(
+                session, run=run, snapshot=snapshot
+            )
+            # A delta only exists when there was a prior to compare against; only
+            # a MATERIAL delta becomes a pending review signal. NON_MATERIAL and
+            # "no prior" both persist the fresh snapshot without a signal, so no
+            # change is fabricated.
+            if delta is not None and delta.materiality is ChangeMateriality.MATERIAL:
+                await _review_repository.write_delta(
+                    session,
+                    delta=delta,
+                    watch_id=watch.watch_id,
+                    change_kind="content_changed",
+                    prior_excerpt=prior.excerpt if prior is not None else None,
+                    current_excerpt=snapshot.excerpt,
+                )
+                signals_detected += 1
 
     return {
         "data": {
@@ -128,7 +217,7 @@ async def run_monitoring_check(
             "orgId": str(scope.org_id),
             "projectId": str(scope.project_id),
             "status": "completed",
-            "signalsDetected": 0,
+            "signalsDetected": signals_detected,
             "checkedAt": now.isoformat(),
         },
         "meta": {"requestId": "req_monitor_check"},
@@ -175,6 +264,88 @@ async def list_monitored_sources(
         "data": sources,
         "meta": {"requestId": f"req_{uuid6.uuid7()}", "totalCount": len(sources)},
     }
+
+
+@reviews_router.post(
+    _REGISTER_SOURCE_PATH,
+    operation_id="registerMonitoredSource",
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_monitored_source(
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    body: RegisterMonitoredSourceBody,
+    request: Request,
+) -> JSONResponse:
+    """Register a monitored source and record its baseline snapshot.
+
+    Inserts an item-scoped ``monitoring_watches`` row and stores an initial
+    baseline :class:`SourceSnapshot` — the real prior a later recheck compares
+    against — in one transaction. ``baselineExcerpt`` (optional) seeds the
+    baseline content so a subsequent recheck can legitimately detect a change
+    through the real comparison rather than a fabricated delta. This is an
+    operational write (recording what to watch), not a governed clearance
+    decision, so it carries no audit event.
+    """
+    verify_csrf_origin(request)
+    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    assert scope.org_id is not None
+    assert scope.project_id is not None
+
+    parsed_item_id = _parse_uuid(body.item_id)
+    if parsed_item_id is None:
+        return _envelope_for(CommandValidationError("itemId must be a valid identifier."))
+    if body.target_url is None and body.query_text is None:
+        return _envelope_for(
+            CommandValidationError("A monitored source needs a targetUrl or queryText.")
+        )
+
+    watch = WatchConfig.create(
+        org_id=scope.org_id,
+        project_id=scope.project_id,
+        item_id=parsed_item_id,
+        cadence=WatchCadence(body.cadence),
+        watch_kind=WatchKind(body.watch_kind),
+        target_url=body.target_url,
+        query_text=body.query_text,
+    )
+    # The baseline snapshot mirrors the source the recheck will re-retrieve. Its
+    # excerpt defaults to the recheck's own deterministic excerpt (so an
+    # unchanged source is correctly non-material); an explicit baselineExcerpt
+    # makes the first recheck detect a real change.
+    baseline_url = watch.target_url or "https://example.com/source"
+    baseline = SourceSnapshot.create(
+        org_id=scope.org_id,
+        project_id=scope.project_id,
+        item_id=parsed_item_id,
+        run_id=uuid6.uuid7(),
+        url=baseline_url,
+        title=f"Baseline for {parsed_item_id}",
+        publisher=baseline_url.split("//")[-1].split("/")[0],
+        excerpt=body.baseline_excerpt or "Active registered record",
+        origin="extract",
+    )
+
+    async with session_scope() as session:
+        await _watch_repository.register_watch(
+            session, watch=watch, baseline_snapshot=baseline
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content={
+            "data": {
+                "watchId": str(watch.watch_id),
+                "itemId": str(watch.item_id),
+                "cadence": watch.cadence.value,
+                "watchKind": watch.watch_kind.value,
+                "targetUrl": watch.target_url,
+                "queryText": watch.query_text,
+                "createdAt": watch.created_at.isoformat(),
+            },
+            "meta": {"requestId": f"req_{watch.watch_id}"},
+        },
+    )
 
 
 @reviews_router.get(_MONITORING_CHANGES_PATH, operation_id="listMonitoringChanges")

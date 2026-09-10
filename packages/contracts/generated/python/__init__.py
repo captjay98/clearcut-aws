@@ -296,6 +296,14 @@ class ReviseCommentRequest(BaseModel):
     expectedVersion: Annotated[int, Field(ge=1)]
     intentHash: Annotated[str, Field(pattern="^[0-9a-f]{64}$")]
 
+class RegisterMonitoredSourceRequest(BaseModel):
+    itemId: UUIDv7
+    cadence: Optional[Literal["off", "manual", "daily", "weekly"]] = None
+    watchKind: Optional[Literal["exact_source", "new_event_topic"]] = None
+    targetUrl: Optional[str] = None
+    queryText: Optional[str] = None
+    baselineExcerpt: Optional[str] = None
+
 class ItemCapability(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

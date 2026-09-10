@@ -30,6 +30,7 @@ const task10OperationIds = [
   'reviseComment',
   'listMonitoredSources',
   'listMonitoringChanges',
+  'registerMonitoredSource',
 ]
 const reportSchemaNames = [
   'ReportSnapshot',
