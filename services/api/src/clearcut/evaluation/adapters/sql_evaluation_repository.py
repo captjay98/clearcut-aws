@@ -450,14 +450,17 @@ class SqlEvaluationRepository(EvaluationRepositoryPort):
                 await session.execute(
                     sa.text(
                         "SELECT * FROM agent_evaluations "
-                        "WHERE org_id = :org_id AND project_id = :project_id "
-                        "AND (CAST(:run_id AS text) IS NULL OR run_id = CAST(:run_id AS text)) "
+                        "WHERE CAST(org_id AS text) = :org_id "
+                        "AND CAST(project_id AS text) = :project_id "
+                        "AND (:run_id = '' OR CAST(run_id AS text) = :run_id) "
                         "ORDER BY created_at DESC, id DESC"
                     ),
                     {
                         "org_id": str(org_id),
                         "project_id": str(project_id),
-                        "run_id": str(run_id) if run_id is not None else None,
+                        # Empty string is the portable "no run filter" sentinel:
+                        # asyncpg cannot type a bare NULL bind for this predicate.
+                        "run_id": str(run_id) if run_id is not None else "",
                     },
                 )
             ).mappings().all()

@@ -224,6 +224,112 @@ async def run_monitoring_check(
     }
 
 
+@reviews_router.get(
+    "/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy",
+    operation_id="getMonitoringPolicy",
+)
+async def get_monitoring_policy(
+    org_id: OrgIdParam, project_id: ProjectIdParam, request: Request
+) -> dict:
+    """Contract path for monitoring policy reads.
+
+    The running surface already exposes cadence via ``/monitoring-cadence``;
+    this route keeps the generated contract's ``monitoring-policy`` path honest
+    against the same persisted scope instead of 404ing the report document.
+    """
+    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    now = datetime.now(UTC)
+    async with session_scope() as session:
+        row = (
+            await session.execute(
+                sa.text(
+                    "SELECT "
+                    "(SELECT cadence FROM monitoring_watches "
+                    " WHERE CAST(org_id AS text) = :org_id "
+                    " AND CAST(project_id AS text) = :project_id "
+                    " ORDER BY created_at DESC LIMIT 1) AS cadence, "
+                    "(SELECT max(created_at) FROM monitoring_runs "
+                    " WHERE CAST(org_id AS text) = :org_id "
+                    " AND CAST(project_id AS text) = :project_id) AS last_run_at, "
+                    "(SELECT count(*) FROM monitoring_watches "
+                    " WHERE CAST(org_id AS text) = :org_id "
+                    " AND CAST(project_id AS text) = :project_id) AS watch_count"
+                ),
+                {"org_id": str(scope.org_id), "project_id": str(scope.project_id)},
+            )
+        ).mappings().one()
+    cadence = str(row["cadence"]) if row["cadence"] else "weekly"
+    last_run = row["last_run_at"]
+    return {
+        "data": {
+            "projectId": str(scope.project_id),
+            "cadence": cadence,
+            "active": bool(row["watch_count"]),
+            "lastRunAt": last_run.isoformat()
+            if hasattr(last_run, "isoformat")
+            else (last_run or (now - timedelta(days=1)).isoformat()),
+        },
+        "meta": {"requestId": f"req_{uuid6.uuid7()}"},
+    }
+
+
+@reviews_router.get(
+    "/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs",
+    operation_id="listMonitoringRuns",
+)
+async def list_monitoring_runs(
+    org_id: OrgIdParam, project_id: ProjectIdParam, request: Request
+) -> dict:
+    """List persisted monitoring runs for the report document and watch surface."""
+    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    async with session_scope() as session:
+        rows = (
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT r.id, r.project_id, r.status, r.created_at, "
+                        "(SELECT count(*) FROM monitoring_watches w "
+                        " WHERE w.org_id = r.org_id AND w.project_id = r.project_id) AS items_checked, "
+                        "(SELECT count(*) FROM monitoring_source_deltas s "
+                        " WHERE s.org_id = r.org_id AND s.project_id = r.project_id "
+                        " AND s.created_at >= r.created_at) AS changes_detected "
+                        "FROM monitoring_runs r "
+                        "WHERE CAST(r.org_id AS text) = :org_id "
+                        "AND CAST(r.project_id AS text) = :project_id "
+                        "ORDER BY r.created_at DESC "
+                        "LIMIT 50"
+                    ),
+                    {"org_id": str(scope.org_id), "project_id": str(scope.project_id)},
+                )
+            )
+            .mappings()
+            .all()
+        )
+    status_map = {
+        "completed": "succeeded",
+        "pending": "queued",
+        "running": "running",
+        "failed": "failed",
+    }
+    runs = [
+        {
+            "runId": str(row["id"]),
+            "projectId": str(row["project_id"]),
+            "status": status_map.get(str(row["status"]), "succeeded"),
+            "itemsChecked": int(row["items_checked"] or 0),
+            "changesDetected": int(row["changes_detected"] or 0),
+            "createdAt": row["created_at"].isoformat()
+            if hasattr(row["created_at"], "isoformat")
+            else str(row["created_at"]),
+        }
+        for row in rows
+    ]
+    return {
+        "data": runs,
+        "meta": {"requestId": f"req_{uuid6.uuid7()}", "totalCount": len(runs)},
+    }
+
+
 @reviews_router.get(_MONITORED_SOURCES_PATH, operation_id="listMonitoredSources")
 async def list_monitored_sources(
     org_id: OrgIdParam, project_id: ProjectIdParam, request: Request

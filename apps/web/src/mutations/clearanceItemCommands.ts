@@ -461,6 +461,36 @@ export function setDispositionMutationOptions(
 
 
 
+const TERMINAL_JOB_STATUSES = new Set(["succeeded", "failed", "cancelled", "manual_retry"]);
+
+/**
+ * Research returns 202 with a durable job. Claims only appear after that job
+ * reaches a terminal state, so poll the authoritative job record and refresh
+ * the item once — rather than forcing a hard reload.
+ */
+async function refreshWhenResearchJobSettles(
+  scope: ClearanceItemScope,
+  queryClient: QueryClient,
+  jobId: string,
+  maxPolls = 180,
+): Promise<void> {
+  for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const result = await api.getJob({
+      params: { orgId: scope.orgId, projectId: scope.projectId, jobId },
+    });
+    if (!result.ok) continue;
+    queryClient.setQueryData(
+      ["job", scope.orgId, scope.projectId, jobId] as const,
+      result.value,
+    );
+    if (TERMINAL_JOB_STATUSES.has(result.value.status)) {
+      await invalidateAuthoritativeItemState(queryClient, scope);
+      return;
+    }
+  }
+}
+
 export function startResearchMutationOptions(
   scope: ClearanceItemScope,
   queryClient: QueryClient,
@@ -469,6 +499,9 @@ export function startResearchMutationOptions(
   return {
     retry: false as const,
     mutationFn: () => executeStartResearch(scope, client),
-    onSuccess: () => invalidateAuthoritativeItemState(queryClient, scope),
+    onSuccess: async (job: Job) => {
+      await invalidateAuthoritativeItemState(queryClient, scope);
+      void refreshWhenResearchJobSettles(scope, queryClient, job.jobId);
+    },
   };
 }

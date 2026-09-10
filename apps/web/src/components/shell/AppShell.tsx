@@ -148,7 +148,7 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
-function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppShellProps) {
+function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
   const projectId = projectIdFrom(currentPath);
@@ -163,11 +163,22 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
   // both rather than falling back to the slug in the URL.
   const [orgName, setOrgName] = useState<string | null>(null);
   const [memberCount, setMemberCount] = useState<number | null>(null);
+  // The avatar must name the authenticated account, never a mock identity.
+  const [sessionLabel, setSessionLabel] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadContext() {
+      try {
+        const session = await api.getSessionContext();
+        if (!cancelled && session.ok && session.value.email) {
+          setSessionLabel(session.value.email);
+        }
+      } catch {
+        // Fall through to the caller-supplied label if any.
+      }
+
       try {
         const orgs = await api.listOrganizations();
         if (!cancelled && orgs.ok) {
@@ -195,6 +206,8 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
       cancelled = true;
     };
   }, [orgSlug]);
+
+  const displayName = sessionLabel ?? userName ?? "Signed-in user";
 
   // The mock keys the shell's grid off body classes so the rail and the main
   // column stay in step, including when the rail collapses.
@@ -344,8 +357,8 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
             Inbox
           </Link>
           <ThemeSwitcher />
-          <span className="avatar" aria-label={`Signed in as ${userName}`} title={userName}>
-            {initialsOf(userName)}
+          <span className="avatar" aria-label={`Signed in as ${displayName}`} title={displayName}>
+            {initialsOf(displayName)}
           </span>
           <button
             className="button button-quiet"
