@@ -168,6 +168,7 @@ function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
   // The avatar must name the authenticated account, never a mock identity.
   const [sessionLabel, setSessionLabel] = useState<string | null>(null);
   const [versionNumber, setVersionNumber] = useState<number | null>(null);
+  const [flagCount, setFlagCount] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,6 +231,16 @@ function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
       } catch {
         // Version chip stays absent rather than inventing a stock colour.
       }
+      try {
+        const flags = await api.listClearanceItems({
+          params: { orgId: orgSlug, projectId },
+        });
+        if (!cancelled && flags.ok) {
+          setFlagCount(flags.value.length);
+        }
+      } catch {
+        // Badge stays absent when the count is unavailable.
+      }
     })();
     return () => {
       cancelled = true;
@@ -291,6 +302,11 @@ function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
                 {item.icon}
               </span>
               <span className="truncate">{item.label}</span>
+              {item.label === "Flags" && flagCount !== null && flagCount > 0 && (
+                <span className="mono small muted" data-testid="flags-nav-count">
+                  {flagCount}
+                </span>
+              )}
             </Link>
           ))}
         </div>

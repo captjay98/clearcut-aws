@@ -151,6 +151,7 @@ export function ClearanceItemsRoute() {
   }, [membersForLabels.data]);
   const [filter, setFilter] = useState(routeSearch.status ?? "all");
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "board">("list");
 
   // Bulk selection is transient client state; it deliberately does not live in
   // the URL — a deep link restores the worklist, not a half-made batch.
@@ -383,6 +384,25 @@ export function ClearanceItemsRoute() {
 
           <TabsBar items={tabs} active={filter} onChange={setFilter} label="Filter flags" />
 
+          <div className="cluster gap-b-4 gap-t-2" role="group" aria-label="Item view">
+            <button
+              type="button"
+              className={`button button-sm ${viewMode === "list" ? "button-primary" : "button-quiet"}`}
+              aria-pressed={viewMode === "list"}
+              onClick={() => setViewMode("list")}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              className={`button button-sm ${viewMode === "board" ? "button-primary" : "button-quiet"}`}
+              aria-pressed={viewMode === "board"}
+              onClick={() => setViewMode("board")}
+            >
+              Board
+            </button>
+          </div>
+
           <div className="row gap-b-4 gap-t-2" style={{ flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
             <label className="small muted">
               Sort:{" "}
@@ -572,6 +592,47 @@ export function ClearanceItemsRoute() {
                 title="No flags match"
                 description="Clear the search or choose a different filter."
               />
+            ) : viewMode === "board" ? (
+              <div
+                className="grid gap-b-4"
+                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "1rem" }}
+                data-testid="items-board"
+              >
+                {STATUS_CHIP_ORDER.map((statusLabel) => {
+                  const columnItems = sorted.filter((item) => displayStatus(item) === statusLabel);
+                  if (columnItems.length === 0) return null;
+                  return (
+                    <div key={statusLabel} className="card">
+                      <h2 className="small muted">
+                        {statusLabel} · {columnItems.length}
+                      </h2>
+                      <ul className="list gap-t-2" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                        {columnItems.map((item) => (
+                          <li key={item.itemId} className="list-row is-static">
+                            <div className="list-main">
+                              <Link
+                                className="list-title"
+                                to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                                params={{ orgSlug, projectId, itemId: item.itemId }}
+                                search={{ group: "none", sort: "severity", dir: "desc" }}
+                              >
+                                {item.entityName}
+                              </Link>
+                              <span className="list-meta">
+                                <span>{displayCategory(item.category)}</span>
+                                <span>
+                                  {item.claimCount ?? 0} source
+                                  {(item.claimCount ?? 0) === 1 ? "" : "s"}
+                                </span>
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               groups.map((bucket) => (
                 <div key={bucket.label || "all"} className="gap-b-4">

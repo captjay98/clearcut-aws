@@ -375,7 +375,7 @@
   .step-num.is-done { background: var(--success-soft); border-color: transparent; color: var(--success); }
 
   /* ── Badges ── */
-  .badge { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 22px; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--neutral-soft); color: var(--neutral); font-size: .7rem; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+  .badge { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 22px; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--neutral-soft); color: var(--neutral); font-size: .7rem; font-weight: 700; line-height: 1.2; white-space: nowrap; pointer-events: none; }
   .badge.is-success { background: var(--success-soft); color: var(--success); }
   .badge.is-warning { background: var(--warning-soft); color: var(--warning); }
   .badge.is-danger { background: var(--danger-soft); color: var(--danger); }
@@ -520,7 +520,7 @@
   .list-row.is-row-accent:hover { background: color-mix(in srgb, var(--accent-soft) 80%, var(--surface-2)); }
   .list-main { flex: 1; min-width: 0; }
   /* The worklist's title is a button inside a row that is not one. */
-  .list-main-button { border: 0; background: none; text-align: left; cursor: pointer; }
+  .list-main-button { display: block; width: 100%; border: 0; background: none; text-align: left; cursor: pointer; }
   .list-title { display: block; margin-bottom: var(--space-1); font-size: .9rem; font-weight: 650; }
   .list-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--ink-faint); font-size: .76rem; }
   .list-aside { display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }

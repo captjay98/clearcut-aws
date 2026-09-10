@@ -21,7 +21,7 @@ import {
   setDispositionMutationOptions,
   startResearchMutationOptions,
 } from "../../../../../../mutations/clearanceItemCommands";
-import { clearanceItemDetailQueryOptions } from "../../../../../../queries/clearanceItems";
+import { clearanceItemDetailQueryOptions, clearanceItemsQueryOptions } from "../../../../../../queries/clearanceItems";
 import { organizationMentionRecipientsQueryOptions, assignableMembersQueryOptions } from "../../../../../../queries/organizationMembers";
 import { Badge, Banner, Card, Page, Section } from "../../../../../../components/ds";
 import {
@@ -50,6 +50,7 @@ export function ItemDetailRoute() {
   const queryClient = useQueryClient();
   const scope = { orgId: orgSlug, projectId, itemId };
   const itemQuery = useQuery(clearanceItemDetailQueryOptions(scope));
+  const itemsQuery = useQuery(clearanceItemsQueryOptions({ orgId: orgSlug, projectId }));
   const mentionRecipientsQuery = useQuery(
     organizationMentionRecipientsQueryOptions({ orgId: orgSlug, projectId }),
   );
@@ -82,6 +83,11 @@ export function ItemDetailRoute() {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const item = itemQuery.data;
+  const siblings = itemsQuery.data ?? [];
+  const siblingIndex = siblings.findIndex((row) => row.itemId === itemId);
+  const prevFlag = siblingIndex > 0 ? siblings[siblingIndex - 1]! : null;
+  const nextFlag =
+    siblingIndex >= 0 && siblingIndex < siblings.length - 1 ? siblings[siblingIndex + 1]! : null;
   const decisionCapability = item?.capabilities.find(
     (capability) => capability.action === "item:decide",
   );
@@ -372,6 +378,39 @@ export function ItemDetailRoute() {
       actions={
         <>
           <Badge tone={displayStatusTone(item)}>{displayStatus(item)}</Badge>
+          {siblings.length > 0 && siblingIndex >= 0 && (
+            <span className="cluster small muted" data-testid="flag-pager">
+              {prevFlag ? (
+                <Link
+                  className="button button-quiet button-sm"
+                  to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                  params={{ orgSlug, projectId, itemId: prevFlag.itemId }}
+                  search={{ group: "none", sort: "severity", dir: "desc" }}
+                  aria-label={`Previous flag: ${prevFlag.entityName}`}
+                >
+                  ←
+                </Link>
+              ) : (
+                <span aria-hidden="true">←</span>
+              )}
+              <span>
+                {siblingIndex + 1} of {siblings.length} flags
+              </span>
+              {nextFlag ? (
+                <Link
+                  className="button button-quiet button-sm"
+                  to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                  params={{ orgSlug, projectId, itemId: nextFlag.itemId }}
+                  search={{ group: "none", sort: "severity", dir: "desc" }}
+                  aria-label={`Next flag: ${nextFlag.entityName}`}
+                >
+                  →
+                </Link>
+              ) : (
+                <span aria-hidden="true">→</span>
+              )}
+            </span>
+          )}
           <button
             type="button"
             className="button button-quiet"

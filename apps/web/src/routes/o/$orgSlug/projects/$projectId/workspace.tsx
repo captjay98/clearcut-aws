@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { api, type ClearanceItem } from "@clearcut/contracts";
@@ -11,6 +11,7 @@ import {
 } from "../../../../../features/scripts/ScreenplayViewer";
 import { ScriptUploadModal } from "../../../../../features/scripts/ScriptUploadModal";
 import { Badge, Banner, TabsBar } from "../../../../../components/ds";
+import { useShell } from "../../../../../components/shell/ShellContext";
 import {
   displayStatus,
   displayStatusTone,
@@ -59,6 +60,7 @@ export function WorkspaceRoute() {
   const [paneTab, setPaneTab] = useState("script");
   const uploadButtonRef = useRef<HTMLButtonElement>(null);
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const { setProjectTitle, setScriptPosition } = useShell();
 
   const items = itemsQuery.data ?? [];
   const scenes = scriptQuery.data?.scenes ?? [];
@@ -164,6 +166,26 @@ export function WorkspaceRoute() {
   const versionLabel = scriptQuery.data?.version ?? "v1";
   const versionNumber = Number(String(versionLabel).replace(/^v/i, "")) || 1;
   const stock = revisionStock(versionNumber);
+
+  useEffect(() => {
+    if (scriptQuery.data?.title) setProjectTitle(scriptQuery.data.title);
+    return () => setProjectTitle(null);
+  }, [scriptQuery.data?.title, setProjectTitle]);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setScriptPosition(null);
+      return;
+    }
+    const parts = [
+      selectedItem.scene != null ? `Scene ${selectedItem.scene}` : null,
+      (selectedItem as { page?: number }).page != null
+        ? `p.${(selectedItem as { page?: number }).page}`
+        : null,
+    ].filter(Boolean);
+    setScriptPosition(parts.length > 0 ? parts.join(" · ") : selectedItem.entityName);
+    return () => setScriptPosition(null);
+  }, [selectedItem, setScriptPosition]);
 
   const refreshImportedScript = async () => {
     await queryClient.invalidateQueries({
