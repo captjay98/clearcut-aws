@@ -16,6 +16,7 @@ import {
   protectedConfigurationsQueryOptions,
 } from "../../../queries/governance";
 import { sessionContextQueryOptions } from "../../../queries/session";
+import { notificationDeliveryPreferenceQueryOptions } from "../../../queries/notifications";
 import {
   activateProtectedConfigurationMutationOptions,
   draftProtectedConfigurationMutationOptions,
@@ -23,7 +24,9 @@ import {
   updateOrganizationSettingsMutationOptions,
   validateProtectedConfigurationMutationOptions,
 } from "../../../mutations/governanceCommands";
+import { setNotificationDeliveryPreferenceMutationOptions } from "../../../mutations/notificationCommands";
 import { OrganizationProfileForm } from "../../../features/governance/OrganizationProfileForm";
+import { NotificationDeliveryPreferenceForm } from "../../../features/settings/NotificationDeliveryPreferenceForm";
 import { ProtectedConfigurationTable } from "../../../features/governance/ProtectedConfigurationTable";
 import { ProtectedRulesBanner } from "../../../features/governance/ProtectedRulesBanner";
 import { DraftConfigurationForm } from "../../../features/governance/DraftConfigurationForm";
@@ -76,9 +79,15 @@ export function SettingsRoute() {
     protectedConfigurationsQueryOptions(orgSlug),
   );
   const healthQuery = useQuery(deploymentHealthQueryOptions());
+  const deliveryPreferenceQuery = useQuery(
+    notificationDeliveryPreferenceQueryOptions(orgSlug),
+  );
 
   const saveSettings = useMutation(
     updateOrganizationSettingsMutationOptions(orgSlug, queryClient),
+  );
+  const saveDeliveryPreference = useMutation(
+    setNotificationDeliveryPreferenceMutationOptions(orgSlug, queryClient),
   );
   const draftConfiguration = useMutation(
     draftProtectedConfigurationMutationOptions(orgSlug, queryClient),
@@ -157,7 +166,27 @@ export function SettingsRoute() {
           </Section>
         )}
 
-        {/* ── Integrations ─────────────────────────────────────────────── */}
+        {/* ── Notifications (personal) ─────────────────────────────────── */}
+        {tab === "general" && (
+          <Section
+            title="Notifications"
+            description="Your own delivery channel for reviews, referrals and monitoring alerts. This is a personal preference — it grants nothing to anyone else and changes nothing for the organization."
+          >
+            {deliveryPreferenceQuery.isPending ? (
+              <p role="status" className="small muted">
+                Loading your notification preference…
+              </p>
+            ) : (
+              <NotificationDeliveryPreferenceForm
+                channel={deliveryPreferenceQuery.data?.channel ?? "in_app"}
+                saving={saveDeliveryPreference.isPending}
+                saved={saveDeliveryPreference.isSuccess}
+                error={errorMessage(saveDeliveryPreference.error)}
+                onChange={(channel) => saveDeliveryPreference.mutate(channel)}
+              />
+            )}
+          </Section>
+        )}
         {tab === "integrations" && (
           <Section
             title="Integrations"
