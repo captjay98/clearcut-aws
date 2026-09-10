@@ -20,6 +20,7 @@ const spec = load(fs.readFileSync(openapiPath, 'utf-8'))
 const task10OperationIds = [
   'getClearanceItem',
   'assignClearanceItem',
+  'bulkAssignClearanceItems',
   'recordEvidenceDecision',
   'setDisposition',
   'referClearanceItem',

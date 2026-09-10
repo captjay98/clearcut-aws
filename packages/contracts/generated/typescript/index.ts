@@ -261,6 +261,12 @@ export interface AssignClearanceItemRequest {
   intentHash: string;
 }
 
+export interface BulkAssignClearanceItemsRequest {
+  itemIds: Array<UUIDv7>;
+  assigneeId?: UUIDv7 | null;
+  dueAt?: string | null;
+}
+
 export type EvidenceDecision = 'accepted' | 'rejected' | 'further_review_required';
 
 export interface RecordEvidenceDecisionRequest {
@@ -456,6 +462,12 @@ export interface ApiError {
 
 export interface ErrorEnvelope {
   error: ApiError;
+}
+
+export interface BulkAssignResult {
+  assignedCount: number;
+  totalCount: number;
+  results: Array<{ itemId: UUIDv7; outcome: string; resultingVersion?: number }>;
 }
 
 export interface Referral {
@@ -881,6 +893,7 @@ export interface Operations {
   listClearanceItems: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items' };
   getClearanceItem: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}' };
   getClearanceItemEvidence: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence' };
+  bulkAssignClearanceItems: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items:bulkAssign' };
   assignClearanceItem: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign' };
   changeClearanceItemDueDate: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:changeDueDate' };
   recordEvidenceDecision: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:recordEvidenceDecision' };
@@ -1542,6 +1555,23 @@ export function createApiClient(config: ApiClientConfig = {}) {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<ItemEvidence>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}/evidence', {
         params: args?.params,
+        headers,
+      });
+    },
+
+    /** Assign several clearance items to one member in a single request */
+    bulkAssignClearanceItems: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        body: BulkAssignClearanceItemsRequest;
+        headers: { "Idempotency-Key": string } & Record<string, string>;
+      }
+    ): Promise<ApiResult<BulkAssignResult>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<BulkAssignResult>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/clearance-items:bulkAssign', {
+        params: args?.params,
+        body: args?.body,
+        bodyMediaType: 'application/json',
         headers,
       });
     },

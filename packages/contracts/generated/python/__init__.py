@@ -228,6 +228,13 @@ class AssignClearanceItemRequest(BaseModel):
     expectedVersion: Annotated[int, Field(ge=0)]
     intentHash: Annotated[str, Field(min_length=1)]
 
+class BulkAssignClearanceItemsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    itemIds: Annotated[List[UUIDv7], Field(min_length=1, max_length=200)]
+    assigneeId: Optional[UUIDv7] = None
+    dueAt: Optional[str] = None
+
 EvidenceDecision = Literal["accepted", "rejected", "further_review_required"]
 
 class RecordEvidenceDecisionRequest(BaseModel):
@@ -443,6 +450,13 @@ class ErrorPayload(BaseModel):
 
 class ErrorEnvelope(BaseModel):
     error: ErrorPayload
+
+class BulkAssignResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assignedCount: Annotated[int, Field(ge=0)]
+    totalCount: Annotated[int, Field(ge=0)]
+    results: List[Dict[str, Any]]
 
 class Referral(BaseModel):
     referralId: UUIDv7

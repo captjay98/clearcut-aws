@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -34,7 +35,8 @@ OrgIdParam = Annotated[str, Path(alias="orgId")]
 ProjectIdParam = Annotated[str, Path(alias="projectId")]
 ItemIdParam = Annotated[str, Path(alias="itemId")]
 
-_assign_service = AssignItemService(repository=SqlItemCommandRepository())
+_item_repository = SqlItemCommandRepository()
+_assign_service = AssignItemService(repository=_item_repository)
 _read_repository = SqlItemReadRepository()
 
 LIST_ITEMS_QUERY = sa.text("""
@@ -289,6 +291,126 @@ async def get_item_evidence(
             for s in src_res.fetchall()
         ]
         return {"data": claims, "meta": {"count": len(claims)}}
+
+
+class BulkAssignClearanceItemsBody(BaseModel):
+    """Assign a set of clearance items to one member in a single request.
+
+    ``itemIds`` are the selected items; ``assigneeId`` is the target member, or
+    null to unassign them all. ``dueAt`` is an optional shared due date. Unlike
+    the single-item command, per-item expected_version and intent_hash are NOT
+    supplied by the client: the server loads each item's current version and
+    derives a deterministic per-item intent from the batch idempotency key, so a
+    selection can be assigned without the client tracking each item's version.
+    Each item is still assigned through the same governed command, so each keeps
+    its own accountable receipt and audit event.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    item_ids: Annotated[list[str], Field(alias="itemIds", min_length=1, max_length=200)]
+    assignee_id: Annotated[str | None, Field(alias="assigneeId")] = None
+    due_at: Annotated[datetime | None, Field(alias="dueAt")] = None
+
+
+@router.post(":bulkAssign", operation_id="bulkAssignClearanceItems")
+async def bulk_assign_items(
+    org_id: OrgIdParam,
+    project_id: ProjectIdParam,
+    body: BulkAssignClearanceItemsBody,
+    request: Request,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=16, max_length=128)],
+) -> JSONResponse:
+    verify_csrf_origin(request)
+    scope = await get_request_scope(request, org_id=org_id, project_id=project_id)
+    assert scope.org_id is not None
+    assert scope.project_id is not None
+
+    parsed_assignee_id: UUID | None = None
+    if body.assignee_id is not None:
+        parsed_assignee_id = _parse_uuid(body.assignee_id)
+        if parsed_assignee_id is None:
+            return _assign_error(CommandNotFoundError())
+
+    # Reject duplicate ids up front so the batch cannot assign the same item
+    # twice under two derived keys.
+    seen: set[str] = set()
+    parsed_item_ids: list[UUID] = []
+    for raw in body.item_ids:
+        if raw in seen:
+            continue
+        seen.add(raw)
+        parsed = _parse_uuid(raw)
+        if parsed is None:
+            return _assign_error(CommandNotFoundError())
+        parsed_item_ids.append(parsed)
+
+    results: list[dict[str, object]] = []
+    # Each item is assigned in its own governed unit of work so one item's
+    # stale-version conflict or absence does not roll back the rest; the batch
+    # reports a per-item outcome. A per-item idempotency key derived from the
+    # batch key keeps a retried batch idempotent.
+    for parsed_item_id in parsed_item_ids:
+        item_key = f"{idempotency_key}:{parsed_item_id}"
+        intent_hash = hashlib.sha256(
+            f"bulk-assign:{parsed_item_id}:{parsed_assignee_id}:{body.due_at}".encode()
+        ).hexdigest()
+        try:
+            async with session_scope() as session:
+                item = await _item_repository.load_scoped_item(
+                    session,
+                    org_id=scope.org_id,
+                    project_id=scope.project_id,
+                    item_id=parsed_item_id,
+                )
+                if item is None:
+                    raise CommandNotFoundError()
+                command = AssignItemCommand(
+                    org_id=scope.org_id,
+                    project_id=scope.project_id,
+                    item_id=parsed_item_id,
+                    actor_id=scope.user_id,
+                    actor_role=scope.role or "",
+                    assignee_id=parsed_assignee_id,
+                    due_at=body.due_at,
+                    expected_version=item.version,
+                    intent_hash=intent_hash,
+                    idempotency_key=item_key,
+                )
+                result = await _assign_service.assign(session, command)
+            results.append(
+                {
+                    "itemId": str(parsed_item_id),
+                    "outcome": "assigned",
+                    "resultingVersion": result.resulting_version,
+                }
+            )
+        except (
+            CommandForbiddenError,
+            CommandNotFoundError,
+            StaleVersionConflictError,
+            IdempotencyIntentConflictError,
+            CommandValidationError,
+        ) as error:
+            # A forbidden actor fails the whole batch; per-item conflicts and
+            # not-found are reported per item without aborting the rest.
+            if isinstance(error, CommandForbiddenError):
+                return _assign_error(error)
+            results.append(
+                {
+                    "itemId": str(parsed_item_id),
+                    "outcome": type(error).__name__,
+                }
+            )
+
+    assigned = sum(1 for r in results if r["outcome"] == "assigned")
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "data": {"results": results, "assignedCount": assigned, "totalCount": len(results)},
+            "meta": {"requestId": str(uuid6.uuid7())},
+        },
+    )
 
 
 @router.post("/{itemId}:assign", operation_id="assignClearanceItem")

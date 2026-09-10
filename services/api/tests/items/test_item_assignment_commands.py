@@ -914,3 +914,77 @@ def _payload_due_at(payload: object) -> str | None:
     data = json.loads(payload) if isinstance(payload, str) else payload
     assert isinstance(data, dict)
     return data.get("dueAt")
+
+
+
+@pytest.mark.asyncio
+async def test_bulk_assign_assigns_every_selected_item_to_one_member() -> None:
+    """Bulk assign applies the governed per-item command across a selection.
+
+    The client supplies only item ids + one assignee; the server loads each
+    item's current version, so no per-item expectedVersion/intentHash is needed.
+    Each item is assigned in its own governed unit of work and reports a
+    per-item outcome.
+    """
+    await init_and_seed_db(seed_if_empty=False)
+    async with await _client() as client:
+        fixture = await _setup(client, suffix="bulk")
+        second_item = await _insert_item(org_id=fixture.org_id, project_id=fixture.project_id)
+
+        response = await client.post(
+            f"/api/v1/organizations/{fixture.org_id}/projects/{fixture.project_id}"
+            f"/clearance-items:bulkAssign",
+            json={
+                "itemIds": [str(fixture.item_id), str(second_item)],
+                "assigneeId": str(fixture.assignee_id),
+            },
+            headers={"Idempotency-Key": "bulk-assign-key-0000000000"},
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["totalCount"] == 2
+        assert data["assignedCount"] == 2
+        assert {r["outcome"] for r in data["results"]} == {"assigned"}
+
+        # Both items now carry the assignee in storage.
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    sa.text(
+                        "SELECT assigned_to_user_id FROM clearance_items "
+                        "WHERE id IN (:a, :b)"
+                    ),
+                    {"a": str(fixture.item_id), "b": str(second_item)},
+                )
+            ).scalars().all()
+        assert all(UUID(str(r)) == fixture.assignee_id for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_bulk_assign_is_idempotent_on_retry() -> None:
+    """A retried batch under the same idempotency key does not double-assign."""
+    await init_and_seed_db(seed_if_empty=False)
+    async with await _client() as client:
+        fixture = await _setup(client, suffix="bulkidem")
+        url = (
+            f"/api/v1/organizations/{fixture.org_id}/projects/{fixture.project_id}"
+            f"/clearance-items:bulkAssign"
+        )
+        body = {"itemIds": [str(fixture.item_id)], "assigneeId": str(fixture.assignee_id)}
+        headers = {"Idempotency-Key": "bulk-assign-retry-000000000"}
+
+        first = await client.post(url, json=body, headers=headers)
+        second = await client.post(url, json=body, headers=headers)
+
+        assert first.status_code == 200, first.text
+        assert second.status_code == 200, second.text
+        # The item advanced exactly one version across both calls (replay, not re-apply).
+        async with session_scope() as session:
+            version = (
+                await session.execute(
+                    sa.text("SELECT version FROM clearance_items WHERE id = :id"),
+                    {"id": str(fixture.item_id)},
+                )
+            ).scalar_one()
+        assert version == 2

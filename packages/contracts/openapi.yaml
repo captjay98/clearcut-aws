@@ -1530,6 +1530,59 @@ paths:
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
+  /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items:bulkAssign:
+    post:
+      summary: Assign several clearance items to one member in a single request
+      operationId: bulkAssignClearanceItems
+      tags:
+        - review
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkAssignClearanceItemsRequest'
+      responses:
+        '200':
+          description: Per-item assignment outcomes; each item keeps its own audit event
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BulkAssignResult'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '403':
+          description: Actor lacks the assignment capability (fails the whole batch)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: An item id is unparseable or the assignee is not in scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/organizations/{orgId}/projects/{projectId}/clearance-items/{itemId}:assign:
     post:
       summary: Assign clearance item to an authorized project member
@@ -4911,6 +4964,66 @@ components:
         - ruled_out
         - fixed_in_rewrite
         - deferred
+
+    BulkAssignClearanceItemsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - itemIds
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/UUIDv7'
+          description: The selected clearance items to assign.
+        assigneeId:
+          description: >-
+            Target member for every selected item, or null to unassign them all.
+          anyOf:
+            - $ref: '#/components/schemas/UUIDv7'
+            - type: 'null'
+        dueAt:
+          description: Optional shared due date for the batch, or null to clear it.
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+
+    BulkAssignResult:
+      type: object
+      additionalProperties: false
+      required:
+        - results
+        - assignedCount
+        - totalCount
+      properties:
+        assignedCount:
+          type: integer
+          minimum: 0
+        totalCount:
+          type: integer
+          minimum: 0
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - itemId
+              - outcome
+            properties:
+              itemId:
+                $ref: '#/components/schemas/UUIDv7'
+              outcome:
+                type: string
+                description: >-
+                  'assigned' on success, otherwise a typed error name
+                  (e.g. StaleVersionConflictError, CommandNotFoundError).
+              resultingVersion:
+                type: integer
+                minimum: 0
 
     AssignClearanceItemRequest:
       type: object
