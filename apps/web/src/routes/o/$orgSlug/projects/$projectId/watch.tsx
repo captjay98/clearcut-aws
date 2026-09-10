@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { api } from "@clearcut/contracts";
+import { api, type MonitoringRun } from "@clearcut/contracts";
 import {
   CadenceSelector,
   type MonitoringCadence,
 } from "../../../../../features/monitoring/CadenceSelector";
 import { MonitoredSourcesTable } from "../../../../../features/monitoring/MonitoredSourcesTable";
 import { ChangeSignalCard } from "../../../../../features/monitoring/ChangeSignalCard";
-import { Banner, Card, Page, Section } from "../../../../../components/ds";
+import { Badge, Banner, Card, EmptyState, Page, Section } from "../../../../../components/ds";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/watch")({
   component: WatchRoute,
@@ -24,6 +24,7 @@ export function WatchRoute() {
   const [cadence, setCadence] = useState<MonitoringCadence>("weekly");
   const [running, setRunning] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [runs, setRuns] = useState<MonitoringRun[]>([]);
 
   const loadConfig = async () => {
     try {
@@ -38,8 +39,22 @@ export function WatchRoute() {
     }
   };
 
+  const loadRuns = async () => {
+    try {
+      const result = await api.listMonitoringRuns({
+        params: { orgId: orgSlug, projectId },
+      });
+      if (result.ok) {
+        setRuns(result.value ?? []);
+      }
+    } catch {
+      // Leave the run history empty rather than assert a count we did not read.
+    }
+  };
+
   useEffect(() => {
     void loadConfig();
+    void loadRuns();
   }, [orgSlug, projectId]);
 
   const handleChangeCadence = async (newCadence: MonitoringCadence) => {
@@ -63,6 +78,7 @@ export function WatchRoute() {
       });
       if (result.ok) {
         setFeedback("Monitoring run accepted. Review persisted results when processing completes.");
+        void loadRuns();
       } else {
         setFeedback(`Error: ${result.error.message}`);
       }
@@ -109,6 +125,46 @@ export function WatchRoute() {
         </Card>
       </Section>
 
+      <Section title="Run history">
+        <Card>
+          {runs.length === 0 ? (
+            <EmptyState
+              icon="◔"
+              title="No monitoring runs yet"
+              description="Scheduled and immediate source checks appear here once they run."
+            />
+          ) : (
+            <div className="list">
+              {runs.map((run) => (
+                <div className="list-row is-static" key={run.runId}>
+                  <div className="list-main">
+                    <span className="list-title">
+                      {new Date(run.createdAt).toLocaleString()}
+                    </span>
+                    <span className="list-meta">
+                      <span>{run.itemsChecked} sources checked</span>
+                      <span>{run.changesDetected} change(s) detected</span>
+                    </span>
+                  </div>
+                  <div className="list-aside">
+                    <Badge tone={run.changesDetected > 0 ? "is-accent" : undefined}>
+                      {run.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </Section>
+
+      {/*
+        MonitoredSourcesTable and ChangeSignalCard render empty until the API
+        exposes a read endpoint for monitored sources and reviewable change
+        signals (with a reviewId for reviewMonitoringChange). listMonitoringRuns
+        returns run-history summaries only, not per-source rows or change
+        signals, so wiring them from runs would fabricate source identity.
+      */}
       <MonitoredSourcesTable />
       <ChangeSignalCard />
     </Page>
