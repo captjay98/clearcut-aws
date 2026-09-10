@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import {
   api,
@@ -6,6 +7,7 @@ import {
   type MonitoringChange,
   type MonitoringRun,
 } from "@clearcut/contracts";
+import { clearanceItemsQueryOptions } from "../../../../../queries/clearanceItems";
 import {
   CadenceSelector,
   type MonitoringCadence,
@@ -16,6 +18,25 @@ import {
   type MonitoringReviewDecision,
 } from "../../../../../features/monitoring/ChangeSignalCard";
 import { Badge, Banner, Card, EmptyState, Page, Section } from "../../../../../components/ds";
+
+/** Cadence values the registration endpoint accepts for a single source. */
+type SourceCadence = "off" | "manual" | "daily" | "weekly";
+type WatchKind = "exact_source" | "new_event_topic";
+
+/**
+ * A monitoring run reports how many material change signals it persisted. The
+ * generated `Job` type does not surface `signalsDetected`, so we read it
+ * defensively from the run response without asserting a count we did not see.
+ */
+function readSignalsDetected(value: unknown): number | null {
+  if (value && typeof value === "object" && "signalsDetected" in value) {
+    const raw = (value as { signalsDetected?: unknown }).signalsDetected;
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      return raw;
+    }
+  }
+  return null;
+}
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/watch")({
   component: WatchRoute,
@@ -36,6 +57,20 @@ export function WatchRoute() {
   const [sources, setSources] = useState<MonitoredSource[]>([]);
   const [changes, setChanges] = useState<MonitoringChange[]>([]);
   const [reviewing, setReviewing] = useState(false);
+
+  const itemsQuery = useQuery(
+    clearanceItemsQueryOptions({ orgId: orgSlug, projectId }),
+  );
+  const items = itemsQuery.data ?? [];
+
+  // Register-source form state. `itemId` is required by the endpoint, so submit
+  // stays disabled until an item is chosen.
+  const [registerItemId, setRegisterItemId] = useState("");
+  const [registerTargetUrl, setRegisterTargetUrl] = useState("");
+  const [registerBaselineExcerpt, setRegisterBaselineExcerpt] = useState("");
+  const [registerCadence, setRegisterCadence] = useState<SourceCadence>("weekly");
+  const [registerWatchKind, setRegisterWatchKind] = useState<WatchKind>("exact_source");
+  const [registering, setRegistering] = useState(false);
 
   const loadConfig = async () => {
     try {
@@ -116,8 +151,16 @@ export function WatchRoute() {
         params: { orgId: orgSlug, projectId },
       });
       if (result.ok) {
-        setFeedback("Monitoring run accepted. Review persisted results when processing completes.");
+        const signals = readSignalsDetected(result.value);
+        setFeedback(
+          signals === null
+            ? "Monitoring run accepted. Review persisted results when processing completes."
+            : `Monitoring run complete: ${signals} change signal(s) detected.`,
+        );
+        // Refetch runs plus the pending change list so any newly persisted
+        // signal appears in the review list without a manual reload.
         void loadRuns();
+        void loadChanges();
       } else {
         setFeedback(`Error: ${result.error.message}`);
       }
@@ -125,6 +168,42 @@ export function WatchRoute() {
       setFeedback("Error: The monitoring service is unavailable.");
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleRegisterSource = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (registering || !registerItemId) return;
+    setRegistering(true);
+    setFeedback(null);
+    const trimmedUrl = registerTargetUrl.trim();
+    const trimmedBaseline = registerBaselineExcerpt.trim();
+    try {
+      const result = await api.registerMonitoredSource({
+        params: { orgId: orgSlug, projectId },
+        body: {
+          itemId: registerItemId,
+          cadence: registerCadence,
+          watchKind: registerWatchKind,
+          ...(trimmedUrl ? { targetUrl: trimmedUrl } : {}),
+          ...(trimmedBaseline ? { baselineExcerpt: trimmedBaseline } : {}),
+        },
+      });
+      if (result.ok) {
+        setFeedback("Monitored source registered. It will be checked on the next run.");
+        setRegisterItemId("");
+        setRegisterTargetUrl("");
+        setRegisterBaselineExcerpt("");
+        setRegisterCadence("weekly");
+        setRegisterWatchKind("exact_source");
+        void loadSources();
+      } else {
+        setFeedback(`Error: ${result.error.message}`);
+      }
+    } catch {
+      setFeedback("Error: The monitoring service is unavailable.");
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -223,6 +302,112 @@ export function WatchRoute() {
               ))}
             </div>
           )}
+        </Card>
+      </Section>
+
+      <Section title="Add monitored source">
+        <Card>
+          <form className="stack" onSubmit={handleRegisterSource}>
+            <div className="form-grid">
+              <div className="field field-full">
+                <label className="field-label" htmlFor="monitor-item">
+                  Clearance item
+                </label>
+                <select
+                  id="monitor-item"
+                  required
+                  value={registerItemId}
+                  onChange={(event) => setRegisterItemId(event.target.value)}
+                  disabled={registering}
+                >
+                  <option value="">
+                    {itemsQuery.isLoading
+                      ? "Loading clearance items…"
+                      : items.length === 0
+                        ? "No clearance items to monitor yet"
+                        : "Select a clearance item"}
+                  </option>
+                  {items.map((item) => (
+                    <option key={item.itemId} value={item.itemId}>
+                      {item.entityName} ({item.category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="field field-full" htmlFor="monitor-url">
+                <span className="field-label">Target URL (optional)</span>
+                <input
+                  id="monitor-url"
+                  type="url"
+                  value={registerTargetUrl}
+                  onChange={(event) => setRegisterTargetUrl(event.target.value)}
+                  placeholder="https://example.com/source"
+                  disabled={registering}
+                />
+              </label>
+
+              <label className="field field-full" htmlFor="monitor-baseline">
+                <span className="field-label">
+                  Baseline content (a later check flags changes against this)
+                </span>
+                <textarea
+                  id="monitor-baseline"
+                  rows={3}
+                  value={registerBaselineExcerpt}
+                  onChange={(event) => setRegisterBaselineExcerpt(event.target.value)}
+                  placeholder="Paste the current source excerpt to compare future checks against."
+                  disabled={registering}
+                />
+              </label>
+
+              <div className="field">
+                <label className="field-label" htmlFor="monitor-cadence">
+                  Cadence
+                </label>
+                <select
+                  id="monitor-cadence"
+                  value={registerCadence}
+                  onChange={(event) =>
+                    setRegisterCadence(event.target.value as SourceCadence)
+                  }
+                  disabled={registering}
+                >
+                  <option value="off">Off</option>
+                  <option value="manual">Manual</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label className="field-label" htmlFor="monitor-kind">
+                  Watch kind
+                </label>
+                <select
+                  id="monitor-kind"
+                  value={registerWatchKind}
+                  onChange={(event) =>
+                    setRegisterWatchKind(event.target.value as WatchKind)
+                  }
+                  disabled={registering}
+                >
+                  <option value="exact_source">Exact source</option>
+                  <option value="new_event_topic">New event / topic</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="cluster">
+              <button
+                className="button button-primary"
+                type="submit"
+                disabled={registering || !registerItemId}
+              >
+                {registering ? "Registering…" : "Add monitored source"}
+              </button>
+            </div>
+          </form>
         </Card>
       </Section>
 
