@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 API_ROOT = Path(__file__).resolve().parents[2]
 
-HEAD_REVISION = "0037_rewrite_result_binding"
+HEAD_REVISION = "0038_item_due_at"
 PREVIOUS_REVISION = "0029_job_list_pagination"
 
 

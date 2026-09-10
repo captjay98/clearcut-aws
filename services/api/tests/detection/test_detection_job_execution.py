@@ -181,7 +181,9 @@ async def test_vertex_detection_rejects_malformed_or_policy_invalid_output(
 
     assert isinstance(result, DetectionFailure)
     assert result.error.code == "invalid_response"
-    assert result.error.retryable is False
+    # A malformed structured response from a nondeterministic model is transient,
+    # so it is retryable rather than a permanent dead end.
+    assert result.error.retryable is True
     assert result.attempt.returned_model == "gemini-3.7-flash-20260820"
     assert result.attempt.response_id == "detection-response-1"
     assert result.attempt.usage == DetectionTokenUsage(20, 12, 32)

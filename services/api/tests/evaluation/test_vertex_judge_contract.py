@@ -173,7 +173,9 @@ async def test_vertex_judge_rejects_governed_mutations_and_stops_after_repair() 
 
     assert isinstance(result, JudgeFailure)
     assert result.error.code == "invalid_response"
-    assert result.error.retryable is False
+    # A malformed/parse-rejected structured response is transient and retryable;
+    # the adapter still redacts the offending content and stops after one repair.
+    assert result.error.retryable is True
     assert "decision" not in result.error.message.lower()
     assert len(client.models.calls) == 2
 

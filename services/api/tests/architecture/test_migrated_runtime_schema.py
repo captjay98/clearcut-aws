@@ -48,7 +48,7 @@ def test_empty_database_migrates_to_canonical_runtime_schema(tmp_path: Path) -> 
         revision = connection.execute(
             sa.text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert revision == "0037_rewrite_result_binding"
+    assert revision == "0038_item_due_at"
 
     project_columns = {column["name"]: column for column in inspector.get_columns("projects")}
     for column_name in (
@@ -652,6 +652,7 @@ def test_empty_database_migrates_to_canonical_runtime_schema(tmp_path: Path) -> 
     )
     item_columns = {column["name"]: column for column in inspector.get_columns("clearance_items")}
     assert item_columns["detection_run_id"]["nullable"] is True
+    assert item_columns["due_at"]["nullable"] is True
     item_foreign_keys = {
         foreign_key["name"]: (
             tuple(foreign_key["constrained_columns"]),

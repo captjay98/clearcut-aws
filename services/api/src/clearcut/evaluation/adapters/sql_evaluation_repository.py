@@ -451,7 +451,7 @@ class SqlEvaluationRepository(EvaluationRepositoryPort):
                     sa.text(
                         "SELECT * FROM agent_evaluations "
                         "WHERE org_id = :org_id AND project_id = :project_id "
-                        "AND (CAST(:run_id AS uuid) IS NULL OR run_id = CAST(:run_id AS uuid)) "
+                        "AND (CAST(:run_id AS text) IS NULL OR run_id = CAST(:run_id AS text)) "
                         "ORDER BY created_at DESC, id DESC"
                     ),
                     {
