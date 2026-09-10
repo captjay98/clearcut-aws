@@ -187,6 +187,8 @@ export interface Stat {
   /** When present the whole stat becomes a link to the underlying records. */
   to?: string;
   params?: Record<string, string>;
+  /** Optional query params carried into the linked surface (e.g. a worklist filter). */
+  search?: Record<string, string>;
 }
 
 export function StatGrid({ stats, columns = 4 }: { stats: readonly Stat[]; columns?: 2 | 3 | 4 }) {
@@ -206,6 +208,7 @@ export function StatGrid({ stats, columns = 4 }: { stats: readonly Stat[]; colum
               key={stat.label}
               to={stat.to}
               params={stat.params}
+              search={stat.search}
               className={`stat stat-link ${stat.tone ?? ""}`.trim()}
               aria-label={`${stat.label}: ${stat.value} — open the underlying records`}
             >

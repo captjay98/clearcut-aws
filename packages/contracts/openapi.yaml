@@ -4503,10 +4503,29 @@ components:
           $ref: '#/components/schemas/ClearanceDisposition'
         assignedTo:
           $ref: '#/components/schemas/UUIDv7'
-        dueDate:
+        dueAt:
           $ref: '#/components/schemas/ISODateTime'
         claimCount:
           type: integer
+        severity:
+          type: string
+          enum: [High, Medium, Low]
+          description: Derived triage severity from category risk and detection uncertainty
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Derived detection confidence (inverted from model uncertainty)
+        scene:
+          type: integer
+          minimum: 0
+          description: Scene number of the flagged element, when known
+        displayStatus:
+          type: string
+          description: Reviewer-facing status label derived from status, disposition, and evidence
+        sourcesDisagree:
+          type: boolean
+          description: True when the item has at least one disagreeing evidence claim
 
     ItemEvidenceState:
       type: object

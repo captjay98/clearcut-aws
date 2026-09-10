@@ -132,6 +132,7 @@ export function ProjectOverviewRoute() {
       hint: researched ? "across ten categories" : "no detection has run",
       to: researched ? "/o/$orgSlug/projects/$projectId/items" : undefined,
       params: researched ? { orgSlug, projectId } : undefined,
+      search: researched ? { sort: "severity", dir: "desc" } : undefined,
     },
     {
       label: "Settled",
@@ -144,6 +145,9 @@ export function ProjectOverviewRoute() {
       value: researched ? attention.length : "—",
       hint: "conflict, referred, unresolved",
       tone: attention.length ? "is-warning" : "",
+      to: researched && attention.length ? "/o/$orgSlug/projects/$projectId/items" : undefined,
+      params: researched && attention.length ? { orgSlug, projectId } : undefined,
+      search: researched && attention.length ? { status: "attention" } : undefined,
     },
     {
       label: "Current version",
@@ -233,7 +237,7 @@ export function ProjectOverviewRoute() {
                               {item.claimCount} source{item.claimCount === 1 ? "" : "s"}
                             </span>
                           )}
-                          {item.dueDate && <span>Due {formatDate(item.dueDate)}</span>}
+                          {item.dueAt && <span>Due {formatDate(item.dueAt)}</span>}
                         </span>
                       </div>
                       <div className="list-aside">

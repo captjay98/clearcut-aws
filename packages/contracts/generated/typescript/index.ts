@@ -437,8 +437,13 @@ export interface ClearanceItem {
   status: string;
   disposition?: ClearanceDisposition;
   assignedTo?: UUIDv7;
-  dueDate?: ISODateTime;
+  dueAt?: ISODateTime;
   claimCount?: number;
+  severity?: 'High' | 'Medium' | 'Low';
+  confidence?: number;
+  scene?: number;
+  displayStatus?: string;
+  sourcesDisagree?: boolean;
 }
 
 export interface ApiError {

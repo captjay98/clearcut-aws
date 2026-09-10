@@ -420,8 +420,13 @@ class ClearanceItem(BaseModel):
     status: str
     disposition: Optional[ClearanceDisposition] = None
     assignedTo: Optional[UUIDv7] = None
-    dueDate: Optional[ISODateTime] = None
+    dueAt: Optional[ISODateTime] = None
     claimCount: Optional[int] = None
+    severity: Optional[Literal["High", "Medium", "Low"]] = None
+    confidence: Optional[Annotated[int, Field(ge=0, le=100)]] = None
+    scene: Optional[Annotated[int, Field(ge=0)]] = None
+    displayStatus: Optional[str] = None
+    sourcesDisagree: Optional[bool] = None
 
 ErrorCode = Literal["validation_failed", "authentication_required", "permission_denied", "not_found", "conflict", "conflict_stale_version", "conflict_idempotency_mismatch", "rate_limited", "research_provider_unavailable", "research_provider_rate_limited", "model_provider_error", "capability_unavailable", "rejected_output", "internal_error"]
 

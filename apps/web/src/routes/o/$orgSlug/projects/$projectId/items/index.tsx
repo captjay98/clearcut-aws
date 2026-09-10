@@ -20,8 +20,71 @@ import {
 } from "../../../../../../features/clearance/itemPresentation";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/items/")({
+  validateSearch: (search: Record<string, unknown>): ItemsSearch => ({
+    status: typeof search.status === "string" ? search.status : undefined,
+    group: isGroupKey(search.group) ? search.group : "none",
+    sort: isSortKey(search.sort) ? search.sort : "severity",
+    dir: search.dir === "asc" ? "asc" : "desc",
+  }),
   component: ClearanceItemsRoute,
 });
+
+type SortKey = "term" | "severity" | "confidence" | "scene" | "due" | "status";
+type GroupKey = "none" | "scene" | "category" | "owner" | "due";
+interface ItemsSearch {
+  status?: string;
+  group: GroupKey;
+  sort: SortKey;
+  dir: "asc" | "desc";
+}
+
+function isSortKey(v: unknown): v is SortKey {
+  return (
+    typeof v === "string" &&
+    ["term", "severity", "confidence", "scene", "due", "status"].includes(v)
+  );
+}
+function isGroupKey(v: unknown): v is GroupKey {
+  return typeof v === "string" && ["none", "scene", "category", "owner", "due"].includes(v);
+}
+
+const SEVERITY_RANK: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
+
+/** Worst-first by default: higher severity, then lower confidence, sorts first. */
+function compareItems(a: ClearanceItem, b: ClearanceItem, sort: SortKey): number {
+  switch (sort) {
+    case "term":
+      return a.entityName.localeCompare(b.entityName);
+    case "severity":
+      return (
+        (SEVERITY_RANK[b.severity ?? ""] ?? 0) - (SEVERITY_RANK[a.severity ?? ""] ?? 0) ||
+        (b.confidence ?? 0) - (a.confidence ?? 0)
+      );
+    case "confidence":
+      return (b.confidence ?? 0) - (a.confidence ?? 0);
+    case "scene":
+      return (a.scene ?? Number.MAX_SAFE_INTEGER) - (b.scene ?? Number.MAX_SAFE_INTEGER);
+    case "due":
+      return (a.dueAt ?? "~").localeCompare(b.dueAt ?? "~");
+    case "status":
+      return (a.displayStatus ?? a.status).localeCompare(b.displayStatus ?? b.status);
+  }
+}
+
+function groupLabel(item: ClearanceItem, group: GroupKey): string {
+  switch (group) {
+    case "scene":
+      return item.scene != null ? `Scene ${item.scene}` : "No scene";
+    case "category":
+      return humanizeCategory(item.category);
+    case "owner":
+      return item.assignedTo ? "Assigned" : "Unassigned";
+    case "due":
+      return item.dueAt ? "Has due date" : "No due date";
+    case "none":
+      return "";
+  }
+}
 
 /** Row emphasis follows the mock: a blocker outranks anything merely open. */
 function rowTone(item: ClearanceItem): string {
@@ -39,9 +102,26 @@ function rowTone(item: ClearanceItem): string {
 
 export function ClearanceItemsRoute() {
   const { orgSlug, projectId } = Route.useParams();
+  const routeSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
   const itemsQuery = useQuery(clearanceItemsQueryOptions({ orgId: orgSlug, projectId }));
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(routeSearch.status ?? "all");
   const [search, setSearch] = useState("");
+
+  const sort = routeSearch.sort;
+  const dir = routeSearch.dir;
+  const group = routeSearch.group;
+
+  const setSort = (next: SortKey) =>
+    void navigate({
+      search: (prev) => ({
+        ...prev,
+        sort: next,
+        dir: prev.sort === next && prev.dir === "desc" ? "asc" : "desc",
+      }),
+    });
+  const setGroup = (next: GroupKey) =>
+    void navigate({ search: (prev) => ({ ...prev, group: next }) });
 
   const items = itemsQuery.data ?? [];
 
@@ -85,6 +165,25 @@ export function ClearanceItemsRoute() {
       : filter === "attention"
         ? searched.filter(isAttention)
         : searched.filter((item) => item.status === filter);
+
+  // Sort worst-first by default; the active key toggles direction.
+  const sorted = useMemo(() => {
+    const rows = [...filtered].sort((a, b) => compareItems(a, b, sort));
+    return dir === "asc" ? rows.reverse() : rows;
+  }, [filtered, sort, dir]);
+
+  // Group into labelled buckets with per-group counts; sorting holds within groups.
+  const groups = useMemo(() => {
+    if (group === "none") {
+      return [{ label: "", items: sorted }];
+    }
+    const buckets = new Map<string, ClearanceItem[]>();
+    for (const item of sorted) {
+      const label = groupLabel(item, group);
+      (buckets.get(label) ?? buckets.set(label, []).get(label)!).push(item);
+    }
+    return [...buckets.entries()].map(([label, groupItems]) => ({ label, items: groupItems }));
+  }, [sorted, group]);
 
   return (
     <Page
@@ -145,50 +244,102 @@ export function ClearanceItemsRoute() {
 
           <TabsBar items={tabs} active={filter} onChange={setFilter} label="Filter flags" />
 
+          <div className="row gap-b-4 gap-t-2" style={{ flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+            <label className="small muted">
+              Sort:{" "}
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                aria-label="Sort flags by"
+              >
+                <option value="severity">Severity</option>
+                <option value="confidence">Confidence</option>
+                <option value="term">Term</option>
+                <option value="scene">Scene</option>
+                <option value="due">Due date</option>
+                <option value="status">Status</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="button button-quiet button-sm"
+              onClick={() => void navigate({ search: (p) => ({ ...p, dir: dir === "desc" ? "asc" : "desc" }) })}
+              aria-label={`Sort direction: ${dir === "desc" ? "descending" : "ascending"}`}
+            >
+              {dir === "desc" ? "↓" : "↑"}
+            </button>
+            <label className="small muted">
+              Group:{" "}
+              <select
+                value={group}
+                onChange={(e) => setGroup(e.target.value as GroupKey)}
+                aria-label="Group flags by"
+              >
+                <option value="none">None</option>
+                <option value="scene">Scene</option>
+                <option value="category">Category</option>
+                <option value="owner">Owner</option>
+                <option value="due">Due date</option>
+              </select>
+            </label>
+          </div>
+
           <Section>
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
               <EmptyState
                 icon="◦"
                 title="No flags match"
                 description="Clear the search or choose a different filter."
               />
             ) : (
-              // A list of items, so each row is a listitem whose heading names
-              // the entity and which carries its own review link.
-              <ul
-                className="list"
-                aria-label="Persisted clearance items"
-                style={{ listStyle: "none", margin: 0, padding: 0 }}
-              >
-                {filtered.map((item) => {
-                  const tone = rowTone(item);
-                  return (
-                    <li className={`list-row is-static ${tone}`.trim()} key={item.itemId}>
-                      <div className="list-main">
-                        <h2 className="list-title">{item.entityName}</h2>
-                        <span className="list-meta">
-                          <span>{humanizeCategory(item.category)}</span>
-                          <span>
-                            {item.claimCount ?? 0} cited evidence claim
-                            {(item.claimCount ?? 0) === 1 ? "" : "s"}
-                          </span>
-                          {item.contextText && <span className="truncate">{item.contextText}</span>}
-                        </span>
-                      </div>
-                      <div className="list-aside">
-                        <Badge tone={statusTone(item.status)}>{humanizeStatus(item.status)}</Badge>
-                        <Link
-                          className="button button-quiet button-sm"
-                          to="/o/$orgSlug/projects/$projectId/items/$itemId"
-                          params={{ orgSlug, projectId, itemId: item.itemId }}
-                        >
-                          Review item
-                        </Link>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              groups.map((bucket) => (
+                <div key={bucket.label || "all"} className="gap-b-4">
+                  {bucket.label && (
+                    <h2 className="small muted gap-b-2">
+                      {bucket.label} · {bucket.items.length}
+                    </h2>
+                  )}
+                  <ul
+                    className="list"
+                    aria-label={bucket.label || "Persisted clearance items"}
+                    style={{ listStyle: "none", margin: 0, padding: 0 }}
+                  >
+                    {bucket.items.map((item) => {
+                      const tone = rowTone(item);
+                      return (
+                        <li className={`list-row is-static ${tone}`.trim()} key={item.itemId}>
+                          <div className="list-main">
+                            <h3 className="list-title">{item.entityName}</h3>
+                            <span className="list-meta">
+                              <span>{humanizeCategory(item.category)}</span>
+                              {item.severity && <span>{item.severity} severity</span>}
+                              {item.confidence != null && <span>{item.confidence}% confidence</span>}
+                              {item.scene != null && <span>Scene {item.scene}</span>}
+                              <span>
+                                {item.claimCount ?? 0} cited evidence claim
+                                {(item.claimCount ?? 0) === 1 ? "" : "s"}
+                              </span>
+                              {item.sourcesDisagree && <span>Sources disagree</span>}
+                            </span>
+                          </div>
+                          <div className="list-aside">
+                            <Badge tone={statusTone(item.status)}>
+                              {item.displayStatus ?? humanizeStatus(item.status)}
+                            </Badge>
+                            <Link
+                              className="button button-quiet button-sm"
+                              to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                              params={{ orgSlug, projectId, itemId: item.itemId }}
+                            >
+                              Review item
+                            </Link>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))
             )}
           </Section>
         </>
