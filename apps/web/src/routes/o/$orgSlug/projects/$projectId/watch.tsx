@@ -1,12 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { api, type MonitoringRun } from "@clearcut/contracts";
+import {
+  api,
+  type MonitoredSource,
+  type MonitoringChange,
+  type MonitoringRun,
+} from "@clearcut/contracts";
 import {
   CadenceSelector,
   type MonitoringCadence,
 } from "../../../../../features/monitoring/CadenceSelector";
 import { MonitoredSourcesTable } from "../../../../../features/monitoring/MonitoredSourcesTable";
-import { ChangeSignalCard } from "../../../../../features/monitoring/ChangeSignalCard";
+import {
+  ChangeSignalCard,
+  type MonitoringReviewDecision,
+} from "../../../../../features/monitoring/ChangeSignalCard";
 import { Badge, Banner, Card, EmptyState, Page, Section } from "../../../../../components/ds";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/watch")({
@@ -25,6 +33,9 @@ export function WatchRoute() {
   const [running, setRunning] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [runs, setRuns] = useState<MonitoringRun[]>([]);
+  const [sources, setSources] = useState<MonitoredSource[]>([]);
+  const [changes, setChanges] = useState<MonitoringChange[]>([]);
+  const [reviewing, setReviewing] = useState(false);
 
   const loadConfig = async () => {
     try {
@@ -52,9 +63,37 @@ export function WatchRoute() {
     }
   };
 
+  const loadSources = async () => {
+    try {
+      const result = await api.listMonitoredSources({
+        params: { orgId: orgSlug, projectId },
+      });
+      if (result.ok) {
+        setSources(result.value ?? []);
+      }
+    } catch {
+      // Leave the sources table empty rather than assert a source we did not read.
+    }
+  };
+
+  const loadChanges = async () => {
+    try {
+      const result = await api.listMonitoringChanges({
+        params: { orgId: orgSlug, projectId },
+      });
+      if (result.ok) {
+        setChanges(result.value ?? []);
+      }
+    } catch {
+      // Leave the change list empty rather than manufacture a signal.
+    }
+  };
+
   useEffect(() => {
     void loadConfig();
     void loadRuns();
+    void loadSources();
+    void loadChanges();
   }, [orgSlug, projectId]);
 
   const handleChangeCadence = async (newCadence: MonitoringCadence) => {
@@ -86,6 +125,35 @@ export function WatchRoute() {
       setFeedback("Error: The monitoring service is unavailable.");
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleReviewChange = async (
+    reviewId: string,
+    decision: MonitoringReviewDecision,
+    rationale?: string,
+  ) => {
+    if (reviewing) return;
+    setReviewing(true);
+    setFeedback(null);
+    try {
+      const result = await api.reviewMonitoringChange({
+        params: { orgId: orgSlug, projectId, reviewId },
+        body: { decision, ...(rationale ? { rationale } : {}) },
+      });
+      if (result.ok) {
+        setFeedback("Change review recorded. Refreshing pending signals.");
+        // Refetch so the reviewed signal leaves the pending list, and refresh
+        // run history since a review can change the outstanding count.
+        void loadChanges();
+        void loadRuns();
+      } else {
+        setFeedback(`Error: ${result.error.message}`);
+      }
+    } catch {
+      setFeedback("Error: The monitoring service is unavailable.");
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -158,15 +226,8 @@ export function WatchRoute() {
         </Card>
       </Section>
 
-      {/*
-        MonitoredSourcesTable and ChangeSignalCard render empty until the API
-        exposes a read endpoint for monitored sources and reviewable change
-        signals (with a reviewId for reviewMonitoringChange). listMonitoringRuns
-        returns run-history summaries only, not per-source rows or change
-        signals, so wiring them from runs would fabricate source identity.
-      */}
-      <MonitoredSourcesTable />
-      <ChangeSignalCard />
+      <MonitoredSourcesTable sources={sources} />
+      <ChangeSignalCard signals={changes} onReview={handleReviewChange} reviewing={reviewing} />
     </Page>
   );
 }

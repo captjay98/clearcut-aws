@@ -1,15 +1,6 @@
 import React from "react";
+import type { MonitoredSource } from "@clearcut/contracts";
 import { Badge, DataTable, EmptyState } from "../../components/ds";
-
-export interface MonitoredSource {
-  id: string;
-  sourceTitle: string;
-  category: string;
-  authorityTier: string;
-  url: string;
-  lastChecked: string;
-  status: "active" | "warning" | "error";
-}
 
 export interface MonitoredSourcesTableProps {
   sources?: MonitoredSource[];
@@ -21,8 +12,9 @@ export interface MonitoredSourcesTableProps {
  * This table previously fell back to four hardcoded registries — USPTO TESS,
  * the California Secretary of State, ASCAP/BMI and the Copyright Office — with
  * invented "last verified" dates and a fixed "All Endpoints Healthy" banner.
- * Nothing was monitoring them. It now renders only sources it was given, and
- * states plainly when there are none.
+ * Nothing was monitoring them. It now renders only the sources the monitoring
+ * read endpoint persisted for this project, and states plainly when there are
+ * none. No source is reported as healthy before it has been checked.
  */
 export function MonitoredSourcesTable({ sources = [] }: MonitoredSourcesTableProps) {
   return (
@@ -44,31 +36,31 @@ export function MonitoredSourcesTable({ sources = [] }: MonitoredSourcesTablePro
         <DataTable
           caption="Sources under scheduled monitoring"
           columns={[
-            { label: "Source" },
-            { label: "Category" },
-            { label: "Authority" },
-            { label: "Last checked" },
-            { label: "Status", align: "right" },
+            { label: "Watch target" },
+            { label: "Kind" },
+            { label: "Cadence" },
+            { label: "Registered", align: "right" },
           ]}
           rows={sources.map((source) => [
-            <a href={source.url} target="_blank" rel="noopener noreferrer" key={`${source.id}-t`}>
-              {source.sourceTitle}
-            </a>,
-            source.category,
-            source.authorityTier,
-            new Date(source.lastChecked).toLocaleDateString(),
-            <Badge
-              key={`${source.id}-s`}
-              tone={
-                source.status === "active"
-                  ? "is-success"
-                  : source.status === "warning"
-                    ? "is-warning"
-                    : "is-danger"
-              }
-            >
-              {source.status}
-            </Badge>,
+            source.targetUrl ? (
+              <a
+                href={source.targetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                key={`${source.watchId}-t`}
+              >
+                {source.targetUrl}
+              </a>
+            ) : (
+              <span key={`${source.watchId}-t`} className="small">
+                {source.queryText ?? "—"}
+              </span>
+            ),
+            <Badge key={`${source.watchId}-k`}>{source.watchKind}</Badge>,
+            source.cadence,
+            <span key={`${source.watchId}-c`} className="mono small muted">
+              {new Date(source.createdAt).toLocaleDateString()}
+            </span>,
           ])}
         />
       )}
