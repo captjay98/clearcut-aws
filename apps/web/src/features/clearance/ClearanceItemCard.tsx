@@ -1,7 +1,7 @@
 import React from "react";
 import type { ClearanceItem } from "@clearcut/contracts";
 import { Badge } from "../../components/ds";
-import { humanizeCategory, humanizeStatus, statusTone } from "./itemPresentation";
+import { displayCategory, displayStatus, displayStatusTone } from "./itemPresentation";
 
 export interface ClearanceItemCardProps {
   item: ClearanceItem;
@@ -36,17 +36,19 @@ export function ClearanceItemCard({
         >
           <span className="list-title">{item.entityName}</span>
           <span className="list-meta">
-            <span>{humanizeCategory(item.category)}</span>
+            <span>{displayCategory(item.category)}</span>
             <span>
-              {item.claimCount ?? 0} claim{(item.claimCount ?? 0) === 1 ? "" : "s"} cited
+              {item.claimCount ?? 0} source{(item.claimCount ?? 0) === 1 ? "" : "s"}
+              {item.sourcesDisagree ? " · conflict" : ""}
             </span>
-            {item.disposition && <span>{humanizeStatus(item.disposition)}</span>}
+            {item.scene != null && <span>Scene {item.scene}</span>}
+            {item.disposition && <span>{item.disposition.replace(/_/g, " ")}</span>}
           </span>
         </button>
       </div>
 
       <div className="list-aside">
-        <Badge tone={statusTone(item.status)}>{humanizeStatus(item.status)}</Badge>
+        <Badge tone={displayStatusTone(item)}>{displayStatus(item)}</Badge>
         <button
           className="button button-quiet button-sm"
           type="button"

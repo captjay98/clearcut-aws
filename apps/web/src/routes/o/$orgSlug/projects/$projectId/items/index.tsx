@@ -16,11 +16,14 @@ import {
   type TabItem,
 } from "../../../../../../components/ds";
 import {
-  humanizeCategory,
+  displayCategory,
+  displayStatus,
+  displayStatusTone,
   humanizeStatus,
   isAttention,
-  statusTone,
+  severityWord,
 } from "../../../../../../features/clearance/itemPresentation";
+import { api, type Project } from "@clearcut/contracts";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/items/")({
   validateSearch: (search: Record<string, unknown>): ItemsSearch => ({
@@ -70,7 +73,7 @@ function compareItems(a: ClearanceItem, b: ClearanceItem, sort: SortKey): number
     case "due":
       return (a.dueAt ?? "~").localeCompare(b.dueAt ?? "~");
     case "status":
-      return (a.displayStatus ?? a.status).localeCompare(b.displayStatus ?? b.status);
+      return displayStatus(a).localeCompare(displayStatus(b));
   }
 }
 
@@ -79,7 +82,7 @@ function groupLabel(item: ClearanceItem, group: GroupKey): string {
     case "scene":
       return item.scene != null ? `Scene ${item.scene}` : "No scene";
     case "category":
-      return humanizeCategory(item.category);
+      return displayCategory(item.category);
     case "owner":
       return item.assignedTo ? "Assigned" : "Unassigned";
     case "due":
@@ -88,6 +91,24 @@ function groupLabel(item: ClearanceItem, group: GroupKey): string {
       return "";
   }
 }
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
+
+/** Mock status filter chips, in mock order. */
+const STATUS_CHIP_ORDER = [
+  "Needs your call",
+  "Sources disagree",
+  "With specialist",
+  "Verified",
+  "Must fix",
+  "Could not verify",
+  "Needs research",
+] as const;
 
 /** Row emphasis follows the mock: a blocker outranks anything merely open. */
 function rowTone(item: ClearanceItem): string {
@@ -110,6 +131,24 @@ export function ClearanceItemsRoute() {
   const queryClient = useQueryClient();
   const itemsQuery = useQuery(clearanceItemsQueryOptions({ orgId: orgSlug, projectId }));
   const sessionQuery = useQuery(sessionContextQueryOptions());
+  const projectQuery = useQuery({
+    queryKey: ["project", orgSlug, projectId],
+    queryFn: async (): Promise<Project | null> => {
+      const result = await api.getProject({ params: { orgId: orgSlug, projectId } });
+      return result.ok ? result.value : null;
+    },
+  });
+  const membersForLabels = useQuery({
+    ...assignableMembersQueryOptions({ orgId: orgSlug, projectId }),
+    enabled: true,
+  });
+  const memberNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of membersForLabels.data ?? []) {
+      map.set(member.userId, member.email ?? member.userId);
+    }
+    return map;
+  }, [membersForLabels.data]);
   const [filter, setFilter] = useState(routeSearch.status ?? "all");
   const [search, setSearch] = useState("");
 
@@ -174,10 +213,14 @@ export function ClearanceItemsRoute() {
     );
   }, [items, search]);
 
-  const statuses = useMemo(
-    () => [...new Set(searched.map((item) => item.status))].sort(),
-    [searched],
-  );
+  const statusCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of searched) {
+      const label = displayStatus(item);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return counts;
+  }, [searched]);
 
   // Counts follow the current search so a filter never promises rows the search
   // has already excluded.
@@ -188,10 +231,10 @@ export function ClearanceItemsRoute() {
       label: "Attention",
       count: searched.filter(isAttention).length,
     },
-    ...statuses.map((status) => ({
-      value: status,
-      label: humanizeStatus(status),
-      count: searched.filter((item) => item.status === status).length,
+    ...STATUS_CHIP_ORDER.filter((label) => (statusCounts.get(label) ?? 0) > 0).map((label) => ({
+      value: label,
+      label,
+      count: statusCounts.get(label) ?? 0,
     })),
   ];
 
@@ -200,7 +243,7 @@ export function ClearanceItemsRoute() {
       ? searched
       : filter === "attention"
         ? searched.filter(isAttention)
-        : searched.filter((item) => item.status === filter);
+        : searched.filter((item) => displayStatus(item) === filter);
 
   // Sort worst-first by default; the active key toggles direction.
   const sorted = useMemo(() => {
@@ -276,11 +319,20 @@ export function ClearanceItemsRoute() {
     <Page
       trail={[
         { label: "Projects", to: "/o/$orgSlug/projects", params: { orgSlug } },
-        { label: "Flags" },
+        ...(projectQuery.data
+          ? [
+              {
+                label: projectQuery.data.title,
+                to: "/o/$orgSlug/projects/$projectId",
+                params: { orgSlug, projectId },
+              },
+            ]
+          : []),
+        { label: "Clearance items" },
       ]}
-      eyebrow="Review"
-      title="Detected clearance items"
-      lede="Persisted unresolved findings remain pending evidence research and qualified human review."
+      eyebrow="Analysis"
+      title="Clearance flags"
+      lede="Everything the check flagged, with its scene, owner, and where your call stands."
       notice={
         itemsQuery.isError && (
           <Banner
@@ -536,6 +588,10 @@ export function ClearanceItemsRoute() {
                     {bucket.items.map((item) => {
                       const tone = rowTone(item);
                       const selected = selectedIds.has(item.itemId);
+                      const claimCount = item.claimCount ?? 0;
+                      const ownerName = item.assignedTo
+                        ? memberNameById.get(item.assignedTo)
+                        : undefined;
                       return (
                         <li className={`list-row is-static ${tone}`.trim()} key={item.itemId}>
                           {canAssign && (
@@ -551,21 +607,31 @@ export function ClearanceItemsRoute() {
                           <div className="list-main">
                             <h3 className="list-title">{item.entityName}</h3>
                             <span className="list-meta">
-                              <span>{humanizeCategory(item.category)}</span>
-                              {item.severity && <span>{item.severity} severity</span>}
-                              {item.confidence != null && <span>{item.confidence}% confidence</span>}
-                              {item.scene != null && <span>Scene {item.scene}</span>}
+                              <span className="mono">{item.itemId.slice(-8)}</span>
+                              <span>{displayCategory(item.category)}</span>
+                              {item.scene != null && (
+                                <span>
+                                  Scene {item.scene}
+                                  {(item as { page?: number }).page != null
+                                    ? ` · p.${(item as { page?: number }).page}`
+                                    : ""}
+                                </span>
+                              )}
                               <span>
-                                {item.claimCount ?? 0} cited evidence claim
-                                {(item.claimCount ?? 0) === 1 ? "" : "s"}
+                                {claimCount} source{claimCount === 1 ? "" : "s"}
+                                {item.sourcesDisagree ? " · conflict" : ""}
                               </span>
-                              {item.sourcesDisagree && <span>Sources disagree</span>}
+                              {item.confidence != null && <span>{item.confidence}%</span>}
                             </span>
                           </div>
                           <div className="list-aside">
-                            <Badge tone={statusTone(item.status)}>
-                              {item.displayStatus ?? humanizeStatus(item.status)}
-                            </Badge>
+                            {ownerName && (
+                              <span className="avatar avatar-sm" title={ownerName} aria-label={ownerName}>
+                                {initialsOf(ownerName)}
+                              </span>
+                            )}
+                            <span className="small muted">{severityWord(item)}</span>
+                            <Badge tone={displayStatusTone(item)}>{displayStatus(item)}</Badge>
                             <Link
                               className="button button-quiet button-sm"
                               to="/o/$orgSlug/projects/$projectId/items/$itemId"

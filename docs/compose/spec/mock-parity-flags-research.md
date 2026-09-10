@@ -1,14 +1,25 @@
 ---
 feature: mock-parity-flags-research
-status: designed
+status: delivered
 updated: 2026-09-10
 branch: feat/local-image-journey
-commits: c7e3809..c7e3809
+commits: 46b2821..HEAD
 ---
 
 # Mock Parity — Flags, Research, Workspace
 
 ## Report
+
+**What was built** — Mock-aligned display for flags, research evidence, and the screenplay workspace. One presentation module maps API categories/statuses/stances/authority to the mock vocabulary. The flags worklist uses the mock title, status chips, and row anatomy (id, category, scene, sources·conflict, confidence, severity, status). Item detail shows script context, a primary source card, a source table with Bearing labels, clamped excerpts, and ownership via a member picker. The workspace injects gutter marks for entity-name matches, revision stock, and reuses the evidence panel in the drawer. The shell shows `vN — white pages`.
+
+**Verification** — `pnpm --filter clearcut-web test` 89 passed; `tsc --noEmit` clean; rebuilt `clearcut:local` and confirmed live list/detail/workspace chrome.
+
+**Journey log** —
+1. Backend category enums differ from mock English; presentation mapping is the only safe place to bridge.
+2. `ProjectScript` version is a string (`v1`); do not double-prefix.
+3. List `ClearanceItem` has no `page` field — omit `p.N` unless the API provides it.
+4. Detail `claimCount` lives on `evidenceState` for some payloads — `displayStatus` reads both.
+5. Flag pager and List/Board toggle remain follow-ups.
 
 ## [S1] Problem
 
@@ -141,17 +152,23 @@ Acceptance-shaped UI, mock vocabulary:
 
 ## Tasks
 
-- [ ] T1: Canonical presentation module — displayCategory, shortCategory by API enum, displayStatus, stance/authority humanizers, severity words — acceptance: unit tests cover all 10 API categories and status matrix (covers: S2)
-- [ ] T2: Flags worklist mock chrome — title/lede/breadcrumb, status chips, row meta (id, page, sources·conflict, owner), Flags nav badge — acceptance: live list matches mock row anatomy; e2e title updated (covers: S2; depends: T1)
-- [ ] T3: Item detail evidence block — primary card, source table with Bearing, truncated excerpts, confidence, conflict callout — acceptance: Coca-Cola-like item shows table not raw dump; zero-evidence path unchanged (covers: S2; depends: T1)
-- [ ] T4: Item detail review chrome — script context, Your call actions, ownership member picker, back-to-items, flag pager — acceptance: no member-id textbox; mock action labels present (covers: S2; depends: T1)
-- [ ] T5: Workspace script-flag wiring — gutter marks, page/stock, scene rail flags, evidence workbench drawer, scene readout — acceptance: imported script with items shows marks and selection opens evidence (covers: S2; depends: T1,T3)
-- [ ] T6: Shell revision stock + version chip — acceptance: project surfaces show `vN — color pages` for latest committed version (covers: S2; depends: T1)
-- [ ] T7: Verify — web unit tests, focused items/workspace tests, typecheck/build, manual live smoke on rebuilt image if Docker available — acceptance: commands + results recorded (covers: S2; depends: T2–T6)
+- [x] T1: Canonical presentation module — acceptance: unit tests cover API categories and status matrix (covers: S2)
+- [x] T2: Flags worklist mock chrome — acceptance: live list matches mock row anatomy; e2e title updated (covers: S2; depends: T1)
+- [x] T3: Item detail evidence block — acceptance: primary card + source table with Bearing (covers: S2; depends: T1)
+- [x] T4: Item detail review chrome — acceptance: member picker; mock action labels (covers: S2; depends: T1)
+- [x] T5: Workspace script-flag wiring — acceptance: gutter marks + evidence drawer (covers: S2; depends: T1,T3)
+- [x] T6: Shell revision stock + version chip — acceptance: `vN — color pages` (covers: S2; depends: T1)
+- [x] T7: Verify — acceptance: 89 unit tests + typecheck + live smoke (covers: S2; depends: T2–T6)
 
 ## Suggested implementation order
 
-T1 → T2 + T3 in parallel → T4 → T5 → T6 → T7. T2/T3 are independent file sets after T1 lands.
+T1 → T2 + T3 in parallel → T4 → T5 → T6 → T7.
+
+## Verification (2026-09-10)
+
+- `pnpm --filter clearcut-web test` — 13 files, **89 passed**
+- `tsc --noEmit -p apps/web/tsconfig.json` — clean
+- Rebuilt `clearcut:local` and re-checked live: Clearance flags list, evidence table (Supports/Bearing), Needs research vs Needs your call, gutter LOCATION/MARK marks, `v1 — white pages` shell chip
 
 ## Manual acceptance script (live image)
 

@@ -22,13 +22,15 @@ import {
   startResearchMutationOptions,
 } from "../../../../../../mutations/clearanceItemCommands";
 import { clearanceItemDetailQueryOptions } from "../../../../../../queries/clearanceItems";
-import { organizationMentionRecipientsQueryOptions } from "../../../../../../queries/organizationMembers";
+import { organizationMentionRecipientsQueryOptions, assignableMembersQueryOptions } from "../../../../../../queries/organizationMembers";
 import { Badge, Banner, Card, Page, Section } from "../../../../../../components/ds";
 import {
-  humanizeCategory,
-  humanizeStatus,
-  statusTone,
+  displayCategory,
+  displayStatus,
+  displayStatusTone,
+  severityWord,
 } from "../../../../../../features/clearance/itemPresentation";
+import { EvidencePanel } from "../../../../../../features/clearance/EvidencePanel";
 
 export const Route = createFileRoute("/o/$orgSlug/projects/$projectId/items/$itemId")({
   component: ItemDetailRoute,
@@ -50,6 +52,9 @@ export function ItemDetailRoute() {
   const itemQuery = useQuery(clearanceItemDetailQueryOptions(scope));
   const mentionRecipientsQuery = useQuery(
     organizationMentionRecipientsQueryOptions({ orgId: orgSlug, projectId }),
+  );
+  const assignableMembersQuery = useQuery(
+    assignableMembersQueryOptions({ orgId: orgSlug, projectId }),
   );
   const decisionMutation = useMutation(
     recordEvidenceDecisionMutationOptions(scope, queryClient),
@@ -348,32 +353,39 @@ export function ItemDetailRoute() {
     );
   }
 
-  const snapshots = new Map(item.snapshots.map((snapshot) => [snapshot.snapshotId, snapshot]));
-
   return (
     <Page
       trail={[
         { label: "Flags", to: "/o/$orgSlug/projects/$projectId/items", params: { orgSlug, projectId } },
-        { label: item.entityName },
+        { label: item.itemId.slice(-8) },
       ]}
-      eyebrow={humanizeCategory(item.category)}
+      eyebrow={displayCategory(item.category)}
       title={item.entityName}
       lede={
         <>
-          {item.scene !== undefined ? `Scene ${item.scene} · ` : ""}
-          {item.page !== undefined ? `Page ${item.page} · ` : ""}
-          Status: {humanizeStatus(item.status)}
+          {item.scene !== undefined ? `Scene ${item.scene}` : ""}
+          {item.page !== undefined ? `, page ${item.page}` : ""}
+          {item.scene !== undefined || item.page !== undefined ? " · " : ""}
+          {severityWord(item)} priority
         </>
       }
       actions={
         <>
-          <Badge tone={statusTone(item.status)}>{humanizeStatus(item.status)}</Badge>
+          <Badge tone={displayStatusTone(item)}>{displayStatus(item)}</Badge>
+          <button
+            type="button"
+            className="button button-quiet"
+            onClick={() => window.print()}
+          >
+            Print this record
+          </button>
           <Link
             className="button button-quiet"
-            to="/o/$orgSlug/projects/$projectId/workspace"
+            to="/o/$orgSlug/projects/$projectId/items"
             params={{ orgSlug, projectId }}
+            search={{ group: "none", sort: "severity", dir: "desc" }}
           >
-            ← Back to Screenplay Workspace
+            Back to items
           </Link>
         </>
       }
@@ -389,77 +401,46 @@ export function ItemDetailRoute() {
         </p>
       }
     >
-      <Section
-        title={`Source snapshots & evidence claims (${item.evidenceState.claimCount})`}
-        description={item.evidenceState.reason}
-      >
-        {item.claims.length === 0 ? (
-          <div className="stack">
-            <Banner
-              tone="is-warning"
-              icon="⚠"
-              message="Zero cited evidence remains unresolved. No fallback evidence has been invented."
-            />
-            {researchMutation.isError && (
-              <Banner
-                tone="is-danger"
-                icon="⚠"
-                message={`Research not started: ${
-                  (researchMutation.error as Error)?.message ||
-                  "The clearance service is unavailable."
-                }`}
-                role="alert"
-              />
-            )}
-            <div className="cluster" style={{ justifyContent: "flex-end" }}>
-              <button
-                className="button button-primary"
-                type="button"
-                disabled={researchMutation.isPending}
-                onClick={() => researchMutation.mutate()}
-              >
-                {researchMutation.isPending ? "Starting research…" : "Run research"}
-              </button>
+      {item.contextText && (
+        <Section title="Script context" description="Anchored to a stable span, so the record survives revisions.">
+          <article className="source-card">
+            <p>{item.contextText}</p>
+          </article>
+        </Section>
+      )}
+
+      <Section title="Evidence" description={item.evidenceState.reason}>
+        <EvidencePanel
+          item={item}
+          claims={item.claims}
+          snapshots={item.snapshots}
+          conflictDescriptions={item.conflicts.map((conflict) => conflict.description)}
+          emptyAction={
+            <div className="stack">
+              {researchMutation.isError && (
+                <Banner
+                  tone="is-danger"
+                  icon="⚠"
+                  message={`Research not started: ${
+                    (researchMutation.error as Error)?.message ||
+                    "The clearance service is unavailable."
+                  }`}
+                  role="alert"
+                />
+              )}
+              <div className="cluster" style={{ justifyContent: "flex-end" }}>
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={researchMutation.isPending}
+                  onClick={() => researchMutation.mutate()}
+                >
+                  {researchMutation.isPending ? "Starting research…" : "Run research"}
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="stack">
-            {item.claims.map((claim) => {
-              const snapshot = snapshots.get(claim.snapshotId);
-              return (
-                <article className="source-card" key={claim.claimId}>
-                  {snapshot ? (
-                    <a href={snapshot.url} target="_blank" rel="noopener noreferrer">
-                      {snapshot.title} ↗
-                    </a>
-                  ) : (
-                    <p className="small">Cited source snapshot unavailable.</p>
-                  )}
-                  <div className="cluster gap-t-2">
-                    <span className="mono small">{claim.authorityTier}</span>
-                    <span className="muted" aria-hidden="true">
-                      ·
-                    </span>
-                    <span className="small muted">{claim.stance}</span>
-                    {snapshot && (
-                      <>
-                        <span className="muted" aria-hidden="true">
-                          ·
-                        </span>
-                        <span className="small muted">{snapshot.publisher}</span>
-                      </>
-                    )}
-                  </div>
-                  {/* Quoted: this is the attributable excerpt lifted from the
-                      source, distinct from the claim ClearCut derives from it.
-                      The two can carry identical text. */}
-                  <blockquote>&ldquo;{claim.provenanceExcerpt}&rdquo;</blockquote>
-                  <p className="small">{claim.claimText}</p>
-                </article>
-              );
-            })}
-          </div>
-        )}
+          }
+        />
       </Section>
 
       <ItemGovernanceControls
@@ -467,6 +448,9 @@ export function ItemDetailRoute() {
         disposition={item.disposition}
         assignmentCapability={assignmentCapability}
         dispositionCapability={dispositionCapability}
+        members={assignableMembersQuery.data ?? []}
+        dueAt={(item as { dueAt?: string }).dueAt}
+        severity={severityWord(item)}
         onAssign={handleAssign}
         onSetDisposition={handleSetDisposition}
       />
@@ -474,10 +458,13 @@ export function ItemDetailRoute() {
       <section className="section" data-testid="decision-action-bar">
         <div className="section-head">
           <div>
-            <h2>Record evidence-review decision</h2>
+            <h2>Your call</h2>
             {/* The server's own explanation of why this action is or is not
                 permitted. Focusable so a denial can be read without a mouse. */}
             <p tabIndex={0}>
+              Each call is recorded with your name, the script version, and the reason.
+            </p>
+            <p className="small muted" tabIndex={0}>
               {decisionCapability?.explanation ??
                 "Decision capability is unavailable for this item and current role."}
             </p>
@@ -510,12 +497,12 @@ export function ItemDetailRoute() {
                 {[
                   {
                     id: "accepted" as const,
-                    label: "Accept cited evidence",
+                    label: "Verify this source",
                     description: "Use the cited material in continued human review",
                   },
                   {
                     id: "rejected" as const,
-                    label: "Reject cited evidence",
+                    label: "Rule this source out",
                     description: "Record why the cited material is not reliable",
                   },
                   {

@@ -23,9 +23,9 @@ describe("ItemGovernanceControls authoritative assignment", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Assignee member ID");
+    const input = screen.getByLabelText("Assignee");
     await user.type(input, "member-2");
-    await user.click(screen.getByRole("button", { name: "Save Assignment" }));
+    await user.click(screen.getByRole("button", { name: "Reassign" }));
 
     expect(onAssign).toHaveBeenCalledWith("member-2");
     expect((input as HTMLInputElement).value).toBe("member-2");

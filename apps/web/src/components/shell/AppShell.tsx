@@ -4,6 +4,8 @@ import { api } from "@clearcut/contracts";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { ShellProvider, useShell } from "./ShellContext";
 
+import { revisionStock, revisionStockLabel } from "../../features/clearance/itemPresentation";
+
 interface NavItem {
   label: string;
   icon: string;
@@ -165,6 +167,7 @@ function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
   const [memberCount, setMemberCount] = useState<number | null>(null);
   // The avatar must name the authenticated account, never a mock identity.
   const [sessionLabel, setSessionLabel] = useState<string | null>(null);
+  const [versionNumber, setVersionNumber] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +209,32 @@ function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
       cancelled = true;
     };
   }, [orgSlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!projectId) {
+      setVersionNumber(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const result = await api.listProjectVersions({
+          params: { orgId: orgSlug, projectId },
+        });
+        if (!cancelled && result.ok && result.value.length > 0) {
+          const latest = result.value.reduce((best, row) =>
+            (row.versionNumber ?? 0) > (best.versionNumber ?? 0) ? row : best,
+          );
+          setVersionNumber(latest.versionNumber ?? null);
+        }
+      } catch {
+        // Version chip stays absent rather than inventing a stock colour.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgSlug, projectId]);
 
   const displayName = sessionLabel ?? userName ?? "Signed-in user";
 
@@ -328,7 +357,23 @@ function AppShellInner({ orgSlug = "northlight", userName }: AppShellProps) {
 
         <div className="org-chip" aria-label="Current context">
           {inProject ? (
-            <strong>{projectTitle ?? "Project"}</strong>
+            <>
+              <strong>{projectTitle ?? "Project"}</strong>
+              {versionNumber !== null && (
+                <>
+                  <span className="divider-dot" aria-hidden="true">
+                    ·
+                  </span>
+                  <span
+                    className="small mono"
+                    data-testid="revision-stock-chip"
+                    title={revisionStockLabel(versionNumber)}
+                  >
+                    v{versionNumber} — {revisionStockLabel(versionNumber)}
+                  </span>
+                </>
+              )}
+            </>
           ) : (
             <>
               <strong>{orgName ?? orgSlug}</strong>

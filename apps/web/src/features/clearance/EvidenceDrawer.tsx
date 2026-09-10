@@ -3,8 +3,8 @@ import { Link } from "@tanstack/react-router";
 import type { ClearanceItem } from "@clearcut/contracts";
 import type { ClearanceItemDetail } from "@clearcut/contracts";
 import { Badge, Banner } from "../../components/ds";
-import { humanizeCategory, humanizeStatus, statusTone } from "./itemPresentation";
-import type { Tone } from "../../components/ds";
+import { displayCategory, displayStatus, displayStatusTone } from "./itemPresentation";
+import { EvidencePanel } from "./EvidencePanel";
 
 export interface EvidenceDrawerProps {
   isOpen: boolean;
@@ -14,16 +14,6 @@ export interface EvidenceDrawerProps {
   orgSlug: string;
   projectId: string;
   loading?: boolean;
-}
-
-function stanceTone(stance: string): Tone {
-  if (stance === "supporting") {
-    return "is-success";
-  }
-  if (stance === "conflicting") {
-    return "is-danger";
-  }
-  return "is-warning";
 }
 
 /**
@@ -113,9 +103,6 @@ export function EvidenceDrawer({
 
   if (!isOpen || !item) return null;
 
-  const snapshots = new Map(
-    (detail?.snapshots ?? []).map((snapshot) => [snapshot.snapshotId, snapshot]),
-  );
   const claims = detail?.claims ?? [];
 
   return (
@@ -131,12 +118,12 @@ export function EvidenceDrawer({
       >
         <header className="dialog-head">
           <div className="min-w-0">
-            <span className="slug-heading">{humanizeCategory(item.category)}</span>
+            <span className="slug-heading">{displayCategory(item.category)}</span>
             <h2 id="evidence-drawer-title" className="gap-t-1">
               {item.entityName} evidence
             </h2>
             <div className="cluster gap-t-1">
-              <Badge tone={statusTone(item.status)}>{humanizeStatus(item.status)}</Badge>
+              <Badge tone={displayStatusTone(item)}>{displayStatus(item)}</Badge>
             </div>
           </div>
           <button
@@ -168,59 +155,12 @@ export function EvidenceDrawer({
               }
             />
           ) : (
-            <div className="stack">
-              <div className="cluster-between">
-                <span className="slug-heading">Cited source snapshots ({claims.length})</span>
-                <span className="small muted">Cited provenance</span>
-              </div>
-
-              {claims.map((claim) => {
-                const snapshot = snapshots.get(claim.snapshotId);
-                return (
-                  <article className="source-card" key={claim.claimId}>
-                    <div className="cluster-between">
-                      {snapshot ? (
-                        <a
-                          href={snapshot.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          data-testid="source-snapshot-url"
-                        >
-                          {snapshot.title} ↗
-                        </a>
-                      ) : (
-                        <span className="small">Cited source snapshot unavailable</span>
-                      )}
-                      <span data-testid="claim-stance-badge">
-                        <Badge tone={stanceTone(claim.stance)}>{claim.stance}</Badge>
-                      </span>
-                    </div>
-
-                    <div className="cluster gap-t-2">
-                      <span className="mono small">{claim.authorityTier}</span>
-                      {snapshot && (
-                        <>
-                          <span className="muted" aria-hidden="true">
-                            ·
-                          </span>
-                          <span className="small muted">{snapshot.publisher}</span>
-                        </>
-                      )}
-                    </div>
-
-                    <blockquote>&ldquo;{claim.provenanceExcerpt}&rdquo;</blockquote>
-
-                    {snapshot && (
-                      <div className="source-foot">
-                        <span className="mono small muted">
-                          Retrieved {new Date(snapshot.retrievedAt).toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
+            <EvidencePanel
+              item={item}
+              claims={claims}
+              snapshots={detail.snapshots}
+              conflictDescriptions={(detail.conflicts ?? []).map((conflict) => conflict.description)}
+            />
           )}
         </div>
 

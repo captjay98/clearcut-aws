@@ -1,4 +1,4 @@
-import type { ClearanceDisposition, ItemCapability } from "@clearcut/contracts";
+import type { ClearanceDisposition, ItemCapability, Membership } from "@clearcut/contracts";
 import React, { useState } from "react";
 import { Banner, Card } from "../../components/ds";
 
@@ -7,6 +7,9 @@ export interface ItemGovernanceControlsProps {
   disposition?: ClearanceDisposition | null;
   assignmentCapability?: ItemCapability;
   dispositionCapability?: ItemCapability;
+  members?: Membership[];
+  dueAt?: string | null;
+  severity?: "High" | "Medium" | "Low";
   onAssign?: (assigneeId: string | null) => Promise<void>;
   onSetDisposition?: (
     disposition: ClearanceDisposition,
@@ -19,6 +22,9 @@ export function ItemGovernanceControls({
   disposition,
   assignmentCapability,
   dispositionCapability,
+  members = [],
+  dueAt,
+  severity,
   onAssign,
   onSetDisposition,
 }: ItemGovernanceControlsProps) {
@@ -33,6 +39,7 @@ export function ItemGovernanceControls({
   const [isSettingDisposition, setIsSettingDisposition] = useState(false);
   const assignmentAllowed = assignmentCapability?.allowed ?? Boolean(onAssign);
   const dispositionAllowed = dispositionCapability?.allowed ?? Boolean(onSetDisposition);
+  const assignedMember = members.find((member) => member.userId === assignedTo);
 
   const handleAssignment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -77,13 +84,33 @@ export function ItemGovernanceControls({
     <section className="section" aria-label="Item governance controls">
       <div className="section-head">
         <div>
-          <h2>Assignment &amp; disposition</h2>
+          <h2>Ownership</h2>
+          <p className="small muted">
+            Each call is recorded with your name, the script version, and the reason.
+          </p>
         </div>
       </div>
 
       <div className="grid grid-2">
         <Card>
-          <form onSubmit={handleAssignment}>
+          <h3>Ownership</h3>
+          <dl className="gap-t-3">
+            <dt className="small muted">Assignee</dt>
+            <dd>{assignedMember?.email ?? (assignedTo ? assignedTo : "Unassigned")}</dd>
+            <dt className="small muted">Due</dt>
+            <dd>
+              {dueAt
+                ? new Date(dueAt).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "—"}
+            </dd>
+            <dt className="small muted">Priority</dt>
+            <dd>{severity ?? "—"}</dd>
+          </dl>
+
+          <form onSubmit={handleAssignment} className="gap-t-4">
             {/* The server's reason this action is or is not permitted, focusable
                 so a denial is reachable without a mouse. */}
             <p className="small muted" tabIndex={0}>
@@ -92,13 +119,30 @@ export function ItemGovernanceControls({
             </p>
 
             <label className="field gap-t-4" htmlFor="assignee-member-id">
-              <span className="field-label">Assignee member ID</span>
-              <input
-                id="assignee-member-id"
-                value={assigneeId}
-                disabled={!assignmentAllowed}
-                onChange={(event) => setAssigneeId(event.target.value)}
-              />
+              <span className="field-label">Assignee</span>
+              {members.length > 0 ? (
+                <select
+                  id="assignee-member-id"
+                  value={assigneeId}
+                  disabled={!assignmentAllowed}
+                  onChange={(event) => setAssigneeId(event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {members.map((member) => (
+                    <option key={member.userId} value={member.userId}>
+                      {member.email ?? member.userId}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="assignee-member-id"
+                  value={assigneeId}
+                  disabled={!assignmentAllowed}
+                  onChange={(event) => setAssigneeId(event.target.value)}
+                  placeholder="Member id"
+                />
+              )}
             </label>
 
             {assignmentError && (
@@ -117,28 +161,23 @@ export function ItemGovernanceControls({
                 type="submit"
                 disabled={!assignmentAllowed || !onAssign || isAssigning}
               >
-                {isAssigning ? "Saving…" : "Save Assignment"}
+                {isAssigning ? "Saving…" : "Reassign"}
               </button>
             </div>
           </form>
         </Card>
 
         <Card>
-          <form onSubmit={handleDisposition}>
+          <h3>Disposition</h3>
+          <form onSubmit={handleDisposition} className="gap-t-3">
             <p className="small muted" tabIndex={0}>
               {dispositionCapability?.explanation ??
                 "Disposition capability is unavailable for this item and current role."}
             </p>
-
-            {/* The label is a sibling rather than a wrapper. A <label> that wraps
-                a <select> folds the selected option's text into the accessible
-                name, so the control would be named "Disposition Pending". */}
-            <div className="field gap-t-4">
-              <label className="field-label" htmlFor="item-disposition">
-                Disposition
-              </label>
+            <label className="field" htmlFor="disposition">
+              <span className="field-label">Disposition</span>
               <select
-                id="item-disposition"
+                id="disposition"
                 value={selectedDisposition}
                 disabled={!dispositionAllowed}
                 onChange={(event) =>
@@ -151,9 +190,8 @@ export function ItemGovernanceControls({
                 <option value="fixed_in_rewrite">Fixed in rewrite</option>
                 <option value="deferred">Deferred for qualified review</option>
               </select>
-            </div>
-
-            <label className="field gap-t-4" htmlFor="disposition-rationale">
+            </label>
+            <label className="field" htmlFor="disposition-rationale">
               <span className="field-label">Disposition rationale</span>
               <textarea
                 id="disposition-rationale"
@@ -163,36 +201,26 @@ export function ItemGovernanceControls({
                 onChange={(event) => setDispositionRationale(event.target.value)}
               />
             </label>
-
             {dispositionError && (
               <Banner
                 tone="is-danger"
                 icon="⚠"
                 message={dispositionError}
                 role="alert"
-                className="gap-t-3"
               />
             )}
-
-            <div className="cluster gap-t-4">
-              <button
-                className="button button-primary button-sm"
-                type="submit"
-                disabled={
-                  !dispositionAllowed ||
-                  !onSetDisposition ||
-                  isSettingDisposition ||
-                  !dispositionRationale.trim()
-                }
-              >
-                {isSettingDisposition ? "Saving…" : "Save Disposition"}
-              </button>
-            </div>
+            <button
+              className="button button-primary button-sm"
+              type="submit"
+              disabled={
+                !dispositionAllowed || !onSetDisposition || !dispositionRationale.trim() || isSettingDisposition
+              }
+            >
+              {isSettingDisposition ? "Saving…" : "Save Disposition"}
+            </button>
           </form>
         </Card>
       </div>
     </section>
   );
 }
-
-export default ItemGovernanceControls;

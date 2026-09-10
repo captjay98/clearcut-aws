@@ -194,7 +194,7 @@ test("persists all three new-clearance steps and renders only authoritative term
   expect(persistedItems.length).toBeGreaterThan(0);
   await page.getByRole("link", { name: "Review detected items" }).click();
   await expect(page).toHaveURL(`/app/o/${orgSlug}/projects/${projectId}/items`);
-  await expect(page.getByRole("heading", { name: "Detected clearance items" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clearance flags" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: persistedItems[0].entityName, exact: true }),
   ).toBeVisible();
@@ -402,7 +402,7 @@ test("items route shows persisted empty and error states without redirecting", a
   const { orgSlug, projectId } = await createNewClearance(page, testInfo);
   await page.goto(`/app/o/${orgSlug}/projects/${projectId}/items`);
   await expect(page).toHaveURL(`/app/o/${orgSlug}/projects/${projectId}/items`);
-  await expect(page.getByRole("heading", { name: "Detected clearance items" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Clearance flags" })).toBeVisible();
   await expect(page.getByText("No detected clearance items yet.")).toBeVisible();
 
   await page.route(`**/projects/${projectId}/clearance-items`, async (route) => {

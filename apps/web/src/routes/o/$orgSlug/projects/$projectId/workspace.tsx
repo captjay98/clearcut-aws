@@ -12,11 +12,13 @@ import {
 import { ScriptUploadModal } from "../../../../../features/scripts/ScriptUploadModal";
 import { Badge, Banner, TabsBar } from "../../../../../components/ds";
 import {
-  humanizeStatus,
+  displayStatus,
+  displayStatusTone,
+  revisionStock,
   severityOf,
   shortCategory,
-  statusTone,
 } from "../../../../../features/clearance/itemPresentation";
+import { EvidencePanel } from "../../../../../features/clearance/EvidencePanel";
 import {
   clearanceItemDetailQueryOptions,
   clearanceItemKeys,
@@ -88,7 +90,8 @@ export function WorkspaceRoute() {
   /**
    * A script line's flag is matched to a clearance item by entity name, which is
    * what the API records against the passage. Resolved once per item list rather
-   * than per line.
+   * than per line. Lines without an API flag marker still match when the entity
+   * name appears in the line text, so gutter marks work on imported scripts.
    */
   const annotationFor = useMemo(() => {
     const byName = new Map<string, ClearanceItem>();
@@ -113,16 +116,31 @@ export function WorkspaceRoute() {
         shortCategory: shortCategory(item.category),
         severityClass,
         glyph,
-        status: humanizeStatus(item.status),
+        status: displayStatus(item),
         term: item.entityName,
       };
     };
   }, [items]);
 
+  /** Inject entity-name matches onto lines the parser left unflagged. */
+  const annotatedScenes = useMemo(() => {
+    return scenes.map((scene) => ({
+      ...scene,
+      lines: scene.lines.map((line) => {
+        if (line.flag || line.type === "scene_heading") return line;
+        const lower = line.text.toLowerCase();
+        const match = items.find(
+          (item) => item.entityName.length > 2 && lower.includes(item.entityName.toLowerCase()),
+        );
+        return match ? { ...line, flag: match.entityName } : line;
+      }),
+    }));
+  }, [scenes, items]);
+
   /** Scenes that carry at least one flag, for the rail. */
   const scenesWithFlags = useMemo(
     () =>
-      scenes
+      annotatedScenes
         .map((scene) => {
           const sceneItems = scene.lines
             .map((line) => (line.flag ? annotationFor(line.flag) : null))
@@ -131,7 +149,7 @@ export function WorkspaceRoute() {
           return { scene, flags: [...unique.values()] };
         })
         .filter((entry) => entry.flags.length > 0),
-    [scenes, annotationFor],
+    [annotatedScenes, annotationFor],
   );
 
   const errors = [scriptQuery.error, itemsQuery.error]
@@ -142,6 +160,10 @@ export function WorkspaceRoute() {
     setSelectedItemId(item.itemId);
     setIsDrawerOpen(true);
   };
+
+  const versionLabel = scriptQuery.data?.version ?? "v1";
+  const versionNumber = Number(String(versionLabel).replace(/^v/i, "")) || 1;
+  const stock = revisionStock(versionNumber);
 
   const refreshImportedScript = async () => {
     await queryClient.invalidateQueries({
@@ -159,7 +181,7 @@ export function WorkspaceRoute() {
         <div className="page-head-row">
           <div>
             <h1 id="route-heading" ref={workspaceHeadingRef} tabIndex={-1}>
-              Clearance Workspace
+              Screenplay — {scriptQuery.data?.title ?? "Clearance Workspace"}
             </h1>
             <p className="page-lede">
               ClearCut presents sourced findings and unresolved risk for qualified human review. It
@@ -244,11 +266,12 @@ export function WorkspaceRoute() {
 
         <div className="script-scroll">
           <ScreenplayViewer
-            title={scriptQuery.data?.title}
-            version={scriptQuery.data?.version}
-            scenes={scenes}
+            title={scriptQuery.data?.title ?? "Screenplay"}
+            version={`${versionLabel} (${stock} pages)`}
+            scenes={annotatedScenes}
             loading={scriptQuery.isPending}
             selectedItemId={selectedItemId}
+            stock={stock}
             resolveFlag={annotationFor}
             onSelectFlag={(annotation) => setSelectedItemId(annotation.itemId)}
           />
@@ -304,9 +327,7 @@ export function WorkspaceRoute() {
             <div className="drawer-foot">
               <div className="cluster-between">
                 <span className="small truncate">{selectedItem.entityName}</span>
-                <Badge tone={statusTone(selectedItem.status)}>
-                  {humanizeStatus(selectedItem.status)}
-                </Badge>
+                <Badge tone={displayStatusTone(selectedItem)}>{displayStatus(selectedItem)}</Badge>
               </div>
             </div>
           )}
