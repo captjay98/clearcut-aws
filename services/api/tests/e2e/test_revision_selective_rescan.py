@@ -341,18 +341,6 @@ async def _register_owner(client: AsyncClient) -> tuple[UUID, UUID, UUID]:
     return org_id, UUID(project.json()["data"]["projectId"]), actor_id
 
 
-async def _seed_active_policy(org_id: UUID) -> None:
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
-
-
 async def _seed_version(
     *,
     org_id: UUID,
@@ -697,7 +685,6 @@ async def _seed_lineage(
 
 async def _seed_full_revision(client: AsyncClient) -> SeededRevision:
     org_id, project_id, actor_id = await _register_owner(client)
-    await _seed_active_policy(org_id)
 
     script_id = uuid6.uuid7()
     before_version_id = uuid6.uuid7()

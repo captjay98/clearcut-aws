@@ -75,18 +75,6 @@ class _DisabledGate:
         return False
 
 
-async def _seed_active_policy(org_id: UUID) -> None:
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
-
-
 async def _register_owner(client: AsyncClient) -> tuple[UUID, UUID]:
     org_id, project_id, _actor_id = await _register_owner_with_actor(client)
     return org_id, project_id
@@ -165,7 +153,6 @@ async def test_start_requires_idempotency_key(enabled_service) -> None:
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id = await _register_owner(client)
-        await _seed_active_policy(org_id)
         response = await client.post(_path(org_id, project_id, uuid6.uuid7()))
     assert response.status_code == 422
 
@@ -179,7 +166,6 @@ async def test_start_enqueues_one_durable_job_and_dispatches_only_when_created(
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id = await _register_owner(client)
-        await _seed_active_policy(org_id)
 
         first = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
         assert first.status_code == 202, first.text
@@ -226,7 +212,6 @@ async def test_start_ignores_client_supplied_item_ids(enabled_service) -> None:
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id = await _register_owner(client)
-        await _seed_active_policy(org_id)
         response = await client.post(
             _path(org_id, project_id, version_id),
             headers=_IDEMPOTENCY,
@@ -254,7 +239,6 @@ async def test_start_rejects_missing_revision_plan(enabled_service) -> None:
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id = await _register_owner(client)
-        await _seed_active_policy(org_id)
         response = await client.post(_path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY)
     assert response.status_code == 404
 
@@ -266,7 +250,6 @@ async def test_start_rejects_disabled_provider_without_calling_provider(enabled_
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id = await _register_owner(client)
-        await _seed_active_policy(org_id)
         response = await client.post(_path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY)
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "capability_unavailable"
@@ -278,7 +261,13 @@ async def test_start_requires_active_policy(enabled_service) -> None:
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id = await _register_owner(client)
-        # No active policy seeded.
+        # Since an organization is born governed with one auto-seeded active
+        # binding, remove it so this test can exercise the no-active-policy path.
+        async with session_scope() as session:
+            await session.execute(
+                sa.text("DELETE FROM protected_configurations WHERE org_id = :org_id"),
+                {"org_id": str(org_id)},
+            )
         response = await client.post(_path(org_id, project_id, uuid6.uuid7()), headers=_IDEMPOTENCY)
     assert response.status_code == 409
 
@@ -289,7 +278,6 @@ async def test_start_fails_closed_on_foreign_project(enabled_service) -> None:
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, _project_id = await _register_owner(client)
-        await _seed_active_policy(org_id)
         foreign_project = uuid6.uuid7()
         response = await client.post(
             _path(org_id, foreign_project, uuid6.uuid7()), headers=_IDEMPOTENCY
@@ -305,7 +293,6 @@ async def test_start_allows_accountable_roles(enabled_service, role: str) -> Non
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id, actor_id = await _register_owner_with_actor(client)
-        await _seed_active_policy(org_id)
         await _set_membership_role(org_id=org_id, user_id=actor_id, role=role)
         response = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
     assert response.status_code == 202, response.text
@@ -322,7 +309,6 @@ async def test_start_denies_non_accountable_roles_before_enqueue(
         transport=ASGITransport(app=app), base_url="http://test", headers=_ORIGIN
     ) as client:
         org_id, project_id, actor_id = await _register_owner_with_actor(client)
-        await _seed_active_policy(org_id)
         await _set_membership_role(org_id=org_id, user_id=actor_id, role=role)
         response = await client.post(_path(org_id, project_id, version_id), headers=_IDEMPOTENCY)
 

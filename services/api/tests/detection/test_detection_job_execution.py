@@ -708,16 +708,6 @@ class RecordingDetectionRuntime:
 @pytest.mark.asyncio
 async def test_detection_job_executes_non_empty_elements_and_persists_truthful_output() -> None:
     org_id, project_id, _script_id, version_id, run_id, elements = await _create_detection_scope()
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
     jobs = SqlJobRepository()
     job = await jobs.get(org_id=org_id, project_id=project_id, job_id=run_id)
     assert job is not None
@@ -816,16 +806,6 @@ class RejectingJudge(HermeticJudgeAdapter):
 @pytest.mark.asyncio
 async def test_judge_rejection_persists_verdict_and_unresolved_item() -> None:
     org_id, project_id, _script_id, version_id, run_id, _elements = await _create_detection_scope()
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
     job = await SqlJobRepository().get(
         org_id=org_id,
         project_id=project_id,
@@ -901,16 +881,6 @@ class ZeroCandidateRuntime:
 @pytest.mark.asyncio
 async def test_zero_candidates_is_an_explicit_successful_detection_summary() -> None:
     org_id, project_id, _script_id, version_id, run_id, _elements = await _create_detection_scope()
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
     job = await SqlJobRepository().get(
         org_id=org_id,
         project_id=project_id,
@@ -995,16 +965,6 @@ class FailingDetectionRuntime:
 @pytest.mark.asyncio
 async def test_detection_provider_failure_is_persisted_and_fails_job_safely() -> None:
     org_id, project_id, _script_id, _version_id, run_id, _elements = await _create_detection_scope()
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
     job = await SqlJobRepository().get(
         org_id=org_id,
         project_id=project_id,
@@ -1064,6 +1024,14 @@ async def test_detection_requires_an_active_org_policy_binding() -> None:
     The test below covers that boundary directly.
     """
     org_id, project_id, _script_id, _version_id, run_id, _elements = await _create_detection_scope()
+    # Since 0036 an organization is born governed with one auto-seeded active
+    # binding. This test's premise is the absence of any active binding, so it
+    # must remove the auto-seeded row before exercising the fail-closed path.
+    async with session_scope() as session:
+        await session.execute(
+            sa.text("DELETE FROM protected_configurations WHERE org_id = :org_id"),
+            {"org_id": str(org_id)},
+        )
     job = await SqlJobRepository().get(
         org_id=org_id,
         project_id=project_id,
@@ -1100,21 +1068,14 @@ async def test_a_second_active_policy_binding_is_rejected_by_the_database() -> N
     org_id, _project_id, _script_id, _version_id, _run_id, _elements = (
         await _create_detection_scope()
     )
+    # Since 0036 the organization is born governed with one auto-seeded active
+    # binding, so that row already occupies the single active slot. Inserting a
+    # second active binding must be rejected by the partial unique index.
     insert = sa.text(
         "INSERT INTO protected_configurations "
         "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
         "VALUES (:id, :org_id, 'active', :policy, :prompt, CURRENT_TIMESTAMP)"
     )
-    async with session_scope() as session:
-        await session.execute(
-            insert,
-            {
-                "id": str(uuid4()),
-                "org_id": str(org_id),
-                "policy": "policy-v1",
-                "prompt": "prompt-v1",
-            },
-        )
 
     with pytest.raises(IntegrityError):
         async with session_scope() as session:
@@ -1185,16 +1146,6 @@ class FailingJudge:
 @pytest.mark.asyncio
 async def test_judge_failure_retains_unresolved_items_and_deterministic_gates() -> None:
     org_id, project_id, _script_id, _version_id, run_id, _elements = await _create_detection_scope()
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
     job = await SqlJobRepository().get(
         org_id=org_id,
         project_id=project_id,
@@ -1705,16 +1656,6 @@ class RecordingJobProgressRepository(SqlJobRepository):
 @pytest.mark.asyncio
 async def test_detection_execution_persists_truthful_non_research_stages() -> None:
     org_id, project_id, _script_id, _version_id, run_id, _elements = await _create_detection_scope()
-    async with session_scope() as session:
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
     jobs = RecordingJobProgressRepository()
     job = await jobs.get(org_id=org_id, project_id=project_id, job_id=run_id)
     assert job is not None

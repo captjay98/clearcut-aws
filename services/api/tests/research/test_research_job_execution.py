@@ -290,15 +290,6 @@ async def _create_research_scope() -> tuple[JobRecord, UUID, UUID, UUID, UUID]:
                 "element_id": str(element_id),
             },
         )
-        await session.execute(
-            sa.text(
-                "INSERT INTO protected_configurations "
-                "(id, org_id, lifecycle, policy_version, prompt_version, created_at) "
-                "VALUES (:id, :org_id, 'active', 'policy-v1', 'prompt-v1', "
-                "CURRENT_TIMESTAMP)"
-            ),
-            {"id": str(uuid4()), "org_id": str(org_id)},
-        )
 
     jobs = SqlJobRepository()
     enqueued = await jobs.enqueue(
