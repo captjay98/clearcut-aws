@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { api } from "@clearcut/contracts";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { ShellProvider, useShell } from "./ShellContext";
@@ -154,9 +154,11 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
   const projectId = projectIdFrom(currentPath);
   const inProject = projectId !== null;
   const { projectTitle, scriptPosition } = useShell();
+  const navigate = useNavigate();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   // The mock's chip reads "<organization> · <n> members", so the shell resolves
   // both rather than falling back to the slug in the URL.
   const [orgName, setOrgName] = useState<string | null>(null);
@@ -258,6 +260,23 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
     ? PROJECT_NAV.flatMap((group) => group.links).slice(0, 4)
     : ORG_NAV[0].links;
 
+  // Sign out revokes the current session, then routes to sign-in. The redirect
+  // runs whether or not revocation succeeded: a stale session should never
+  // strand the user inside the authenticated shell.
+  const handleSignOut = async () => {
+    if (signingOut) {
+      return;
+    }
+    setSigningOut(true);
+    try {
+      await api.deleteCurrentSession();
+    } catch {
+      // A network failure still drops the user at sign-in below.
+    } finally {
+      navigate({ to: "/auth/sign-in" });
+    }
+  };
+
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -328,6 +347,14 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
           <span className="avatar" aria-label={`Signed in as ${userName}`} title={userName}>
             {initialsOf(userName)}
           </span>
+          <button
+            className="button button-quiet"
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
         </div>
 
         <span className="revision-bar" aria-hidden="true" />
@@ -382,6 +409,16 @@ function AppShellInner({ orgSlug = "northlight", userName = "Jamie Park" }: AppS
               </button>
             </div>
             {renderNav()}
+            <div className="nav-group">
+              <button
+                className="button button-quiet"
+                type="button"
+                onClick={handleSignOut}
+                disabled={signingOut}
+              >
+                {signingOut ? "Signing out…" : "Sign out"}
+              </button>
+            </div>
           </div>
         )}
       </div>
