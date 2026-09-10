@@ -3,6 +3,8 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { api, type Membership, type UserRole } from "@clearcut/contracts";
 import { Badge, Banner, Card, EmptyState, Page, Section } from "../../../components/ds";
 import { humanizeStatus } from "../../../features/clearance/itemPresentation";
+import { canManageOrganizationSettings } from "../../../features/governance/capabilities";
+import { TeamMemberControls } from "../../../features/team/TeamMemberControls";
 
 export const Route = createFileRoute("/o/$orgSlug/team")({
   component: TeamRoute,
@@ -17,6 +19,11 @@ export function TeamRoute() {
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [viewerRole, setViewerRole] = useState<UserRole | null>(null);
+
+  // A local reading of the caller's role, used only to decide whether to offer
+  // the governed per-member controls. The server authorizes every write again.
+  const canManage = canManageOrganizationSettings(viewerRole);
 
   const loadMembers = async () => {
     try {
@@ -35,6 +42,12 @@ export function TeamRoute() {
 
   useEffect(() => {
     void loadMembers();
+    void (async () => {
+      const session = await api.getSessionContext();
+      if (session.ok) {
+        setViewerRole(session.value.role ?? null);
+      }
+    })();
   }, [orgSlug]);
 
   const handleInvite = async (event: React.FormEvent) => {
@@ -62,6 +75,63 @@ export function TeamRoute() {
     } finally {
       setInviting(false);
     }
+  };
+
+  // Governed per-member writes. Each throws on failure so the member's own
+  // control surfaces the message, and refreshes the list on success — mirroring
+  // the invite action's mutate-then-reload pattern.
+  const handleChangeRole = async (member: Membership, nextRole: UserRole) => {
+    setError(null);
+    setSuccess(null);
+    const result = await api.changeMembershipRole({
+      params: { orgId: orgSlug, membershipId: member.membershipId },
+      body: { role: nextRole },
+    });
+    if (!result.ok) {
+      throw new Error(result.error.message || "Failed to change role");
+    }
+    setSuccess(`Role updated for ${member.email ?? member.userId}`);
+    await loadMembers();
+  };
+
+  const handleChangeProjectGrant = async (member: Membership, projectIds: string[]) => {
+    setError(null);
+    setSuccess(null);
+    const result = await api.changeProjectGrant({
+      params: { orgId: orgSlug, membershipId: member.membershipId },
+      body: { projectIds },
+    });
+    if (!result.ok) {
+      throw new Error(result.error.message || "Failed to change project grants");
+    }
+    setSuccess(`Project grants updated for ${member.email ?? member.userId}`);
+    await loadMembers();
+  };
+
+  const handleDeactivate = async (member: Membership) => {
+    setError(null);
+    setSuccess(null);
+    const result = await api.deactivateMembership({
+      params: { orgId: orgSlug, membershipId: member.membershipId },
+    });
+    if (!result.ok) {
+      throw new Error(result.error.message || "Failed to deactivate member");
+    }
+    setSuccess(`Deactivated ${member.email ?? member.userId}`);
+    await loadMembers();
+  };
+
+  const handleReactivate = async (member: Membership) => {
+    setError(null);
+    setSuccess(null);
+    const result = await api.reactivateMembership({
+      params: { orgId: orgSlug, membershipId: member.membershipId },
+    });
+    if (!result.ok) {
+      throw new Error(result.error.message || "Failed to reactivate member");
+    }
+    setSuccess(`Reactivated ${member.email ?? member.userId}`);
+    await loadMembers();
   };
 
   return (
@@ -138,6 +208,16 @@ export function TeamRoute() {
                   <span className="list-meta">
                     <span>{humanizeStatus(member.role)}</span>
                   </span>
+                  <TeamMemberControls
+                    member={member}
+                    canManage={canManage}
+                    onChangeRole={(nextRole) => handleChangeRole(member, nextRole)}
+                    onChangeProjectGrant={(projectIds) =>
+                      handleChangeProjectGrant(member, projectIds)
+                    }
+                    onDeactivate={() => handleDeactivate(member)}
+                    onReactivate={() => handleReactivate(member)}
+                  />
                 </div>
                 <div className="list-aside">
                   {/* Inactive is not a success state; it previously rendered in
