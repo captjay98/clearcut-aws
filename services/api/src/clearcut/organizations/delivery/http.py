@@ -8,6 +8,7 @@ import sqlalchemy as sa
 import uuid6
 from clearcut.csrf import verify_csrf_origin
 from clearcut.database import session_scope
+from clearcut.evaluation.domain.configuration import default_active_configuration
 from clearcut.identity.delivery.scope import get_request_scope
 from clearcut.organizations.domain.capabilities import has_capability
 from fastapi import APIRouter, HTTPException, Path, Request, status
@@ -126,6 +127,41 @@ async def create_organization(body: CreateOrgBody, request: Request) -> dict:
                 "org_id": str(org_id),
                 "user_id": str(scope.user_id),
                 "created_at": now,
+            },
+        )
+        # Seed the governing policy/prompt binding in the SAME transaction.
+        # Detection, research, and rescan all refuse to run unless the org holds
+        # exactly one active protected configuration, so an org created without
+        # one could never complete a first pass. This is the accountable default
+        # binding an Owner can later supersede via draft -> validate -> activate.
+        binding = default_active_configuration(
+            config_id=uuid6.uuid7(),
+            org_id=org_id,
+            owner_user_id=scope.user_id,
+            created_at=now,
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO protected_configurations ("
+                "id, org_id, lifecycle, policy_version, prompt_version, "
+                "created_by, validated_by, activated_by, rationale, label, "
+                "created_at, validated_at, activated_at, validation_issues"
+                ") VALUES ("
+                ":id, :org_id, 'active', :policy_version, :prompt_version, "
+                ":owner, :owner, :owner, :rationale, :label, "
+                ":created_at, :created_at, :created_at, :validation_issues"
+                ")"
+            ).bindparams(sa.bindparam("validation_issues", type_=sa.JSON())),
+            {
+                "id": str(binding.config_id),
+                "org_id": str(org_id),
+                "policy_version": binding.policy_version,
+                "prompt_version": binding.prompt_version,
+                "owner": str(scope.user_id),
+                "rationale": binding.rationale,
+                "label": binding.label,
+                "created_at": now,
+                "validation_issues": [],
             },
         )
 

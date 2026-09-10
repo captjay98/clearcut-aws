@@ -392,3 +392,49 @@ async def test_owner_can_replace_reviewer_project_grants_through_http_boundary()
                 },
             )
             assert after.scalar_one() == 1
+
+
+
+@pytest.mark.asyncio
+async def test_new_organization_is_born_with_exactly_one_active_governing_binding():
+    """A freshly created org must be immediately usable for detection.
+
+    Detection, research, and rescan all refuse to run unless the org holds
+    exactly one active protected configuration. Regression guard: the create
+    endpoint once inserted only the org and owner, leaving every new org unable
+    to complete a first pass until a binding was inserted by hand.
+    """
+    import sqlalchemy as sa
+    from clearcut.database import session_scope
+
+    await init_and_seed_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        registration = await client.post(
+            "/api/v1/users",
+            json={"name": "Owner", "email": "owner@borngoverned.example.com", "password": "Password123!"},
+        )
+        assert registration.status_code == 201
+        client.cookies.set("clearcut_session", registration.cookies.get("clearcut_session"))
+
+        created = await client.post(
+            "/api/v1/organizations",
+            json={"name": "Born Governed", "slug": "born-governed"},
+        )
+        assert created.status_code == 201, created.text
+        org_id = created.json()["data"]["orgId"]
+
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    sa.text(
+                        "SELECT policy_version, prompt_version FROM protected_configurations "
+                        "WHERE org_id = :org_id AND lifecycle = 'active'"
+                    ),
+                    {"org_id": org_id},
+                )
+            ).mappings().all()
+
+    assert len(rows) == 1, "a new org must have exactly one active governing binding"
+    assert rows[0]["policy_version"]
+    assert rows[0]["prompt_version"]
