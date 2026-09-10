@@ -30,8 +30,11 @@ async def test_scheduled_watch_executes_recheck():
         target_url="https://uspto.gov/trademarks/coca-cola",
     )
 
-    run, snapshot = await service.execute_watch_recheck(watch)
+    run, snapshot, delta = await service.execute_watch_recheck(watch)
 
     assert run.status == MonitoringRunStatus.COMPLETED
     assert snapshot.url == "https://uspto.gov/trademarks/coca-cola"
     assert snapshot.item_id == item_id
+    # No prior snapshot was supplied, so there is nothing to compare and no
+    # change signal is fabricated.
+    assert delta is None

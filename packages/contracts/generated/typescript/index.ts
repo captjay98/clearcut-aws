@@ -491,6 +491,29 @@ export interface Comment {
   createdAt: ISODateTime;
 }
 
+export interface MonitoredSource {
+  watchId: UUIDv7;
+  itemId: UUIDv7;
+  cadence: string;
+  watchKind: string;
+  targetUrl?: string | null;
+  queryText?: string | null;
+  createdAt: ISODateTime;
+}
+
+export interface MonitoringChange {
+  reviewId: UUIDv7;
+  deltaId: UUIDv7;
+  itemId: UUIDv7;
+  watchId?: UUIDv7;
+  signalType: 'non_material' | 'material' | 'unavailable';
+  changeKind: string;
+  changeSummary: string;
+  priorExcerpt?: string | null;
+  currentExcerpt?: string | null;
+  detectedAt: ISODateTime;
+}
+
 
 export interface RewriteProposal {
   proposalId: UUIDv7;
@@ -913,6 +936,8 @@ export interface Operations {
   changeMonitoringCadence: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-policy:changeCadence' };
   listMonitoringRuns: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs' };
   startMonitoringRun: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs' };
+  listMonitoredSources: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources' };
+  listMonitoringChanges: { method: 'GET'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-changes' };
   reviewMonitoringChange: { method: 'POST'; path: '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision' };
   listNotifications: { method: 'GET'; path: '/api/v1/organizations/{orgId}/notifications' };
   markAllNotificationsRead: { method: 'POST'; path: '/api/v1/organizations/{orgId}/notifications' };
@@ -1870,6 +1895,34 @@ export function createApiClient(config: ApiClientConfig = {}) {
     ): Promise<ApiResult<Job>> => {
       const headers: Record<string, string> = { ...(args?.headers || {}) };
       return request<Job>(baseUrl, fetchFn, 'POST', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** List monitored sources for a project */
+    listMonitoredSources: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Array<MonitoredSource>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<MonitoredSource>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources', {
+        params: args?.params,
+        headers,
+      });
+    },
+
+    /** List pending monitoring change signals for a project */
+    listMonitoringChanges: async (
+      args: {
+        params: { orgId: UUIDv7; projectId: UUIDv7 };
+        headers?: Record<string, string>;
+      }
+    ): Promise<ApiResult<Array<MonitoringChange>>> => {
+      const headers: Record<string, string> = { ...(args?.headers || {}) };
+      return request<Array<MonitoringChange>>(baseUrl, fetchFn, 'GET', '/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-changes', {
         params: args?.params,
         headers,
       });

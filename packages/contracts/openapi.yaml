@@ -2521,6 +2521,66 @@ paths:
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
 
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitored-sources:
+    get:
+      summary: List monitored sources for a project
+      operationId: listMonitoredSources
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Monitored sources list
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MonitoredSource'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
+  /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-changes:
+    get:
+      summary: List pending monitoring change signals for a project
+      operationId: listMonitoringChanges
+      tags:
+        - monitoring
+      security:
+        - SessionCookie: []
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Pending monitoring change signals
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MonitoringChange'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+
   /api/v1/organizations/{orgId}/projects/{projectId}/monitoring-reviews/{reviewId}:recordDecision:
     post:
       summary: Record decision on monitoring delta change
@@ -5363,6 +5423,67 @@ components:
         changesDetected:
           type: integer
         createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    MonitoredSource:
+      type: object
+      required:
+        - watchId
+        - itemId
+        - cadence
+        - watchKind
+        - createdAt
+      properties:
+        watchId:
+          $ref: '#/components/schemas/UUIDv7'
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        cadence:
+          type: string
+        watchKind:
+          type: string
+        targetUrl:
+          type: string
+          nullable: true
+        queryText:
+          type: string
+          nullable: true
+        createdAt:
+          $ref: '#/components/schemas/ISODateTime'
+
+    MonitoringChange:
+      type: object
+      required:
+        - reviewId
+        - deltaId
+        - itemId
+        - signalType
+        - changeKind
+        - changeSummary
+        - detectedAt
+      properties:
+        reviewId:
+          $ref: '#/components/schemas/UUIDv7'
+        deltaId:
+          $ref: '#/components/schemas/UUIDv7'
+        itemId:
+          $ref: '#/components/schemas/UUIDv7'
+        watchId:
+          $ref: '#/components/schemas/UUIDv7'
+        signalType:
+          type: string
+          enum: [non_material, material, unavailable]
+        changeKind:
+          type: string
+        changeSummary:
+          type: string
+        priorExcerpt:
+          type: string
+          nullable: true
+        currentExcerpt:
+          type: string
+          nullable: true
+        detectedAt:
           $ref: '#/components/schemas/ISODateTime'
 
     Notification:

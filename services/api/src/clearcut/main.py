@@ -50,6 +50,7 @@ from clearcut.identity.adapters.sql_repository import DatabaseIdentityRepository
 from clearcut.identity.application.session_service import SessionService
 from clearcut.identity.delivery.http import router as identity_router
 from clearcut.items.delivery.http import router as items_router
+from clearcut.monitoring.delivery.http import reviews_router as monitoring_reviews_router
 from clearcut.monitoring.delivery.http import router as monitoring_router
 from clearcut.operations.adapters.cloud_tasks import (
     CloudTasksClient,
@@ -876,6 +877,7 @@ def create_app(settings: ClearcutSettings) -> FastAPI:
     app.include_router(operations_router)
     app.include_router(tasks_router)
     app.include_router(monitoring_router)
+    app.include_router(monitoring_reviews_router)
     app.include_router(records_router)
     app.include_router(evaluation_router)
     app.include_router(configuration_router)

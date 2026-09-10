@@ -1,4 +1,6 @@
 import uuid6
+from clearcut.monitoring.application.compare_snapshots import compare_snapshots
+from clearcut.monitoring.domain.materiality import SourceDelta
 from clearcut.monitoring.domain.models import (
     MonitoringRun,
     MonitoringRunStatus,
@@ -21,7 +23,18 @@ class ScheduledWatchService:
     async def execute_watch_recheck(
         self,
         watch: WatchConfig,
-    ) -> tuple[MonitoringRun, SourceSnapshot]:
+        prior_snapshot: SourceSnapshot | None = None,
+    ) -> tuple[MonitoringRun, SourceSnapshot, SourceDelta | None]:
+        """Re-retrieve a watched source and, when a prior snapshot is supplied,
+        compute the change signal between them.
+
+        The recheck always produces a fresh :class:`SourceSnapshot` and a
+        completed :class:`MonitoringRun`. When ``prior_snapshot`` is provided the
+        service compares the two and returns the resulting :class:`SourceDelta`
+        so the caller can persist a detected change as a pending review signal; a
+        first-ever recheck (no prior) has nothing to compare and returns ``None``
+        for the delta rather than fabricating a change.
+        """
         url = watch.target_url or "https://example.com/source"
         target_domain = url.split("//")[-1].split("/")[0]
 
@@ -45,4 +58,6 @@ class ScheduledWatchService:
             new_snapshot_id=snapshot.snapshot_id,
         )
 
-        return run, snapshot
+        delta = compare_snapshots(prior_snapshot, snapshot) if prior_snapshot is not None else None
+
+        return run, snapshot, delta

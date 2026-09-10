@@ -48,7 +48,7 @@ def test_empty_database_migrates_to_canonical_runtime_schema(tmp_path: Path) -> 
         revision = connection.execute(
             sa.text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert revision == "0038_item_due_at"
+    assert revision == "0039_monitoring_deltas"
 
     project_columns = {column["name"]: column for column in inspector.get_columns("projects")}
     for column_name in (

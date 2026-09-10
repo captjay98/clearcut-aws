@@ -477,6 +477,27 @@ class Comment(BaseModel):
     parentId: Optional[UUIDv7] = None
     createdAt: ISODateTime
 
+class MonitoredSource(BaseModel):
+    watchId: UUIDv7
+    itemId: UUIDv7
+    cadence: str
+    watchKind: str
+    targetUrl: Optional[str] = None
+    queryText: Optional[str] = None
+    createdAt: ISODateTime
+
+class MonitoringChange(BaseModel):
+    reviewId: UUIDv7
+    deltaId: UUIDv7
+    itemId: UUIDv7
+    watchId: Optional[UUIDv7] = None
+    signalType: Literal["non_material", "material", "unavailable"]
+    changeKind: str
+    changeSummary: str
+    priorExcerpt: Optional[str] = None
+    currentExcerpt: Optional[str] = None
+    detectedAt: ISODateTime
+
 IdempotencyKey = Annotated[str, Field(min_length=16, max_length=128)]
 
 class IdempotentCommandHeaders(BaseModel):

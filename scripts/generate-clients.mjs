@@ -28,6 +28,8 @@ const task10OperationIds = [
   'addComment',
   'replyToComment',
   'reviseComment',
+  'listMonitoredSources',
+  'listMonitoringChanges',
 ]
 const reportSchemaNames = [
   'ReportSnapshot',
