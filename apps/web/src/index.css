@@ -434,6 +434,11 @@
   .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
   .data-table { width: 100%; font-size: .85rem; }
   .data-table th, .data-table td { padding: var(--space-3) var(--space-4); text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
+  .evidence-table .evidence-source { min-width: 12rem; }
+  .evidence-table .evidence-claim { min-width: 14rem; }
+  .evidence-claim-text { margin: 0; }
+  .evidence-expand { display: block; margin-top: var(--space-2); padding-left: 0; }
+  .wrap-anywhere { overflow-wrap: anywhere; word-break: break-all; }
   .data-table thead th { border-bottom: 1px solid var(--rule); background: var(--surface-2); color: var(--ink-faint); font-size: .68rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
   .data-table tbody tr + tr td { border-top: 1px solid var(--rule); }
   .data-table tbody tr:hover { background: var(--surface-2); }

@@ -247,6 +247,28 @@ export function clampExcerpt(text: string, max = 280): string {
   return `${collapsed.slice(0, max - 1).trimEnd()}…`;
 }
 
+/**
+ * Strip noisy markdown from Parallel extract dumps so the source table reads
+ * like the mock's short claim cells rather than raw HTML/markdown soup.
+ */
+export function cleanExcerpt(text: string): string {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^\|.*\|\s*$/gm, " ")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function clampCleanExcerpt(text: string, max = 180): string {
+  return clampExcerpt(cleanExcerpt(text), max);
+}
+
 /** Human bearing labels for the mock source table. */
 export function bearingLabel(stance: string): string {
   const key = stance.toLowerCase();

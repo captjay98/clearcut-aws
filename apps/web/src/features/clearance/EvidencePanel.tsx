@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import type {
   ItemDetailEvidenceClaim,
   ItemDetailSourceSnapshot,
@@ -8,7 +8,8 @@ import {
   authorityLabel,
   bearingLabel,
   bearingTone,
-  clampExcerpt,
+  clampCleanExcerpt,
+  cleanExcerpt,
   formatStamp,
   severityWord,
 } from "./itemPresentation";
@@ -43,9 +44,17 @@ function claimBySnapshot(claims: ItemDetailEvidenceClaim[]): Map<string, ItemDet
   return map;
 }
 
+function pickPrimaryClaim(claims: ItemDetailEvidenceClaim[]): ItemDetailEvidenceClaim | null {
+  if (claims.length === 0) return null;
+  const supports = claims.find((claim) => bearingLabel(claim.stance) === "Supports");
+  return supports ?? claims[0]!;
+}
+
+const DEFAULT_VISIBLE = 8;
+
 /**
  * Mock-aligned evidence block: primary source card, source table with bearing,
- * clamped excerpts, confidence, and the retained-conflict callout.
+ * cleaned excerpts, confidence, and the retained-conflict callout.
  */
 export function EvidencePanel({
   item,
@@ -54,13 +63,17 @@ export function EvidencePanel({
   conflictDescriptions = [],
   emptyAction,
 }: EvidencePanelProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const snapshotsById = new Map(snapshots.map((snapshot) => [snapshot.snapshotId, snapshot]));
-  const primaryClaim = claims[0] ?? null;
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState(false);
+  const snapshotsById = useMemo(
+    () => new Map(snapshots.map((snapshot) => [snapshot.snapshotId, snapshot])),
+    [snapshots],
+  );
+  const primaryClaim = useMemo(() => pickPrimaryClaim(claims), [claims]);
   const primarySnapshot = primaryClaim
     ? snapshotsById.get(primaryClaim.snapshotId) ?? null
     : null;
-  const claimFor = claimBySnapshot(claims);
+  const claimFor = useMemo(() => claimBySnapshot(claims), [claims]);
 
   if (claims.length === 0) {
     return (
@@ -69,7 +82,9 @@ export function EvidencePanel({
           Sourced claims with authority tier and retrieval metadata. 0 sources retrieved for this
           flag.
         </p>
-        <p className="small muted">Zero cited evidence remains unresolved. No fallback evidence has been invented.</p>
+        <p className="small muted">
+          Zero cited evidence remains unresolved. No fallback evidence has been invented.
+        </p>
         {emptyAction}
       </div>
     );
@@ -81,12 +96,15 @@ export function EvidencePanel({
     conflictDescriptions.length > 0;
 
   const toggleExpanded = (key: string) =>
-    setExpanded((prev) => {
+    setExpandedRows((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+
+  const visibleSnapshots = showAll ? snapshots : snapshots.slice(0, DEFAULT_VISIBLE);
+  const hiddenCount = snapshots.length - DEFAULT_VISIBLE;
 
   return (
     <div className="stack">
@@ -99,12 +117,19 @@ export function EvidencePanel({
         <article className="source-card" data-testid="primary-source-card">
           <div className="cluster">
             <span className="small muted">Primary source</span>
-            <Badge tone="is-accent">{authorityLabel(primaryClaim?.authorityTier ?? "secondary")}</Badge>
+            <Badge tone="is-accent">
+              {authorityLabel(primaryClaim?.authorityTier ?? "secondary")}
+            </Badge>
+            {primaryClaim && (
+              <Badge tone={bearingTone(primaryClaim.stance)}>
+                {bearingLabel(primaryClaim.stance)}
+              </Badge>
+            )}
           </div>
           {primarySnapshot ? (
             <p className="gap-t-2">
               <a href={primarySnapshot.url} target="_blank" rel="noopener noreferrer">
-                <strong>{primarySnapshot.title}</strong>
+                <strong>{cleanExcerpt(primarySnapshot.title)}</strong>
               </a>
             </p>
           ) : (
@@ -113,7 +138,7 @@ export function EvidencePanel({
             </p>
           )}
           <blockquote className="gap-t-2">
-            &ldquo;{clampExcerpt(primaryClaim?.claimText ?? primarySnapshot?.excerpt ?? "", 280)}
+            &ldquo;{clampCleanExcerpt(primaryClaim?.claimText ?? primarySnapshot?.excerpt ?? "", 280)}
             &rdquo;
           </blockquote>
           <p className="small muted gap-t-2">
@@ -123,7 +148,7 @@ export function EvidencePanel({
           {primarySnapshot && (
             <details className="gap-t-2">
               <summary className="small">Where this came from</summary>
-              <p className="small mono gap-t-1">{primarySnapshot.url}</p>
+              <p className="small mono gap-t-1 wrap-anywhere">{primarySnapshot.url}</p>
               <p className="small muted">
                 origin {primarySnapshot.origin} · snapshot {primarySnapshot.snapshotId}
               </p>
@@ -133,7 +158,7 @@ export function EvidencePanel({
       )}
 
       <div className="table-wrap" data-testid="evidence-source-table">
-        <table className="data-table">
+        <table className="data-table evidence-table">
           <caption className="sr-only">Sources retrieved for {item.entityName}</caption>
           <thead>
             <tr>
@@ -144,15 +169,16 @@ export function EvidencePanel({
             </tr>
           </thead>
           <tbody>
-            {snapshots.map((snapshot) => {
+            {visibleSnapshots.map((snapshot) => {
               const claim = claimFor.get(snapshot.snapshotId);
               const key = snapshot.snapshotId;
-              const full = claim?.claimText || snapshot.excerpt;
-              const clamped = clampExcerpt(full, 180);
-              const isOpen = expanded.has(key);
+              const full = cleanExcerpt(claim?.claimText || snapshot.excerpt);
+              const clamped = clampCleanExcerpt(claim?.claimText || snapshot.excerpt, 160);
+              const isOpen = expandedRows.has(key);
+              const canExpand = full.length > clamped.length;
               return (
                 <tr key={snapshot.snapshotId}>
-                  <td>
+                  <td className="evidence-source">
                     <strong>
                       <a
                         href={snapshot.url}
@@ -160,7 +186,7 @@ export function EvidencePanel({
                         rel="noopener noreferrer"
                         data-testid="source-snapshot-url"
                       >
-                        {snapshot.title}
+                        {cleanExcerpt(snapshot.title)}
                       </a>
                     </strong>
                     <div className="small muted mono">
@@ -168,12 +194,12 @@ export function EvidencePanel({
                     </div>
                   </td>
                   <td>{authorityLabel(claim?.authorityTier ?? "secondary")}</td>
-                  <td>
-                    {isOpen ? full : clamped}
-                    {full.length > clamped.length && (
+                  <td className="evidence-claim">
+                    <p className="evidence-claim-text">{isOpen ? full : clamped}</p>
+                    {canExpand && (
                       <button
                         type="button"
-                        className="button button-quiet button-sm"
+                        className="button button-quiet button-sm evidence-expand"
                         onClick={() => toggleExpanded(key)}
                       >
                         {isOpen ? "Show less" : "Show more"}
@@ -193,6 +219,19 @@ export function EvidencePanel({
           </tbody>
         </table>
       </div>
+
+      {!showAll && hiddenCount > 0 && (
+        <div className="cluster">
+          <button
+            type="button"
+            className="button button-quiet button-sm"
+            onClick={() => setShowAll(true)}
+          >
+            Show all {snapshots.length} sources
+          </button>
+          <span className="small muted">Hiding {hiddenCount} more for readability.</span>
+        </div>
+      )}
 
       {item.confidence != null && (
         <div className="cluster">

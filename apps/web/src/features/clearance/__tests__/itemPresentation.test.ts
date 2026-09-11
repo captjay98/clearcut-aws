@@ -4,6 +4,8 @@ import {
   authorityLabel,
   bearingLabel,
   clampExcerpt,
+  cleanExcerpt,
+  clampCleanExcerpt,
   displayCategory,
   displayStatus,
   revisionStock,
@@ -84,6 +86,17 @@ describe("authority and excerpts", () => {
     const clamped = clampExcerpt(long, 40);
     expect(clamped.length).toBeLessThanOrEqual(40);
     expect(clamped.endsWith("…")).toBe(true);
+  });
+
+  it("strips markdown noise from Parallel extracts", () => {
+    const raw = "# Title\n**bold** and [link](https://example.com) plus |a|b|\n- bullet";
+    const cleaned = cleanExcerpt(raw);
+    expect(cleaned).not.toContain("#");
+    expect(cleaned).not.toContain("**");
+    expect(cleaned).not.toContain("](");
+    expect(cleaned).toContain("bold");
+    expect(cleaned).toContain("link");
+    expect(clampCleanExcerpt(raw, 40).length).toBeLessThanOrEqual(40);
   });
 });
 
