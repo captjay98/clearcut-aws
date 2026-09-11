@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from typing import Any, cast
 
@@ -76,6 +77,7 @@ _EMPTY_USAGE = DetectionTokenUsage(
     output_tokens=None,
     total_tokens=None,
 )
+_logger = logging.getLogger(__name__)
 
 
 class _InvalidDetectionResponseError(ValueError):
@@ -155,6 +157,16 @@ class VertexDetectionRuntime(ModelRuntimePort):
             candidates = self._parse_response(element, response)
         except _InvalidDetectionResponseError:
             candidates = None
+            raw_text = getattr(response, "text", None)
+            _logger.warning(
+                "Detection structured response invalid. model_version=%r response_id=%r "
+                "usage=%r raw_text_len=%s raw_prefix=%r",
+                getattr(response, "model_version", None),
+                getattr(response, "response_id", None),
+                getattr(response, "usage_metadata", None),
+                len(raw_text) if isinstance(raw_text, str) else None,
+                (raw_text[:400] if isinstance(raw_text, str) else raw_text),
+            )
         if metadata_invalid or candidates is None:
             error = DetectionSafeError(
                 code="invalid_response",
@@ -193,6 +205,11 @@ class VertexDetectionRuntime(ModelRuntimePort):
             system_instruction=_SYSTEM_INSTRUCTION,
             response_mime_type="application/json",
             response_schema=_RESPONSE_SCHEMA,
+            # Detection is closed-set JSON; disable AFC so the model cannot
+            # wander into tool-calling responses that fail schema parse.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True
+            ),
         )
 
     @staticmethod
@@ -246,10 +263,16 @@ class VertexDetectionRuntime(ModelRuntimePort):
                 or not isinstance(span_end, int)
                 or span_start < 0
                 or span_end <= span_start
-                or span_end > len(element.text)
-                or element.text[span_start:span_end] != text
             ):
                 raise _InvalidDetectionResponseError
+            # Gemini often returns approximate spans. Prefer an exact substring
+            # of the element when the reported span does not match.
+            if span_end > len(element.text) or element.text[span_start:span_end] != text:
+                found = element.text.find(text)
+                if found < 0:
+                    raise _InvalidDetectionResponseError
+                span_start = found
+                span_end = found + len(text)
             candidates.append(
                 CandidateItem.create(
                     category=ClearanceCategory(category_value),
@@ -290,6 +313,12 @@ class VertexDetectionRuntime(ModelRuntimePort):
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise _InvalidDetectionResponseError
         return value
+
+    @staticmethod
+    def _optional_string(value: Any) -> str | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        return value.strip()
 
     @staticmethod
     def _required_string(value: Any) -> str:
