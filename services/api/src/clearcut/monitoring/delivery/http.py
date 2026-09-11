@@ -330,6 +330,20 @@ async def list_monitoring_runs(
     }
 
 
+@reviews_router.post(
+    "/api/v1/organizations/{orgId}/projects/{projectId}/monitoring-runs",
+    operation_id="startMonitoringRun",
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_monitoring_run(
+    org_id: OrgIdParam, project_id: ProjectIdParam, request: Request
+) -> dict:
+    """Contract path for an immediate monitoring run (watch surface button)."""
+    return await run_monitoring_check(
+        org_id=org_id, project_id=project_id, request=request
+    )
+
+
 @reviews_router.get(_MONITORED_SOURCES_PATH, operation_id="listMonitoredSources")
 async def list_monitored_sources(
     org_id: OrgIdParam, project_id: ProjectIdParam, request: Request
