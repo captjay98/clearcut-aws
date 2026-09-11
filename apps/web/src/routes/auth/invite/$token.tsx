@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import { api } from "@clearcut/contracts";
 import { PublicShell } from "../../../components/shell/PublicShell";
 import { Banner, Card } from "../../../components/ds";
+import { navigateAfterAuthentication } from "../../../lib/navigateAfterAuth";
 
 export const Route = createFileRoute("/auth/invite/$token")({
   component: AcceptInviteRoute,
@@ -25,17 +26,7 @@ export function AcceptInviteRoute() {
         return;
       }
 
-      // Route to whichever organization the server resolves for this account.
-      // This previously navigated to a hardcoded "northlight" slug, so anyone
-      // accepting an invitation landed on an organization they may not belong to.
-      const entry = await api.resolveOrganizationEntry();
-      if (entry.ok && entry.value.defaultOrgSlug) {
-        navigate({ to: "/o/$orgSlug/projects", params: { orgSlug: entry.value.defaultOrgSlug } });
-        return;
-      }
-      setError(
-        "The invitation was accepted, but no workspace could be resolved for this account. Sign in to continue.",
-      );
+      await navigateAfterAuthentication(navigate);
     } catch {
       setError("An unexpected network error occurred.");
     } finally {

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { api } from "@clearcut/contracts";
 import { PublicShell } from "../../components/shell/PublicShell";
+import { navigateAfterAuthentication } from "../../lib/navigateAfterAuth";
 
 export const Route = createFileRoute("/auth/sign-in")({
   component: SignInRoute,
@@ -29,15 +30,7 @@ export function SignInRoute() {
         return;
       }
 
-      const entryRes = await api.resolveOrganizationEntry();
-      if (entryRes.ok && entryRes.value?.defaultOrgSlug) {
-        navigate({
-          to: "/o/$orgSlug/projects",
-          params: { orgSlug: entryRes.value.defaultOrgSlug },
-        });
-      } else {
-        navigate({ to: "/onboarding" });
-      }
+      await navigateAfterAuthentication(navigate);
     } catch {
       setError("An unexpected network error occurred. Please try again.");
     } finally {

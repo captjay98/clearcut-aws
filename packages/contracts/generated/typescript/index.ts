@@ -457,6 +457,7 @@ export interface ClearanceItem {
   severity?: 'High' | 'Medium' | 'Low';
   confidence?: number;
   scene?: number;
+  page?: number;
   displayStatus?: string;
   sourcesDisagree?: boolean;
 }

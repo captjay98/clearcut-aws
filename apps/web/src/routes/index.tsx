@@ -6,6 +6,10 @@ export const Route = createFileRoute("/")({
   beforeLoad: async () => {
     const sessionRes = await api.getSessionContext();
     if (sessionRes.ok && sessionRes.value.authenticated) {
+      const orgs = await api.listOrganizations();
+      if (orgs.ok && orgs.value.length > 1) {
+        throw redirect({ to: "/organizations" });
+      }
       const entryRes = await api.resolveOrganizationEntry();
       if (entryRes.ok && entryRes.value.defaultOrgSlug) {
         throw redirect({

@@ -133,7 +133,7 @@ export function EvidencePanel({
       )}
 
       <div className="table-wrap" data-testid="evidence-source-table">
-        <table>
+        <table className="data-table">
           <caption className="sr-only">Sources retrieved for {item.entityName}</caption>
           <thead>
             <tr>

@@ -100,6 +100,22 @@ export const API_CATEGORY_VALUES = [
   "contact_information",
 ] as const;
 
+/**
+ * Unique mock labels for filter chips. Living/deceased people collapse to one
+ * chip so the rail never shows the same display name twice.
+ */
+export const FILTER_CATEGORY_LABELS: readonly string[] = [
+  "People & likeness",
+  "Organizations & insignia",
+  "Brands & trademarks",
+  "Artwork & media",
+  "Music & lyrics",
+  "Locations & property",
+  "Products & trade dress",
+  "Privacy & sensitive facts",
+  "Dialogue & quotations",
+];
+
 function categoryKey(category: string): string {
   return category.toLowerCase().trim();
 }

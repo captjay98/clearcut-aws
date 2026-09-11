@@ -1,5 +1,5 @@
 import React from "react";
-import { API_CATEGORY_VALUES, displayCategory } from "./itemPresentation";
+import { FILTER_CATEGORY_LABELS } from "./itemPresentation";
 
 export interface CategoryFilterBarProps {
   selectedCategory: string;
@@ -12,8 +12,8 @@ export interface CategoryFilterBarProps {
 /**
  * Filter controls for the flag list, using the mock's search-field plus choice
  * chips. Categories with no detected items are still offered so the reader can
- * see that a category was considered and came back empty. Values are API enum
- * keys; labels use the mock vocabulary.
+ * see that a category was considered and came back empty. Values are unique
+ * mock display labels (living/deceased people collapse to one chip).
  */
 export function CategoryFilterBar({
   selectedCategory,
@@ -41,10 +41,9 @@ export function CategoryFilterBar({
       </label>
 
       <div className="choice-row" role="group" aria-label="Filter flags by category">
-        {["All", ...API_CATEGORY_VALUES].map((category) => {
+        {["All", ...FILTER_CATEGORY_LABELS].map((category) => {
           const isSelected = selectedCategory === category;
           const count = category === "All" ? total : categoryCounts[category];
-          const label = category === "All" ? "All" : displayCategory(category);
           return (
             <label className="choice" key={category}>
               {/* sr-only so the visible chip text is the click target rather than
@@ -59,7 +58,7 @@ export function CategoryFilterBar({
                 onChange={() => onSelectCategory(category)}
               />
               <span>
-                {label}
+                {category}
                 {count !== undefined && count > 0 ? ` (${count})` : ""}
               </span>
             </label>

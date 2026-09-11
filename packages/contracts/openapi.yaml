@@ -4667,6 +4667,10 @@ components:
           type: integer
           minimum: 0
           description: Scene number of the flagged element, when known
+        page:
+          type: integer
+          minimum: 0
+          description: Script page number of the flagged element, when known
         displayStatus:
           type: string
           description: Reviewer-facing status label derived from status, disposition, and evidence

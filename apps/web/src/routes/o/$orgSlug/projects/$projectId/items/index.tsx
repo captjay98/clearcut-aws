@@ -673,9 +673,7 @@ export function ClearanceItemsRoute() {
                               {item.scene != null && (
                                 <span>
                                   Scene {item.scene}
-                                  {(item as { page?: number }).page != null
-                                    ? ` · p.${(item as { page?: number }).page}`
-                                    : ""}
+                                  {item.page != null ? ` · p.${item.page}` : ""}
                                 </span>
                               )}
                               <span>

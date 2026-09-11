@@ -37,7 +37,8 @@ export interface ScreenplayViewerProps {
   selectedItemId?: string | null;
   /** Revision stock for the page edge: white, blue, pink, yellow, green, goldenrod. */
   stock?: string;
-  resolveFlag?: (flag: string) => FlagAnnotation | null;
+  /** Resolve every flag on a line (multiple terms may share one action line). */
+  resolveLineFlags?: (line: ScriptLine) => FlagAnnotation[];
   onSelectFlag?: (annotation: FlagAnnotation) => void;
 }
 
@@ -52,59 +53,98 @@ const LINE_CLASS: Record<ScriptLine["type"], string> = {
   transition: "script-action text-right",
 };
 
+type TextSegment = { text: string; annotation?: FlagAnnotation };
+
+/** Non-overlapping underlined spans, in reading order. */
+function buildSegments(text: string, annotations: FlagAnnotation[]): TextSegment[] {
+  const marks: { start: number; end: number; annotation: FlagAnnotation }[] = [];
+  const lower = text.toLowerCase();
+  for (const annotation of annotations) {
+    const term = annotation.term.toLowerCase();
+    if (!term) continue;
+    const start = lower.indexOf(term);
+    if (start < 0) continue;
+    marks.push({ start, end: start + term.length, annotation });
+  }
+  marks.sort((a, b) => a.start - b.start || b.end - a.end);
+  const segments: TextSegment[] = [];
+  let cursor = 0;
+  for (const mark of marks) {
+    if (mark.start < cursor) continue;
+    if (mark.start > cursor) segments.push({ text: text.slice(cursor, mark.start) });
+    segments.push({
+      text: text.slice(mark.start, mark.end),
+      annotation: mark.annotation,
+    });
+    cursor = mark.end;
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor) });
+  if (segments.length === 0) segments.push({ text });
+  return segments;
+}
+
 /**
- * Renders one screenplay line. A flagged term becomes a margin-marked underline
- * rather than an inline chip, so the reading line stays intact — the mock's
- * scriptLine() behaviour.
+ * Renders one screenplay line. Flagged terms become margin-marked underlines
+ * rather than inline chips, so the reading line stays intact — the mock's
+ * scriptLine() behaviour. Multiple flags on one line each get a mark.
  */
 function ScriptLineView({
   line,
-  annotation,
-  selected,
+  annotations,
+  selectedItemId,
   onSelectFlag,
 }: {
   line: ScriptLine;
-  annotation: FlagAnnotation | null;
-  selected: boolean;
+  annotations: FlagAnnotation[];
+  selectedItemId?: string | null;
   onSelectFlag?: (annotation: FlagAnnotation) => void;
 }) {
   const className = LINE_CLASS[line.type] ?? "script-action";
 
-  if (!annotation) {
+  if (annotations.length === 0) {
     return <p className={className}>{line.text}</p>;
   }
 
-  const at = line.text.toLowerCase().indexOf(annotation.term.toLowerCase());
-  const flagButton = (text: string) => (
-    <button
-      className={`flag ${annotation.severityClass} ${selected ? "is-selected" : ""}`.trim()}
-      type="button"
-      aria-pressed={selected}
-      title={`${annotation.shortCategory} — ${annotation.status}`}
-      onClick={() => onSelectFlag?.(annotation)}
-    >
-      {text}
-    </button>
-  );
+  const segments = buildSegments(line.text, annotations);
 
   return (
     <p className={className}>
-      <span
-        className={`margin-mark ${annotation.severityClass} ${selected ? "is-selected" : ""}`.trim()}
-        aria-hidden="true"
-      >
-        <span className="mark-glyph">{annotation.glyph}</span>
-        {annotation.shortCategory}
-      </span>
-      {at >= 0 ? (
-        <>
-          {line.text.slice(0, at)}
-          {flagButton(line.text.slice(at, at + annotation.term.length))}
-          {line.text.slice(at + annotation.term.length)}
-        </>
-      ) : (
-        flagButton(line.text)
+      {annotations.length > 0 && (
+        <span className="margin-marks" aria-hidden="true">
+          {annotations.map((annotation) => {
+            const selected = annotation.itemId === selectedItemId;
+            return (
+              <span
+                key={annotation.itemId}
+                className={`margin-mark ${annotation.severityClass} ${selected ? "is-selected" : ""}`.trim()}
+                title={`${annotation.term} — ${annotation.shortCategory}`}
+              >
+                <span className="mark-glyph">{annotation.glyph}</span>
+                {annotation.shortCategory}
+              </span>
+            );
+          })}
+        </span>
       )}
+      {segments.map((segment, index) => {
+        if (!segment.annotation) {
+          return <React.Fragment key={`t-${index}`}>{segment.text}</React.Fragment>;
+        }
+        const annotation = segment.annotation;
+        const selected = annotation.itemId === selectedItemId;
+        return (
+          <button
+            key={`${annotation.itemId}-${index}`}
+            className={`flag ${annotation.severityClass} ${selected ? "is-selected" : ""}`.trim()}
+            type="button"
+            aria-pressed={selected}
+            title={`${annotation.shortCategory} — ${annotation.status}`}
+            onClick={() => onSelectFlag?.(annotation)}
+          >
+            {segment.text}
+          </button>
+        );
+      })}
     </p>
   );
 }
@@ -116,7 +156,7 @@ export function ScreenplayViewer({
   loading = false,
   selectedItemId = null,
   stock = "white",
-  resolveFlag,
+  resolveLineFlags,
   onSelectFlag,
 }: ScreenplayViewerProps) {
   if (loading) {
@@ -180,15 +220,15 @@ export function ScreenplayViewer({
               </span>
             </p>
             {scene.lines.map((line, index) => {
-              const annotation = line.flag && resolveFlag ? resolveFlag(line.flag) : null;
+              const annotations = resolveLineFlags ? resolveLineFlags(line) : [];
               return (
                 <ScriptLineView
                   // Line order is the line's identity within a scene.
                   // eslint-disable-next-line react/no-array-index-key
                   key={`${scene.number}-${index}`}
                   line={line}
-                  annotation={annotation}
-                  selected={Boolean(annotation && annotation.itemId === selectedItemId)}
+                  annotations={annotations}
+                  selectedItemId={selectedItemId}
                   onSelectFlag={onSelectFlag}
                 />
               );

@@ -433,7 +433,7 @@
   /* ── Tables ── */
   .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); }
   .data-table { width: 100%; font-size: .85rem; }
-  .data-table th, .data-table td { padding: var(--space-3) var(--space-4); text-align: left; vertical-align: middle; }
+  .data-table th, .data-table td { padding: var(--space-3) var(--space-4); text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
   .data-table thead th { border-bottom: 1px solid var(--rule); background: var(--surface-2); color: var(--ink-faint); font-size: .68rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
   .data-table tbody tr + tr td { border-top: 1px solid var(--rule); }
   .data-table tbody tr:hover { background: var(--surface-2); }
@@ -518,12 +518,14 @@
   .list-row.is-row-danger:hover { background: color-mix(in srgb, var(--danger-soft) 80%, var(--surface-2)); }
   .list-row.is-row-warning:hover { background: color-mix(in srgb, var(--warning-soft) 80%, var(--surface-2)); }
   .list-row.is-row-accent:hover { background: color-mix(in srgb, var(--accent-soft) 80%, var(--surface-2)); }
-  .list-main { flex: 1; min-width: 0; }
+  .list-main { flex: 1 1 0; min-width: 0; }
   /* The worklist's title is a button inside a row that is not one. */
-  .list-main-button { display: block; width: 100%; border: 0; background: none; text-align: left; cursor: pointer; }
+  .list-main-button { display: block; width: 100%; max-width: 100%; border: 0; background: none; text-align: left; cursor: pointer; }
+  .list-title { display: block; overflow-wrap: anywhere; word-break: break-word; }
+  .list-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); min-width: 0; }
   .list-title { display: block; margin-bottom: var(--space-1); font-size: .9rem; font-weight: 650; }
   .list-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--ink-faint); font-size: .76rem; }
-  .list-aside { display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+  .list-aside { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); flex: 0 1 auto; max-width: 50%; }
 
   /* ── Board ── */
   .board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); }
@@ -548,8 +550,8 @@
 
   /* Inline action bar on the flag detail, visible before scrolling to evidence */
   .flag-actions-inline { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface-2); margin-bottom: var(--space-6); }
-  .source-card { padding: var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--surface-2); }
-  .source-card blockquote { margin-top: var(--space-3); padding-left: var(--space-3); border-left: 2px solid var(--rule-strong); color: var(--ink-soft); font-size: .86rem; }
+  .source-card { padding: var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--surface-2); overflow-wrap: anywhere; }
+  .source-card blockquote { margin-top: var(--space-3); padding-left: var(--space-3); border-left: 2px solid var(--rule-strong); color: var(--ink-soft); font-size: .86rem; overflow-wrap: anywhere; }
   .source-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--rule); }
   .meter { height: 4px; overflow: hidden; border-radius: 999px; background: var(--rule); }
   .meter span { display: block; height: 100%; background: var(--success); }
@@ -1041,7 +1043,7 @@
     position: relative;
     width: min(100%, 76ch);
     margin: 0 auto;
-    padding: var(--space-10) var(--space-8) var(--space-12) var(--space-16);
+    padding: var(--space-10) var(--space-6) var(--space-12) clamp(5.5rem, 14vw, 8.5rem);
     background: var(--surface);
     box-shadow: var(--shadow-md);
     font-family: var(--script);
@@ -1091,6 +1093,7 @@
     font-weight: 700;
     letter-spacing: .02em;
     text-transform: uppercase;
+    overflow-wrap: break-word;
   }
   .scene-number {
     position: absolute;
@@ -1101,10 +1104,10 @@
     font-weight: 700;
     user-select: none;
   }
-  .scene-number.is-left { left: calc(var(--space-12) * -1 + var(--space-2)); }
-  .scene-number.is-right { right: calc(var(--space-8) * -1 + var(--space-3)); }
+  .scene-number.is-left { left: calc(var(--space-10) * -1); }
+  .scene-number.is-right { right: calc(var(--space-6) * -1 + var(--space-2)); }
 
-  .script-action { position: relative; margin-bottom: var(--space-4); }
+  .script-action { position: relative; margin-bottom: var(--space-4); overflow-wrap: break-word; }
   .script-dialogue { position: relative; width: 34ch; margin: 0 auto var(--space-4); }
   .script-character { position: relative; margin-bottom: var(--space-1); padding-left: 6ch; text-transform: uppercase; }
   .script-paren { padding-left: 3ch; color: var(--ink-soft); }
@@ -1144,23 +1147,35 @@
   }
   .flag.is-resolved { border-bottom-style: dotted; opacity: .72; }
 
-  /* Gutter mark, right-aligned so it never touches the text */
-  .margin-mark {
+  /* Gutter marks, stacked so multi-flag lines never overlap */
+  .margin-marks {
     position: absolute;
     top: 0;
     right: calc(100% + var(--space-2));
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    max-width: 7.5rem;
+    pointer-events: none;
+  }
+  .margin-mark {
     display: inline-flex;
     align-items: center;
     gap: 2px;
+    max-width: 100%;
     color: var(--ink-faint);
     font-family: var(--sans);
-    font-size: .56rem;
+    font-size: .5rem;
     font-weight: 800;
-    letter-spacing: .03em;
+    letter-spacing: .02em;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     user-select: none;
+    line-height: 1.15;
   }
-  .margin-mark .mark-glyph { font-size: .7rem; line-height: 1; }
+  .margin-mark .mark-glyph { font-size: .62rem; line-height: 1; flex-shrink: 0; }
   .margin-mark.is-blocked { color: var(--danger); }
   .margin-mark.is-high { color: var(--warning); }
   .margin-mark.is-medium { color: var(--accent); }
@@ -1232,7 +1247,8 @@
   /* ═══ EVIDENCE DRAWER (grid column on desktop — never covers the page) ═══ */
   .script-surface { position: relative; display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); height: calc(100vh - var(--header-h)); overflow: hidden; }
   .script-surface.is-drawer-open { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) min(400px, 32vw); }
-  .script-scroll { overflow-y: auto; }
+  .script-scroll { overflow: auto; min-width: 0; }
+  .script-stage { overflow-x: clip; }
   .evidence-drawer {
     display: flex;
     flex-direction: column;
@@ -1355,10 +1371,19 @@
     .scene-number.is-right { display: none; }
     .revision-mark { position: static; margin-left: var(--space-2); }
     /* Marks become inline badges on narrow screens — no gutter to sit in. */
-    .margin-mark {
+    .margin-marks {
       position: static;
       display: inline-flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: var(--space-1);
       margin-right: var(--space-2);
+      vertical-align: baseline;
+      pointer-events: auto;
+    }
+    .margin-mark {
+      display: inline-flex;
+      margin-right: 0;
       padding: 1px var(--space-1);
       border-radius: 3px;
       background: var(--canvas-deep);

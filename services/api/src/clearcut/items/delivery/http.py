@@ -43,6 +43,7 @@ LIST_ITEMS_QUERY = sa.text("""
     SELECT i.id, i.project_id, i.version_id, i.version, i.category, i.text, i.status,
            i.disposition_status, i.assigned_to_user_id, i.due_at,
            e.text AS context_text, e.scene_number AS scene_number,
+           e.page_number AS page_number,
            dc.uncertainty AS uncertainty,
            (SELECT count(*) FROM evidence_claims c
             WHERE c.item_id = i.id
@@ -190,6 +191,8 @@ async def list_items(
             }
             if r.scene_number is not None:
                 item["scene"] = int(r.scene_number)
+            if getattr(r, "page_number", None) is not None:
+                item["page"] = int(r.page_number)
             if r.due_at is not None:
                 item["dueAt"] = r.due_at.isoformat()
             if r.context_text is not None:

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { api } from "@clearcut/contracts";
 import { PublicShell } from "../../components/shell/PublicShell";
+import { navigateAfterAuthentication } from "../../lib/navigateAfterAuth";
 
 export const Route = createFileRoute("/auth/sign-up")({
   component: SignUpRoute,
@@ -42,22 +43,7 @@ export function SignUpRoute() {
         return;
       }
 
-      const entry = await api.resolveOrganizationEntry();
-      if (!entry.ok) {
-        setError(
-          "Your account was created, but workspace status could not be loaded. Sign in to continue.",
-        );
-        return;
-      }
-
-      if (entry.value.defaultOrgSlug) {
-        navigate({
-          to: "/o/$orgSlug/projects",
-          params: { orgSlug: entry.value.defaultOrgSlug },
-        });
-        return;
-      }
-      navigate({ to: "/onboarding" });
+      await navigateAfterAuthentication(navigate);
     } catch {
       setError("A network error prevented account creation. Please try again.");
     } finally {

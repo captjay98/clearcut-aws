@@ -13,6 +13,7 @@ import { ScriptUploadModal } from "../../../../../features/scripts/ScriptUploadM
 import { Badge, Banner, TabsBar } from "../../../../../components/ds";
 import { useShell } from "../../../../../components/shell/ShellContext";
 import {
+  displayCategory,
   displayStatus,
   displayStatusTone,
   revisionStock,
@@ -75,12 +76,14 @@ export function WorkspaceRoute() {
   });
 
   const categoryCounts = items.reduce<Record<string, number>>((counts, item) => {
-    counts[item.category] = (counts[item.category] ?? 0) + 1;
+    const label = displayCategory(item.category);
+    counts[label] = (counts[label] ?? 0) + 1;
     return counts;
   }, {});
 
   const filteredItems = items.filter((item) => {
-    const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
+    const matchesCategory =
+      selectedCategory === "All" || displayCategory(item.category) === selectedCategory;
     const normalizedSearch = searchQuery.trim().toLowerCase();
     const matchesSearch =
       normalizedSearch.length === 0 ||
@@ -90,68 +93,57 @@ export function WorkspaceRoute() {
   });
 
   /**
-   * A script line's flag is matched to a clearance item by entity name, which is
-   * what the API records against the passage. Resolved once per item list rather
-   * than per line. Lines without an API flag marker still match when the entity
-   * name appears in the line text, so gutter marks work on imported scripts.
+   * Every clearance item whose entity name appears on a script line. Multiple
+   * flags may share one action line (e.g. Coca-Cola and Market Street).
    */
-  const annotationFor = useMemo(() => {
+  const resolveLineFlags = useMemo(() => {
     const byName = new Map<string, ClearanceItem>();
     for (const item of items) {
       byName.set(item.entityName.toLowerCase(), item);
     }
-    return (flag: string): FlagAnnotation | null => {
-      const normalized = flag.toLowerCase();
-      const item =
-        byName.get(normalized) ??
-        items.find(
-          (candidate) =>
-            candidate.entityName.toLowerCase().includes(normalized) ||
-            normalized.includes(candidate.entityName.toLowerCase()),
-        );
-      if (!item) {
-        return null;
+    return (line: { type: string; text: string; flag?: string }): FlagAnnotation[] => {
+      if (line.type === "scene_heading") return [];
+      const lower = line.text.toLowerCase();
+      const matched = new Map<string, ClearanceItem>();
+      if (line.flag) {
+        const explicit = byName.get(line.flag.toLowerCase());
+        if (explicit) matched.set(explicit.itemId, explicit);
       }
-      const { severityClass, glyph } = severityOf(item);
-      return {
-        itemId: item.itemId,
-        shortCategory: shortCategory(item.category),
-        severityClass,
-        glyph,
-        status: displayStatus(item),
-        term: item.entityName,
-      };
+      for (const item of items) {
+        const term = item.entityName.toLowerCase();
+        if (term.length < 3) continue;
+        if (lower.includes(term)) matched.set(item.itemId, item);
+      }
+      return [...matched.values()]
+        .map((item) => {
+          const { severityClass, glyph } = severityOf(item);
+          return {
+            itemId: item.itemId,
+            shortCategory: shortCategory(item.category),
+            severityClass,
+            glyph,
+            status: displayStatus(item),
+            term: item.entityName,
+          } satisfies FlagAnnotation;
+        })
+        // Longest term first so buildSegments prefers the more specific span.
+        .sort((a, b) => b.term.length - a.term.length);
     };
   }, [items]);
-
-  /** Inject entity-name matches onto lines the parser left unflagged. */
-  const annotatedScenes = useMemo(() => {
-    return scenes.map((scene) => ({
-      ...scene,
-      lines: scene.lines.map((line) => {
-        if (line.flag || line.type === "scene_heading") return line;
-        const lower = line.text.toLowerCase();
-        const match = items.find(
-          (item) => item.entityName.length > 2 && lower.includes(item.entityName.toLowerCase()),
-        );
-        return match ? { ...line, flag: match.entityName } : line;
-      }),
-    }));
-  }, [scenes, items]);
 
   /** Scenes that carry at least one flag, for the rail. */
   const scenesWithFlags = useMemo(
     () =>
-      annotatedScenes
+      scenes
         .map((scene) => {
           const sceneItems = scene.lines
-            .map((line) => (line.flag ? annotationFor(line.flag) : null))
+            .flatMap((line) => resolveLineFlags(line))
             .filter((annotation): annotation is FlagAnnotation => annotation !== null);
           const unique = new Map(sceneItems.map((annotation) => [annotation.itemId, annotation]));
           return { scene, flags: [...unique.values()] };
         })
         .filter((entry) => entry.flags.length > 0),
-    [annotatedScenes, annotationFor],
+    [scenes, resolveLineFlags],
   );
 
   const errors = [scriptQuery.error, itemsQuery.error]
@@ -290,11 +282,11 @@ export function WorkspaceRoute() {
           <ScreenplayViewer
             title={scriptQuery.data?.title ?? "Screenplay"}
             version={`${versionLabel} (${stock} pages)`}
-            scenes={annotatedScenes}
+            scenes={scenes}
             loading={scriptQuery.isPending}
             selectedItemId={selectedItemId}
             stock={stock}
-            resolveFlag={annotationFor}
+            resolveLineFlags={resolveLineFlags}
             onSelectFlag={(annotation) => setSelectedItemId(annotation.itemId)}
           />
         </div>
