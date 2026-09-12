@@ -1203,6 +1203,13 @@
     border-right: 1px solid var(--rule);
     background: var(--surface-2);
   }
+  .scene-rail-filters {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--rule);
+  }
+  .scene-rail-filters .choice-row {
+    gap: var(--space-1);
+  }
   .scene-rail-head {
     display: flex;
     align-items: center;

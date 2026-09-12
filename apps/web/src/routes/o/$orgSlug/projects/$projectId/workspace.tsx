@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { api, type ClearanceItem } from "@clearcut/contracts";
+import { api, type ClearanceItem, type Job } from "@clearcut/contracts";
 import { CategoryFilterBar } from "../../../../../features/clearance/CategoryFilterBar";
-import { ClearanceItemCard } from "../../../../../features/clearance/ClearanceItemCard";
-import { EvidenceDrawer } from "../../../../../features/clearance/EvidenceDrawer";
+import { EvidenceWorkbench } from "../../../../../features/clearance/EvidenceWorkbench";
 import {
   ScreenplayViewer,
   type FlagAnnotation,
@@ -15,14 +14,11 @@ import { useShell } from "../../../../../components/shell/ShellContext";
 import {
   displayCategory,
   displayStatus,
-  displayStatusTone,
   revisionStock,
   severityOf,
   shortCategory,
 } from "../../../../../features/clearance/itemPresentation";
-import { EvidencePanel } from "../../../../../features/clearance/EvidencePanel";
 import {
-  clearanceItemDetailQueryOptions,
   clearanceItemKeys,
   clearanceItemsQueryOptions,
   toQueryError,
@@ -51,8 +47,8 @@ export function WorkspaceRoute() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [researchJobId, setResearchJobId] = useState<string | null>(null);
   /**
    * Below 901px the three panes cannot share the viewport, so the stylesheet
    * shows one at a time and this chooses which. Without it the flag pane — and
@@ -66,14 +62,6 @@ export function WorkspaceRoute() {
   const items = itemsQuery.data ?? [];
   const scenes = scriptQuery.data?.scenes ?? [];
   const selectedItem = items.find((item) => item.itemId === selectedItemId) ?? null;
-  const detailQuery = useQuery({
-    ...clearanceItemDetailQueryOptions({
-      orgId: orgSlug,
-      projectId,
-      itemId: selectedItemId ?? "",
-    }),
-    enabled: selectedItemId !== null && isDrawerOpen,
-  });
 
   const categoryCounts = items.reduce<Record<string, number>>((counts, item) => {
     const label = displayCategory(item.category);
@@ -90,6 +78,33 @@ export function WorkspaceRoute() {
       item.entityName.toLowerCase().includes(normalizedSearch) ||
       item.category.toLowerCase().includes(normalizedSearch);
     return matchesCategory && matchesSearch;
+  });
+
+  // Mock defaults the workbench to the first flag so the right pane is never empty.
+  useEffect(() => {
+    if (selectedItemId || items.length === 0) return;
+    setSelectedItemId(items[0]!.itemId);
+  }, [items, selectedItemId]);
+
+  const researchScope = selectedItem
+    ? { orgId: orgSlug, projectId, itemId: selectedItem.itemId }
+    : null;
+  const researchMutation = useMutation({
+    mutationFn: async () => {
+      if (!researchScope) throw new Error("Select a flag first.");
+      const result = await api.startResearch({
+        params: {
+          orgId: researchScope.orgId,
+          projectId: researchScope.projectId,
+          itemId: researchScope.itemId,
+        },
+      });
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
+      return result.value;
+    },
+    onSuccess: (job: Job) => {
+      setResearchJobId(job.jobId);
+    },
   });
 
   /**
@@ -149,11 +164,6 @@ export function WorkspaceRoute() {
   const errors = [scriptQuery.error, itemsQuery.error]
     .filter((error): error is Error => error instanceof Error)
     .map((error) => error.message);
-
-  const openDrawer = (item: ClearanceItem) => {
-    setSelectedItemId(item.itemId);
-    setIsDrawerOpen(true);
-  };
 
   const versionLabel = scriptQuery.data?.version ?? "v1";
   const versionNumber = Number(String(versionLabel).replace(/^v/i, "")) || 1;
@@ -250,32 +260,76 @@ export function WorkspaceRoute() {
             <h2>Scenes &amp; flags</h2>
             <span className="mono muted">{items.length}</span>
           </div>
-          {scenesWithFlags.map(({ scene, flags }) => (
-            <div className="scene-group" key={scene.number}>
-              <a className="scene-group-head" href={`#scene-${scene.number}`}>
-                <span className="scene-number-inline mono">
-                  {String(scene.number).padStart(2, "0")}
-                </span>
-                <span className="scene-slug-text">{scene.slug}</span>
-                <span className="scene-count">{flags.length}</span>
-              </a>
-              {flags.map((annotation) => (
-                <button
-                  className="scene-flag"
-                  type="button"
-                  key={annotation.itemId}
-                  aria-current={annotation.itemId === selectedItemId}
-                  onClick={() => setSelectedItemId(annotation.itemId)}
-                >
-                  <span className={`flag-glyph ${annotation.severityClass}`} aria-hidden="true">
-                    {annotation.glyph}
-                  </span>
-                  <span className="flag-term">{annotation.term}</span>
-                  <Badge>{annotation.shortCategory}</Badge>
-                </button>
-              ))}
-            </div>
-          ))}
+          <div className="scene-rail-filters">
+            <CategoryFilterBar
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              categoryCounts={categoryCounts}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              compact
+            />
+          </div>
+          {scenesWithFlags
+            .filter(
+              ({ flags }) =>
+                selectedCategory === "All" ||
+                flags.some(
+                  (flag) =>
+                    selectedCategory === "All" ||
+                    // flags carry shortCategory; filter via items
+                    true,
+                ),
+            )
+            .map(({ scene, flags }) => {
+              const sceneFlags = flags.filter((annotation) => {
+                const item = items.find((row) => row.itemId === annotation.itemId);
+                if (!item) return false;
+                const matchesCategory =
+                  selectedCategory === "All" ||
+                  displayCategory(item.category) === selectedCategory;
+                const q = searchQuery.trim().toLowerCase();
+                const matchesSearch =
+                  q.length === 0 ||
+                  item.entityName.toLowerCase().includes(q) ||
+                  item.category.toLowerCase().includes(q);
+                return matchesCategory && matchesSearch;
+              });
+              if (sceneFlags.length === 0) return null;
+              return (
+                <div className="scene-group" key={scene.number}>
+                  <a className="scene-group-head" href={`#scene-${scene.number}`}>
+                    <span className="scene-number-inline mono">
+                      {String(scene.number).padStart(2, "0")}
+                    </span>
+                    <span className="scene-slug-text">{scene.slug}</span>
+                    <span className="scene-count">{sceneFlags.length}</span>
+                  </a>
+                  {sceneFlags.map((annotation) => (
+                    <button
+                      className="scene-flag"
+                      type="button"
+                      key={annotation.itemId}
+                      aria-current={annotation.itemId === selectedItemId}
+                      onClick={() => {
+                        setSelectedItemId(annotation.itemId);
+                        setResearchJobId(null);
+                        setPaneTab("evidence");
+                      }}
+                    >
+                      <span
+                        className={`flag-glyph ${annotation.severityClass}`}
+                        aria-hidden="true"
+                      >
+                        {annotation.glyph}
+                      </span>
+                      <span className="flag-term">{annotation.term}</span>
+                      <Badge>{annotation.shortCategory}</Badge>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
         </aside>
 
         <div className="script-scroll">
@@ -287,77 +341,26 @@ export function WorkspaceRoute() {
             selectedItemId={selectedItemId}
             stock={stock}
             resolveLineFlags={resolveLineFlags}
-            onSelectFlag={(annotation) => setSelectedItemId(annotation.itemId)}
+            onSelectFlag={(annotation) => {
+              setSelectedItemId(annotation.itemId);
+              setResearchJobId(null);
+              setPaneTab("evidence");
+            }}
           />
         </div>
 
-        <aside className="evidence-drawer" aria-label="Detected flags">
-          <div className="drawer-head">
-            <div className="min-w-0">
-              <span className="slug-heading">Detected flags</span>
-              <h2 className="gap-t-1">{filteredItems.length} shown</h2>
-            </div>
-          </div>
-          <div className="drawer-body">
-            <CategoryFilterBar
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-              categoryCounts={categoryCounts}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              compact
-            />
-
-            {itemsQuery.isPending ? (
-              <p role="status" className="small muted">
-                Loading clearance items…
-              </p>
-            ) : filteredItems.length === 0 ? (
-              <div className="empty-state">
-                <span className="empty-icon" aria-hidden="true">
-                  ◦
-                </span>
-                <h3>{items.length === 0 ? "No flags on this version" : "No matches"}</h3>
-                <p>
-                  {items.length === 0
-                    ? "Flags appear here once the script has been checked."
-                    : "No flags match the current filter."}
-                </p>
-              </div>
-            ) : (
-              <div className="list">
-                {filteredItems.map((item) => (
-                  <ClearanceItemCard
-                    key={item.itemId}
-                    item={item}
-                    isSelected={selectedItemId === item.itemId}
-                    onSelect={(selected) => setSelectedItemId(selected.itemId)}
-                    onOpenDrawer={openDrawer}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          {selectedItem && (
-            <div className="drawer-foot">
-              <div className="cluster-between">
-                <span className="small truncate">{selectedItem.entityName}</span>
-                <Badge tone={displayStatusTone(selectedItem)}>{displayStatus(selectedItem)}</Badge>
-              </div>
-            </div>
-          )}
-        </aside>
+        <EvidenceWorkbench
+          orgSlug={orgSlug}
+          projectId={projectId}
+          item={selectedItem}
+          researchJobId={researchJobId}
+          onResearchSettled={() => setResearchJobId(null)}
+          onRunResearch={() => {
+            if (selectedItem) researchMutation.mutate();
+          }}
+          researchPending={researchMutation.isPending}
+        />
       </div>
-
-      <EvidenceDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        item={selectedItem}
-        detail={detailQuery.data}
-        orgSlug={orgSlug}
-        projectId={projectId}
-        loading={detailQuery.isPending}
-      />
 
       <ScriptUploadModal
         isOpen={isUploadOpen}
