@@ -1,12 +1,14 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { api, type Job } from "@clearcut/contracts";
 import type {
   ApiError,
   ClearanceDisposition,
   EvidenceDecision,
 } from "@clearcut/contracts";
 import { ItemGovernanceControls } from "../../../../../../features/clearance/ItemGovernanceControls";
+import { ResearchProgress } from "../../../../../../features/clearance/ResearchProgress";
 import { CommentThread } from "../../../../../../features/collaboration/CommentThread";
 import { ReferralCard } from "../../../../../../features/collaboration/ReferralCard";
 import { RewriteProposalCard } from "../../../../../../features/collaboration/RewriteProposalCard";
@@ -75,12 +77,38 @@ export function ItemDetailRoute() {
   const dispositionMutation = useMutation(
     setDispositionMutationOptions(scope, queryClient),
   );
-  const researchMutation = useMutation(
-    startResearchMutationOptions(scope, queryClient),
-  );
+  const researchMutation = useMutation({
+    ...startResearchMutationOptions(scope, queryClient),
+    onSuccess: (job: Job) => {
+      setResearchJobId(job.jobId);
+    },
+  });
   const [decision, setDecision] = useState<EvidenceDecision>("further_review_required");
   const [rationale, setRationale] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [researchJobId, setResearchJobId] = useState<string | null>(null);
+
+  // Reconstruct an in-flight research job after reload so progress stays visible.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await api.listJobs({
+        params: { orgId: orgSlug, projectId },
+      });
+      if (cancelled || !result.ok) return;
+      const running = result.value.find(
+        (job) =>
+          job.jobType === "research" &&
+          job.target.type === "clearance_item" &&
+          job.target.id === itemId &&
+          !["succeeded", "failed", "cancelled", "manual_retry"].includes(job.status),
+      );
+      if (running) setResearchJobId(running.jobId);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgSlug, projectId, itemId]);
 
   const item = itemQuery.data;
   const siblings = itemsQuery.data ?? [];
@@ -449,6 +477,17 @@ export function ItemDetailRoute() {
       )}
 
       <Section title="Evidence" description={item.evidenceState.reason}>
+        <ResearchProgress
+          orgSlug={orgSlug}
+          projectId={projectId}
+          jobId={researchJobId}
+          entityName={item.entityName}
+          onSettled={(job) => {
+            if (job.status === "succeeded" || job.status === "failed") {
+              setResearchJobId(null);
+            }
+          }}
+        />
         <EvidencePanel
           item={item}
           claims={item.claims}
@@ -471,10 +510,14 @@ export function ItemDetailRoute() {
                 <button
                   className="button button-primary"
                   type="button"
-                  disabled={researchMutation.isPending}
-                  onClick={() => researchMutation.mutate()}
+                  disabled={researchMutation.isPending || Boolean(researchJobId)}
+                  onClick={() => researchMutation.mutate(undefined, {
+                    onSuccess: (job: Job) => setResearchJobId(job.jobId),
+                  })}
                 >
-                  {researchMutation.isPending ? "Starting research…" : "Run research"}
+                  {researchMutation.isPending || researchJobId
+                    ? "Research in progress…"
+                    : "Run research"}
                 </button>
               </div>
             </div>

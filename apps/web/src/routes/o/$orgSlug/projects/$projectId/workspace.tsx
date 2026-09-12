@@ -305,6 +305,7 @@ export function WorkspaceRoute() {
               categoryCounts={categoryCounts}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              compact
             />
 
             {itemsQuery.isPending ? (

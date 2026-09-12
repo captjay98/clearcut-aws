@@ -427,6 +427,14 @@
   .choice input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .choice span { display: inline-flex; align-items: center; min-height: 34px; padding: var(--space-1) var(--space-4); border: 1px solid var(--rule-strong); border-radius: 999px; background: var(--surface); color: var(--ink-soft); font-size: .82rem; }
   .choice input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+  /* Workspace side-rail filters stay slim so the script pane keeps height. */
+  .category-filter.is-compact .choice span {
+    min-height: 28px;
+    padding: 0 var(--space-3);
+    font-size: .72rem;
+  }
+  .category-filter.is-compact .search-field input { min-height: 34px; font-size: .82rem; }
+  .category-filter-more { align-self: center; }
   .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--rule); }
   .toggle-row:last-child { border-bottom: 0; }
 
