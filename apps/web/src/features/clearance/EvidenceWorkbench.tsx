@@ -27,6 +27,8 @@ export interface EvidenceWorkbenchProps {
   onResearchSettled?: () => void;
   onRunResearch?: () => void;
   researchPending?: boolean;
+  /** Open the full evidence modal (table of all sources). */
+  onOpenDetail?: () => void;
 }
 
 function pickPrimaryClaim(detail: ClearanceItemDetail | undefined) {
@@ -47,6 +49,7 @@ export function EvidenceWorkbench({
   onResearchSettled,
   onRunResearch,
   researchPending,
+  onOpenDetail,
 }: EvidenceWorkbenchProps) {
   const itemId = item?.itemId ?? "";
   const detailQuery = useQuery({
@@ -219,19 +222,29 @@ export function EvidenceWorkbench({
               </div>
             </article>
 
-            <Link
-              className="drawer-source-summary button button-quiet"
-              to="/o/$orgSlug/projects/$projectId/items/$itemId"
-              params={{ orgSlug, projectId, itemId: item.itemId }}
-            >
-              <span>
-                <strong>{claimCount}</strong> source{claimCount === 1 ? "" : "s"} retrieved
-                {disagreeCount > 0
-                  ? ` · ${disagreeCount} disagree${disagreeCount === 1 ? "s" : ""}`
-                  : ""}
-              </span>
-              <span aria-hidden="true">→</span>
-            </Link>
+            <div className="stack-sm gap-t-3">
+              <button
+                type="button"
+                className="button button-quiet"
+                data-testid="open-evidence-drawer-btn"
+                onClick={() => onOpenDetail?.()}
+              >
+                <span>
+                  <strong>{claimCount}</strong> source{claimCount === 1 ? "" : "s"} retrieved
+                  {disagreeCount > 0
+                    ? ` · ${disagreeCount} disagree${disagreeCount === 1 ? "s" : ""}`
+                    : ""}
+                </span>
+                <span aria-hidden="true"> →</span>
+              </button>
+              <Link
+                className="button button-quiet button-sm"
+                to="/o/$orgSlug/projects/$projectId/items/$itemId"
+                params={{ orgSlug, projectId, itemId: item.itemId }}
+              >
+                Full record
+              </Link>
+            </div>
 
             {item.sourcesDisagree || disagreeCount > 0 ? (
               <Banner
@@ -265,13 +278,24 @@ export function EvidenceWorkbench({
       </div>
 
       <div className="drawer-foot">
-        <Link
-          className="button button-primary button-sm"
-          to="/o/$orgSlug/projects/$projectId/items/$itemId"
-          params={{ orgSlug, projectId, itemId: item.itemId }}
-        >
-          Full record
-        </Link>
+        <div className="stack-sm">
+          {claimCount > 0 && (
+            <button
+              type="button"
+              className="button button-secondary button-sm"
+              onClick={() => onOpenDetail?.()}
+            >
+              All sources
+            </button>
+          )}
+          <Link
+            className="button button-primary button-sm"
+            to="/o/$orgSlug/projects/$projectId/items/$itemId"
+            params={{ orgSlug, projectId, itemId: item.itemId }}
+          >
+            Full record
+          </Link>
+        </div>
       </div>
     </aside>
   );

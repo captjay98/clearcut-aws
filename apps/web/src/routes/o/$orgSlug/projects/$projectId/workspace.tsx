@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { api, type ClearanceItem, type Job } from "@clearcut/contracts";
 import { CategoryFilterBar } from "../../../../../features/clearance/CategoryFilterBar";
+import { EvidenceDrawer } from "../../../../../features/clearance/EvidenceDrawer";
 import { EvidenceWorkbench } from "../../../../../features/clearance/EvidenceWorkbench";
 import {
   ScreenplayViewer,
@@ -19,6 +20,7 @@ import {
   shortCategory,
 } from "../../../../../features/clearance/itemPresentation";
 import {
+  clearanceItemDetailQueryOptions,
   clearanceItemKeys,
   clearanceItemsQueryOptions,
   toQueryError,
@@ -47,6 +49,7 @@ export function WorkspaceRoute() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [researchJobId, setResearchJobId] = useState<string | null>(null);
   /**
@@ -62,6 +65,14 @@ export function WorkspaceRoute() {
   const items = itemsQuery.data ?? [];
   const scenes = scriptQuery.data?.scenes ?? [];
   const selectedItem = items.find((item) => item.itemId === selectedItemId) ?? null;
+  const detailQuery = useQuery({
+    ...clearanceItemDetailQueryOptions({
+      orgId: orgSlug,
+      projectId,
+      itemId: selectedItemId ?? "",
+    }),
+    enabled: Boolean(selectedItemId) && isDetailOpen,
+  });
 
   const categoryCounts = items.reduce<Record<string, number>>((counts, item) => {
     const label = displayCategory(item.category);
@@ -314,6 +325,7 @@ export function WorkspaceRoute() {
                       onClick={() => {
                         setSelectedItemId(annotation.itemId);
                         setResearchJobId(null);
+                        setIsDetailOpen(false);
                         setPaneTab("evidence");
                       }}
                     >
@@ -344,6 +356,7 @@ export function WorkspaceRoute() {
             onSelectFlag={(annotation) => {
               setSelectedItemId(annotation.itemId);
               setResearchJobId(null);
+              setIsDetailOpen(false);
               setPaneTab("evidence");
             }}
           />
@@ -359,8 +372,19 @@ export function WorkspaceRoute() {
             if (selectedItem) researchMutation.mutate();
           }}
           researchPending={researchMutation.isPending}
+          onOpenDetail={() => setIsDetailOpen(true)}
         />
       </div>
+
+      <EvidenceDrawer
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        item={selectedItem}
+        detail={detailQuery.data}
+        orgSlug={orgSlug}
+        projectId={projectId}
+        loading={detailQuery.isPending}
+      />
 
       <ScriptUploadModal
         isOpen={isUploadOpen}
