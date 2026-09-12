@@ -558,7 +558,32 @@
   /* Workspace pane tabs — the script surface itself lives in the identity section. */
   .mobile-pane-tabs { display: none; }
 
-  /* ── Evidence ── */
+  /* Flag detail: primary path is evidence → decision; extras stay collapsed. */
+  .decision-sticky {
+    scroll-margin-top: 80px;
+  }
+  .record-details {
+    margin-top: var(--space-6);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    padding: var(--space-3) var(--space-4);
+  }
+  .record-details > summary {
+    cursor: pointer;
+    font-weight: 650;
+    font-size: .95rem;
+    list-style: none;
+  }
+  .record-details > summary::before {
+    content: "▸ ";
+  }
+  .record-details[open] > summary::before {
+    content: "▾ ";
+  }
+  .record-details[open] {
+    padding-bottom: var(--space-5);
+  }
   .evidence-workbench > * + * { margin-top: var(--space-5); }
 
   /* Inline action bar on the flag detail, visible before scrolling to evidence */

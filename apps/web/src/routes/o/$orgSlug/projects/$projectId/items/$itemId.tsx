@@ -525,19 +525,7 @@ export function ItemDetailRoute() {
         />
       </Section>
 
-      <ItemGovernanceControls
-        assignedTo={item.assignedTo}
-        disposition={item.disposition}
-        assignmentCapability={assignmentCapability}
-        dispositionCapability={dispositionCapability}
-        members={assignableMembersQuery.data ?? []}
-        dueAt={(item as { dueAt?: string }).dueAt}
-        severity={severityWord(item)}
-        onAssign={handleAssign}
-        onSetDisposition={handleSetDisposition}
-      />
-
-      <section className="section" data-testid="decision-action-bar">
+      <section className="section decision-sticky" data-testid="decision-action-bar">
         <div className="section-head">
           <div>
             <h2>Your call</h2>
@@ -654,28 +642,53 @@ export function ItemDetailRoute() {
         </Section>
       )}
 
-      <RewriteProposalCard
-        orgSlug={orgSlug}
-        projectId={projectId}
-        itemId={item.itemId}
-        originalText={item.contextText ?? item.entityName}
-        proposeCapability={rewriteProposeCapability}
-        approveCapability={rewriteApproveCapability}
-      />
-      <ReferralCard
-        itemId={item.itemId}
-        referrals={item.referrals}
-        referralCapability={referralCapability}
-        onRefer={handleRefer}
-        onAcknowledge={handleAcknowledgeReferral}
-      />
-      <CommentThread
-        comments={item.comments}
-        mentionRecipients={mentionRecipientsQuery.data ?? []}
-        onAddComment={handleAddComment}
-        onReply={handleReplyToComment}
-        onRevise={handleReviseComment}
-      />
+      <details
+        className="record-details"
+        open={item.decisions.length > 0 || item.referrals.length > 0}
+        data-testid="record-details"
+      >
+        <summary>Ownership, rewrite, referral, and notes</summary>
+        <div className="stack gap-t-4">
+          <p className="small muted">
+            Workflow tools stay out of the way until you need them. Open this after the
+            evidence review, or when coordinating a rewrite or referral.
+          </p>
+          <ItemGovernanceControls
+            assignedTo={item.assignedTo}
+            disposition={item.disposition}
+            assignmentCapability={assignmentCapability}
+            dispositionCapability={dispositionCapability}
+            members={assignableMembersQuery.data ?? []}
+            dueAt={(item as { dueAt?: string }).dueAt}
+            severity={severityWord(item)}
+            onAssign={handleAssign}
+            onSetDisposition={handleSetDisposition}
+          />
+
+          <RewriteProposalCard
+            orgSlug={orgSlug}
+            projectId={projectId}
+            itemId={item.itemId}
+            originalText={item.contextText ?? item.entityName}
+            proposeCapability={rewriteProposeCapability}
+            approveCapability={rewriteApproveCapability}
+          />
+          <ReferralCard
+            itemId={item.itemId}
+            referrals={item.referrals}
+            referralCapability={referralCapability}
+            onRefer={handleRefer}
+            onAcknowledge={handleAcknowledgeReferral}
+          />
+          <CommentThread
+            comments={item.comments}
+            mentionRecipients={mentionRecipientsQuery.data ?? []}
+            onAddComment={handleAddComment}
+            onReply={handleReplyToComment}
+            onRevise={handleReviseComment}
+          />
+        </div>
+      </details>
     </Page>
   );
 }
