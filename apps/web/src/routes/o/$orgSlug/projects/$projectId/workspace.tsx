@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { api, type ClearanceItem, type Job } from "@clearcut/contracts";
+import { DetectionRecovery } from "../../../../../features/operations/DetectionRecovery";
 import { CategoryFilterBar } from "../../../../../features/clearance/CategoryFilterBar";
 import { EvidenceDrawer } from "../../../../../features/clearance/EvidenceDrawer";
 import { EvidenceWorkbench } from "../../../../../features/clearance/EvidenceWorkbench";
@@ -224,6 +225,9 @@ export function WorkspaceRoute() {
             </p>
           </div>
           <div className="page-head-actions">
+            {scriptQuery.data?.versionId && (
+              <DetectionRecovery orgSlug={orgSlug} projectId={projectId} versionId={scriptQuery.data.versionId} />
+            )}
             <button
               ref={uploadButtonRef}
               className="button button-primary"
