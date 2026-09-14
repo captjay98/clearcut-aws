@@ -6,7 +6,10 @@ These do not make network calls.
 """
 import pytest
 from clearcut.detection.adapters.vertex_runtime import VertexDetectionRuntime
-from clearcut.detection.runtime_provider import get_detection_runtime
+from clearcut.detection.runtime_provider import (
+    ProviderUnavailableError,
+    get_detection_runtime,
+)
 from clearcut.evaluation.adapters.vertex_judge import VertexJudgeAdapter
 from clearcut.evaluation.runtime_provider import get_judge_runtime
 from clearcut.research.runtime_provider import get_research_runtime
@@ -16,7 +19,7 @@ from fastapi import HTTPException
 
 def test_research_runtime_503_when_key_missing(monkeypatch):
     monkeypatch.delenv("PARALLEL_API_KEY", raising=False)
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises((HTTPException, ProviderUnavailableError)) as exc:
         get_research_runtime()
     assert exc.value.status_code == 503
     assert "PARALLEL_API_KEY" in exc.value.detail
@@ -43,7 +46,7 @@ def test_detection_runtime_503_when_project_missing(monkeypatch):
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     monkeypatch.delenv("CLEARCUT_GCP_PROJECT", raising=False)
     monkeypatch.setenv("CLEARCUT_DETECTION_RUNTIME", "vertex")
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises((HTTPException, ProviderUnavailableError)) as exc:
         get_detection_runtime()
     assert exc.value.status_code == 503
     assert "GOOGLE_CLOUD_PROJECT" in exc.value.detail
@@ -51,7 +54,7 @@ def test_detection_runtime_503_when_project_missing(monkeypatch):
 
 def test_detection_runtime_503_for_unknown_provider(monkeypatch):
     monkeypatch.setenv("CLEARCUT_DETECTION_RUNTIME", "definitely-not-a-provider")
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises((HTTPException, ProviderUnavailableError)) as exc:
         get_detection_runtime()
     assert exc.value.status_code == 503
 
@@ -90,7 +93,7 @@ def test_detection_runtime_503_for_blank_role_model(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "clearcut-workspace")
     monkeypatch.setenv("CLEARCUT_GEMINI_DETECTION_MODEL", "   ")
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises((HTTPException, ProviderUnavailableError)) as exc:
         get_detection_runtime()
 
     assert exc.value.status_code == 503
@@ -105,7 +108,7 @@ def test_judge_runtime_503_when_project_missing(monkeypatch):
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
     monkeypatch.delenv("CLEARCUT_GCP_PROJECT", raising=False)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises((HTTPException, ProviderUnavailableError)) as exc:
         get_judge_runtime()
 
     assert exc.value.status_code == 503
@@ -131,7 +134,7 @@ def test_judge_runtime_503_for_blank_model(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "clearcut-workspace")
     monkeypatch.setenv("CLEARCUT_GEMINI_JUDGE_MODEL", "  ")
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises((HTTPException, ProviderUnavailableError)) as exc:
         get_judge_runtime()
 
     assert exc.value.status_code == 503

@@ -17,6 +17,22 @@ class ObjectStorageError(RuntimeError):
     """Redacted storage failure, distinct from an absent object."""
 
 
+class ObjectNotFoundError(ObjectStorageError):
+    """Target object not found in storage."""
+
+
+class BucketNotFoundError(ObjectStorageError):
+    """Target storage bucket does not exist."""
+
+
+class StorageAccessDeniedError(ObjectStorageError):
+    """Access denied by IAM policy, bucket policy, or ACL."""
+
+
+class StorageConfigurationError(ObjectStorageError):
+    """Invalid storage client configuration or endpoint."""
+
+
 def validate_object_key(key: str) -> str:
     if (
         not key
@@ -30,18 +46,35 @@ def validate_object_key(key: str) -> str:
 
 class _RemoteStorage(ObjectStoragePort):
     @staticmethod
-    async def _call(operation: Callable[[], _T], *, missing: _T) -> _T:
+    def _classify_client_error(error: ClientError, bucket: str) -> Exception:
+        error_dict = error.response.get("Error", {})
+        code = error_dict.get("Code", "")
+        status_code = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if code in {"NoSuchBucket", "NoSuchBucketPolicy"}:
+            return BucketNotFoundError(f"Storage bucket '{bucket}' does not exist.")
+        if code in {"AccessDenied", "Forbidden"} or status_code == 403:
+            return StorageAccessDeniedError(f"Access denied to storage bucket '{bucket}'.")
+        return ObjectStorageError("Object storage operation failed.")
+
+    @staticmethod
+    async def _call(
+        operation: Callable[[], _T], *, missing: _T, bucket: str = ""
+    ) -> _T:
         def invoke() -> _T:
             try:
                 return operation()
             except NotFound:
                 return missing
             except ClientError as error:
-                if error.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NotFound"}:
+                code = error.response.get("Error", {}).get("Code", "")
+                status_code = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if code in {"NoSuchKey", "NotFound", "404"} or status_code == 404:
                     return missing
+                raise _RemoteStorage._classify_client_error(error, bucket) from None
+            except (ObjectStorageError, ValueError):
+                raise
             except Exception:
-                pass
-            raise ObjectStorageError("Object storage operation failed.") from None
+                raise ObjectStorageError("Object storage operation failed.") from None
 
         return await asyncio.to_thread(invoke)
 
@@ -93,6 +126,10 @@ class S3ObjectStorage(_RemoteStorage):
                 self._client.put_object(
                     Bucket=self._bucket, Key=key, Body=data, ContentType=content_type
                 )
+            except ClientError as error:
+                raise self._classify_client_error(error, self._bucket) from None
+            except (ObjectStorageError, ValueError):
+                raise
             except Exception:
                 raise ObjectStorageError("Object storage operation failed.") from None
 
@@ -112,7 +149,7 @@ class S3ObjectStorage(_RemoteStorage):
             finally:
                 body.close()
 
-        return await self._call(download, missing=None)
+        return await self._call(download, missing=None, bucket=self._bucket)
 
     async def delete_object(self, path: str) -> None:
         key = validate_object_key(path)
@@ -120,7 +157,7 @@ class S3ObjectStorage(_RemoteStorage):
         def delete() -> None:
             self._client.delete_object(Bucket=self._bucket, Key=key)
 
-        await self._call(delete, missing=None)
+        await self._call(delete, missing=None, bucket=self._bucket)
 
     async def object_exists(self, path: str) -> bool:
         key = validate_object_key(path)
@@ -129,4 +166,4 @@ class S3ObjectStorage(_RemoteStorage):
             self._client.head_object(Bucket=self._bucket, Key=key)
             return True
 
-        return await self._call(exists, missing=False)
+        return await self._call(exists, missing=False, bucket=self._bucket)

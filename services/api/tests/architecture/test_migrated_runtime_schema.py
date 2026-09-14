@@ -48,7 +48,7 @@ def test_empty_database_migrates_to_canonical_runtime_schema(tmp_path: Path) -> 
         revision = connection.execute(
             sa.text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert revision == "0039_monitoring_deltas"
+    assert revision == "0040_research_step_receipts"
 
     project_columns = {column["name"]: column for column in inspector.get_columns("projects")}
     for column_name in (
@@ -134,7 +134,30 @@ def test_empty_database_migrates_to_canonical_runtime_schema(tmp_path: Path) -> 
         "report_snapshots",
         "report_releases",
         "export_artifacts",
+        "research_step_receipts",
     } <= set(inspector.get_table_names())
+
+    step_receipt_columns = {
+        column["name"]: column for column in inspector.get_columns("research_step_receipts")
+    }
+    assert set(step_receipt_columns) == {
+        "id",
+        "org_id",
+        "project_id",
+        "run_id",
+        "item_id",
+        "job_id",
+        "attempt_number",
+        "step_index",
+        "tool_name",
+        "tool_input_hash",
+        "tool_output_hash",
+        "input_payload",
+        "output_payload",
+        "status",
+        "duration_ms",
+        "created_at",
+    }
 
     artifact_columns = {
         column["name"]: column for column in inspector.get_columns("export_artifacts")

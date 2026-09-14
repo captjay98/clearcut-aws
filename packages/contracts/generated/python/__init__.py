@@ -440,6 +440,7 @@ class ClearanceItem(BaseModel):
     severity: Optional[Literal["High", "Medium", "Low"]] = None
     confidence: Optional[Annotated[int, Field(ge=0, le=100)]] = None
     scene: Optional[Annotated[int, Field(ge=0)]] = None
+    page: Optional[Annotated[int, Field(ge=0)]] = None
     displayStatus: Optional[str] = None
     sourcesDisagree: Optional[bool] = None
 

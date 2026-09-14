@@ -41,6 +41,10 @@ from clearcut.research.ports.planner import (
 )
 from clearcut.research.ports.url_extract import UrlExtractPort
 from clearcut.research.ports.web_search import WebSearchPort
+from clearcut.research.ports.workflow import (
+    ResearchWorkflowContext,
+    ResearchWorkflowPort,
+)
 
 
 class RunResearchJobService:
@@ -53,6 +57,7 @@ class RunResearchJobService:
         search: WebSearchPort,
         extract: UrlExtractPort,
         evaluation: EvaluationService,
+        workflow: ResearchWorkflowPort | None = None,
     ) -> None:
         self._repository = repository
         self._planner = planner
@@ -60,6 +65,7 @@ class RunResearchJobService:
         self._search = search
         self._extract = extract
         self._evaluation = evaluation
+        self._workflow = workflow
 
     async def __call__(self, job: JobRecord) -> JobExecutionResult:
         item_id = self._item_id(job)
@@ -76,10 +82,8 @@ class RunResearchJobService:
                 project_id=job.project_id,
                 item_id=item_id,
             )
-            policy_version, prompt_version = (
-                await self._repository.load_active_judge_configuration(
-                    org_id=job.org_id,
-                )
+            policy_version, prompt_version = await self._repository.load_active_judge_configuration(
+                org_id=job.org_id,
             )
             prepared = await self._repository.prepare_planning(
                 org_id=job.org_id,
@@ -92,6 +96,31 @@ class RunResearchJobService:
                 requested_model=self._planner.requested_model,
                 input_sha256=self._planning_input_hash(research_input),
             )
+
+            if self._workflow is not None:
+                context = ResearchWorkflowContext(
+                    org_id=job.org_id,
+                    project_id=job.project_id,
+                    item_id=item_id,
+                    version_id=research_input.version_id,
+                    run_id=prepared.run_id,
+                    job_id=job.job_id,
+                    attempt_number=job.attempt_count,
+                    lease_owner=lease_owner,
+                    category=research_input.category,
+                    item_text=research_input.text,
+                    correlation_id=job.correlation_id,
+                    policy_version=policy_version,
+                    prompt_version=prompt_version,
+                )
+                workflow_result = await self._workflow.execute_research(context)
+                if workflow_result.status == "failed" and workflow_result.error:
+                    raise self._job_error(
+                        "research_workflow_failed",
+                        workflow_result.error,
+                        False,
+                    )
+                return JobExecutionResult(summary=workflow_result.summary)
 
             if prepared.state is ResearchAttemptState.READY:
                 planning_result = await self._planner.plan_research(
@@ -409,8 +438,7 @@ class RunResearchJobService:
                         error.error.retryable,
                     ) from error
                 judge_passed = all(
-                    verdict.status
-                    not in {DimensionStatus.FAILED, DimensionStatus.INCOMPLETE}
+                    verdict.status not in {DimensionStatus.FAILED, DimensionStatus.INCOMPLETE}
                     for verdict in evaluation.verdicts
                 )
                 if not judge_passed:
@@ -460,11 +488,7 @@ class RunResearchJobService:
             "snapshotCount": snapshot_count,
             "claimCount": claim_count,
             "reviewStatus": "unresolved",
-            "reason": (
-                "no_search_results"
-                if snapshot_count == 0
-                else "human_review_required"
-            ),
+            "reason": ("no_search_results" if snapshot_count == 0 else "human_review_required"),
         }
         if evaluation is not None:
             summary.update(
@@ -620,6 +644,4 @@ class RunResearchJobService:
 
     @staticmethod
     def _job_error(code: str, message: str, retryable: bool) -> JobExecutionError:
-        return JobExecutionError(
-            SafeJobError(code=code, message=message, retryable=retryable)
-        )
+        return JobExecutionError(SafeJobError(code=code, message=message, retryable=retryable))

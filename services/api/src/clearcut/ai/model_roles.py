@@ -1,4 +1,4 @@
-"""Typed Gemini model-role configuration with no implicit fallback switching."""
+"""Typed model-role configuration with no implicit fallback switching."""
 from __future__ import annotations
 
 import os
@@ -12,13 +12,20 @@ class GeminiRole(StrEnum):
     JUDGE = "judge"
 
 
+class BedrockRole(StrEnum):
+    DETECTION = "detection"
+    RESEARCH_PLANNING = "research_planning"
+    CLAIM_SYNTHESIS = "claim_synthesis"
+    JUDGE = "judge"
+
+
 class ModelRoleConfigurationError(RuntimeError):
     pass
 
 
 @dataclass(frozen=True)
 class ModelRoleConfiguration:
-    role: GeminiRole
+    role: GeminiRole | BedrockRole
     model: str
     environment_variable: str
     overridden: bool
@@ -39,10 +46,45 @@ _ROLE_SETTINGS = {
     ),
 }
 
+_BEDROCK_ROLE_SETTINGS = {
+    BedrockRole.DETECTION: (
+        "CLEARCUT_BEDROCK_DETECTION_MODEL",
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    ),
+    BedrockRole.RESEARCH_PLANNING: (
+        "CLEARCUT_BEDROCK_RESEARCH_MODEL",
+        "anthropic.claude-3-haiku-20240307-v1:0",
+    ),
+    BedrockRole.CLAIM_SYNTHESIS: (
+        "CLEARCUT_BEDROCK_SYNTHESIS_MODEL",
+        "anthropic.claude-3-haiku-20240307-v1:0",
+    ),
+    BedrockRole.JUDGE: (
+        "CLEARCUT_BEDROCK_JUDGE_MODEL",
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    ),
+}
+
 
 def resolve_model_role(role: GeminiRole) -> ModelRoleConfiguration:
-    """Resolve one role without consulting or switching to another role's model."""
+    """Resolve one Gemini role without consulting or switching to another role's model."""
     environment_variable, default_model = _ROLE_SETTINGS[role]
+    configured_model = os.getenv(environment_variable)
+    if configured_model is not None and not configured_model.strip():
+        raise ModelRoleConfigurationError(
+            f"{environment_variable} must not be blank when configured."
+        )
+    return ModelRoleConfiguration(
+        role=role,
+        model=configured_model.strip() if configured_model is not None else default_model,
+        environment_variable=environment_variable,
+        overridden=configured_model is not None,
+    )
+
+
+def resolve_bedrock_role(role: BedrockRole) -> ModelRoleConfiguration:
+    """Resolve one Bedrock role without consulting or switching to another role's model."""
+    environment_variable, default_model = _BEDROCK_ROLE_SETTINGS[role]
     configured_model = os.getenv(environment_variable)
     if configured_model is not None and not configured_model.strip():
         raise ModelRoleConfigurationError(

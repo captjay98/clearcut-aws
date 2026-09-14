@@ -59,6 +59,7 @@ class DeploymentProfile(StrEnum):
     LOCAL = "local"
     PORTABLE = "portable"
     GCP = "gcp"
+    AWS = "aws"
 
 
 class StorageAdapter(StrEnum):
@@ -71,6 +72,7 @@ class DispatchAdapter(StrEnum):
     LOCAL = "local"
     POSTGRES = "postgres"
     CLOUD_TASKS = "cloud_tasks"
+    SQS = "sqs"
 
 
 class AuthenticationAdapter(StrEnum):
@@ -82,6 +84,12 @@ class SecretBackend(StrEnum):
     ENVIRONMENT = "environment"
     HOST = "host"
     SECRET_MANAGER = "secret_manager"
+    AWS_SECRETS_MANAGER = "aws_secrets_manager"
+
+
+class ModelBackend(StrEnum):
+    GEMINI = "gemini"
+    BEDROCK = "bedrock"
 
 
 class _FrozenModel(BaseModel):
@@ -122,6 +130,7 @@ StorageSettings = Annotated[
 class DispatchSettings(_FrozenModel):
     adapter: DispatchAdapter
     enabled: bool = True
+    queue_url: str | None = None
     project_id: str | None = None
     location: str | None = None
     queue: str | None = None
@@ -138,6 +147,7 @@ class AuthenticationSettings(_FrozenModel):
 
 class SecretsSettings(_FrozenModel):
     backend: SecretBackend
+    parallel_secret_arn: str | None = None
 
 
 class StaticDeliverySettings(_FrozenModel):
@@ -152,18 +162,28 @@ _PROFILE_DEFAULTS: dict[DeploymentProfile, dict[str, StrEnum]] = {
         "dispatch": DispatchAdapter.LOCAL,
         "authentication": AuthenticationAdapter.BUILTIN,
         "secrets": SecretBackend.ENVIRONMENT,
+        "model_backend": ModelBackend.GEMINI,
     },
     DeploymentProfile.PORTABLE: {
         "storage": StorageAdapter.S3,
         "dispatch": DispatchAdapter.POSTGRES,
         "authentication": AuthenticationAdapter.BUILTIN,
         "secrets": SecretBackend.HOST,
+        "model_backend": ModelBackend.GEMINI,
     },
     DeploymentProfile.GCP: {
         "storage": StorageAdapter.GCS,
         "dispatch": DispatchAdapter.CLOUD_TASKS,
         "authentication": AuthenticationAdapter.BUILTIN,
         "secrets": SecretBackend.SECRET_MANAGER,
+        "model_backend": ModelBackend.GEMINI,
+    },
+    DeploymentProfile.AWS: {
+        "storage": StorageAdapter.S3,
+        "dispatch": DispatchAdapter.SQS,
+        "authentication": AuthenticationAdapter.BUILTIN,
+        "secrets": SecretBackend.AWS_SECRETS_MANAGER,
+        "model_backend": ModelBackend.BEDROCK,
     },
 }
 
@@ -183,12 +203,20 @@ class ClearcutSettings(BaseSettings):
     dispatch: DispatchSettings
     authentication: AuthenticationSettings
     secrets: SecretsSettings
+    model_backend: ModelBackend = ModelBackend.GEMINI
+    aws_region: str | None = None
+    bedrock_detection_model: str | None = None
+    bedrock_research_model: str | None = None
+    bedrock_synthesis_model: str | None = None
+    bedrock_judge_model: str | None = None
+    gcp_project: str | None = None
     static_delivery: StaticDeliverySettings = StaticDeliverySettings()
-    paid_providers_enabled: frozenset[Literal["gemini", "parallel"]] = frozenset()
+    paid_providers_enabled: frozenset[Literal["gemini", "parallel", "bedrock"]] = frozenset()
     paid_provider_cost_acknowledged: bool = False
-    paid_provider_concurrency_limits: dict[Literal["gemini", "parallel"], int] = Field(
-        default_factory=lambda: {"gemini": 1, "parallel": 1}
+    paid_provider_concurrency_limits: dict[Literal["gemini", "parallel", "bedrock"], int] = Field(
+        default_factory=lambda: {"gemini": 1, "parallel": 1, "bedrock": 1}
     )
+
 
     @model_validator(mode="before")
     @classmethod
@@ -211,6 +239,7 @@ class ClearcutSettings(BaseSettings):
             nested = dict(data.get(section) or {})
             nested.setdefault(field_name, defaults[section])
             data[section] = nested
+        data.setdefault("model_backend", defaults.get("model_backend", ModelBackend.GEMINI))
         static_delivery = dict(data.get("static_delivery") or {})
         static_delivery.setdefault("enabled", profile is not DeploymentProfile.LOCAL)
         data["static_delivery"] = static_delivery
@@ -231,13 +260,13 @@ class ClearcutSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_profile_contract(self) -> Self:
-        if self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}:
+        if self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP, DeploymentProfile.AWS}:
             try:
                 validate_hosted_database_url(self.database.url)
             except ValueError as error:
                 self._raise_redacted_validation_error(str(error))
             if self.storage.adapter is StorageAdapter.FILESYSTEM and (
-                self.profile is DeploymentProfile.GCP or self.storage.ephemeral
+                self.profile in {DeploymentProfile.GCP, DeploymentProfile.AWS} or self.storage.ephemeral
             ):
                 self._raise_redacted_validation_error(
                     "Hosted deployment profiles reject ephemeral filesystem storage."
@@ -250,11 +279,13 @@ class ClearcutSettings(BaseSettings):
                 StorageAdapter.S3,
             },
             DeploymentProfile.GCP: {StorageAdapter.GCS, StorageAdapter.S3},
+            DeploymentProfile.AWS: {StorageAdapter.S3},
         }
         required_dispatch = {
             DeploymentProfile.LOCAL: DispatchAdapter.LOCAL,
             DeploymentProfile.PORTABLE: DispatchAdapter.POSTGRES,
             DeploymentProfile.GCP: DispatchAdapter.CLOUD_TASKS,
+            DeploymentProfile.AWS: DispatchAdapter.SQS,
         }
         allowed_authentication = {
             DeploymentProfile.LOCAL: {AuthenticationAdapter.BUILTIN},
@@ -263,11 +294,13 @@ class ClearcutSettings(BaseSettings):
                 AuthenticationAdapter.BUILTIN,
                 AuthenticationAdapter.FIREBASE,
             },
+            DeploymentProfile.AWS: {AuthenticationAdapter.BUILTIN},
         }
         required_secrets = {
             DeploymentProfile.LOCAL: SecretBackend.ENVIRONMENT,
             DeploymentProfile.PORTABLE: SecretBackend.HOST,
             DeploymentProfile.GCP: SecretBackend.SECRET_MANAGER,
+            DeploymentProfile.AWS: SecretBackend.AWS_SECRETS_MANAGER,
         }
         if self.storage.adapter not in allowed_storage[self.profile]:
             self._raise_redacted_validation_error(
@@ -278,7 +311,7 @@ class ClearcutSettings(BaseSettings):
                 "Dispatch adapter contradicts the selected profile."
             )
         if (
-            self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}
+            self.profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP, DeploymentProfile.AWS}
             and not self.dispatch.enabled
         ):
             self._raise_redacted_validation_error(
@@ -301,6 +334,10 @@ class ClearcutSettings(BaseSettings):
             self.dispatch.audience,
             self.dispatch.service_account_email,
         )
+        if self.profile is DeploymentProfile.AWS and any(cloud_tasks_fields):
+            self._raise_redacted_validation_error(
+                "Hosted AWS mode rejects contradictory GCP configuration."
+            )
         if self.dispatch.adapter is not DispatchAdapter.CLOUD_TASKS and any(cloud_tasks_fields):
             self._raise_redacted_validation_error(
                 f"{self.dispatch.adapter.value} dispatch does not accept Cloud Tasks fields."
@@ -313,6 +350,10 @@ class ClearcutSettings(BaseSettings):
         if self.authentication.adapter is AuthenticationAdapter.BUILTIN and any(
             (self.authentication.project_id, self.authentication.audience)
         ):
+            if self.profile is DeploymentProfile.AWS:
+                self._raise_redacted_validation_error(
+                    "Hosted AWS mode rejects contradictory GCP configuration."
+                )
             self._raise_redacted_validation_error(
                 "Built-in authentication does not accept Firebase configuration."
             )
@@ -322,6 +363,58 @@ class ClearcutSettings(BaseSettings):
             self._raise_redacted_validation_error(
                 "Firebase authentication requires project_id and audience."
             )
+
+        if self.profile is DeploymentProfile.AWS:
+            if isinstance(self.storage, S3StorageSettings):
+                if self.storage.access_key_id is not None or self.storage.secret_access_key is not None:
+                    self._raise_redacted_validation_error(
+                        "Hosted AWS deployment profile rejects static AWS credentials; use IAM task roles."
+                    )
+                if self.storage.endpoint_url is not None:
+                    self._raise_redacted_validation_error(
+                        "Hosted AWS deployment profile rejects custom storage emulator endpoints."
+                    )
+                if not self.storage.bucket:
+                    self._raise_redacted_validation_error(
+                        "Hosted AWS mode requires storage bucket."
+                    )
+            if not self.aws_region or not self.aws_region.strip():
+                self._raise_redacted_validation_error(
+                    "Hosted AWS mode requires AWS region to be configured."
+                )
+            if not self.dispatch.queue_url or not self.dispatch.queue_url.strip():
+                self._raise_redacted_validation_error(
+                    "SQS dispatch requires queue_url."
+                )
+            if not self.secrets.parallel_secret_arn or not self.secrets.parallel_secret_arn.strip():
+                self._raise_redacted_validation_error(
+                    "AWS Secrets Manager backend requires parallel_secret_arn to be configured."
+                )
+            if self.model_backend is not ModelBackend.BEDROCK:
+                self._raise_redacted_validation_error(
+                    "Hosted AWS profile requires Bedrock model backend."
+                )
+            if not self.bedrock_detection_model or not self.bedrock_detection_model.strip():
+                self._raise_redacted_validation_error(
+                    "Hosted AWS profile requires bedrock_detection_model."
+                )
+            if not self.bedrock_research_model or not self.bedrock_research_model.strip():
+                self._raise_redacted_validation_error(
+                    "Hosted AWS profile requires bedrock_research_model."
+                )
+            if not self.bedrock_judge_model or not self.bedrock_judge_model.strip():
+                self._raise_redacted_validation_error(
+                    "Hosted AWS profile requires bedrock_judge_model."
+                )
+            if self.gcp_project:
+                self._raise_redacted_validation_error(
+                    "Hosted AWS mode rejects contradictory GCP configuration."
+                )
+            if getattr(self.storage, "project_id", None):
+                self._raise_redacted_validation_error(
+                    "Hosted AWS mode rejects contradictory GCP configuration."
+                )
+
         if self.paid_providers_enabled and not self.paid_provider_cost_acknowledged:
             self._raise_redacted_validation_error(
                 "Paid provider enablement requires explicit cost acknowledgement."
@@ -366,6 +459,7 @@ class ClearcutSettings(BaseSettings):
                 {
                     "adapter": "CLEARCUT_DISPATCH_ADAPTER",
                     "enabled": "CLEARCUT_DISPATCH_ENABLED",
+                    "queue_url": "CLEARCUT_SQS_QUEUE_URL",
                     "project_id": "CLEARCUT_CLOUD_TASKS_PROJECT_ID",
                     "location": "CLEARCUT_CLOUD_TASKS_LOCATION",
                     "queue": "CLEARCUT_CLOUD_TASKS_QUEUE",
@@ -382,7 +476,13 @@ class ClearcutSettings(BaseSettings):
                     "audience": "CLEARCUT_FIREBASE_AUDIENCE",
                 },
             ),
-            (secrets, {"backend": "CLEARCUT_SECRET_BACKEND"}),
+            (
+                secrets,
+                {
+                    "backend": "CLEARCUT_SECRET_BACKEND",
+                    "parallel_secret_arn": "CLEARCUT_PARALLEL_SECRET_ARN",
+                },
+            ),
             (
                 static_delivery,
                 {
@@ -400,6 +500,62 @@ class ClearcutSettings(BaseSettings):
         if profile == DeploymentProfile.LOCAL and "path" not in storage:
             storage["path"] = str(Path(tempfile.gettempdir()) / "clearcut-storage")
 
+        if "endpoint_url" not in storage:
+            endpoint = source.get("AWS_ENDPOINT_URL") or source.get("S3_ENDPOINT_URL")
+            if endpoint and endpoint.strip():
+                storage["endpoint_url"] = endpoint.strip()
+
+        if "access_key_id" not in storage:
+            ak = source.get("AWS_ACCESS_KEY_ID")
+            if ak and ak.strip():
+                storage["access_key_id"] = ak.strip()
+        if "secret_access_key" not in storage:
+            sk = source.get("AWS_SECRET_ACCESS_KEY")
+            if sk and sk.strip():
+                storage["secret_access_key"] = sk.strip()
+
+        aws_region = (
+            source.get("AWS_REGION")
+            or source.get("AWS_DEFAULT_REGION")
+            or source.get("CLEARCUT_STORAGE_REGION")
+        )
+        if aws_region and aws_region.strip():
+            aws_region = aws_region.strip()
+            if "region" not in storage:
+                storage["region"] = aws_region
+        else:
+            aws_region = None
+
+        bedrock_detection_model = source.get("CLEARCUT_BEDROCK_DETECTION_MODEL")
+        if bedrock_detection_model:
+            bedrock_detection_model = bedrock_detection_model.strip()
+        bedrock_research_model = source.get("CLEARCUT_BEDROCK_RESEARCH_MODEL")
+        if bedrock_research_model:
+            bedrock_research_model = bedrock_research_model.strip()
+        bedrock_synthesis_model = source.get("CLEARCUT_BEDROCK_SYNTHESIS_MODEL")
+        if bedrock_synthesis_model:
+            bedrock_synthesis_model = bedrock_synthesis_model.strip()
+        elif bedrock_research_model:
+            bedrock_synthesis_model = bedrock_research_model
+        bedrock_judge_model = source.get("CLEARCUT_BEDROCK_JUDGE_MODEL")
+        if bedrock_judge_model:
+            bedrock_judge_model = bedrock_judge_model.strip()
+
+        model_backend = source.get("CLEARCUT_MODEL_BACKEND")
+        if model_backend and model_backend.strip():
+            model_backend = model_backend.strip().lower()
+        else:
+            model_backend = None
+
+        gcp_project = (
+            source.get("GOOGLE_CLOUD_PROJECT")
+            or source.get("CLEARCUT_GCP_PROJECT")
+            or source.get("GCP_PROJECT")
+            or source.get("GCS_BUCKET")
+            or source.get("CLOUD_TASKS_QUEUE")
+        )
+        gcp_project = gcp_project.strip() if gcp_project and gcp_project.strip() else None
+
         legacy_dispatch_mode = source.get("CLEARCUT_JOB_DISPATCH_MODE", "").strip().lower()
         if profile == DeploymentProfile.LOCAL and legacy_dispatch_mode:
             if legacy_dispatch_mode not in {"disabled", "local"}:
@@ -407,27 +563,43 @@ class ClearcutSettings(BaseSettings):
             dispatch.setdefault("enabled", legacy_dispatch_mode == "local")
 
         paid_providers = frozenset(
-            name.strip()
+            name.strip().lower()
             for name in source.get("CLEARCUT_PAID_PROVIDERS_ENABLED", "").split(",")
             if name.strip()
         )
         paid_provider_concurrency_limits = {
             "gemini": source.get("CLEARCUT_GEMINI_CONCURRENCY_LIMIT", "1"),
             "parallel": source.get("CLEARCUT_PARALLEL_CONCURRENCY_LIMIT", "1"),
+            "bedrock": source.get("CLEARCUT_BEDROCK_CONCURRENCY_LIMIT", "1"),
         }
-        return cls.model_validate(
-            {
-                "profile": profile,
-                "database": {"url": database_url},
-                "storage": storage,
-                "dispatch": dispatch,
-                "authentication": authentication,
-                "secrets": secrets,
-                "static_delivery": static_delivery,
-                "paid_providers_enabled": paid_providers,
-                "paid_provider_cost_acknowledged": source.get(
-                    "CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED", "false"
-                ),
-                "paid_provider_concurrency_limits": paid_provider_concurrency_limits,
-            }
-        )
+        payload: dict[str, Any] = {
+            "profile": profile,
+            "database": {"url": database_url},
+            "storage": storage,
+            "dispatch": dispatch,
+            "authentication": authentication,
+            "secrets": secrets,
+            "static_delivery": static_delivery,
+            "paid_providers_enabled": paid_providers,
+            "paid_provider_cost_acknowledged": source.get(
+                "CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED", "false"
+            ),
+            "paid_provider_concurrency_limits": paid_provider_concurrency_limits,
+        }
+        if model_backend:
+            payload["model_backend"] = model_backend
+        if aws_region:
+            payload["aws_region"] = aws_region
+        if bedrock_detection_model:
+            payload["bedrock_detection_model"] = bedrock_detection_model
+        if bedrock_research_model:
+            payload["bedrock_research_model"] = bedrock_research_model
+        if bedrock_synthesis_model:
+            payload["bedrock_synthesis_model"] = bedrock_synthesis_model
+        if bedrock_judge_model:
+            payload["bedrock_judge_model"] = bedrock_judge_model
+        if gcp_project:
+            payload["gcp_project"] = gcp_project
+
+        return cls.model_validate(payload)
+

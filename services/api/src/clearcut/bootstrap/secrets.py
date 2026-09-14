@@ -134,6 +134,7 @@ def build_secret_resolver(
     environ: Mapping[str, str] | None = None,
     host_secrets_dir: Path | str | None = None,
     project_id: str | None = None,
+    aws_region: str | None = None,
 ) -> SecretResolver:
     """Build the explicitly selected secret resolver based on settings."""
     if settings.backend is SecretBackend.ENVIRONMENT:
@@ -142,4 +143,9 @@ def build_secret_resolver(
         return HostSecretResolver(secrets_dir=host_secrets_dir)
     if settings.backend is SecretBackend.SECRET_MANAGER:
         return SecretManagerResolver(client=client, project_id=project_id)
+    if settings.backend is SecretBackend.AWS_SECRETS_MANAGER:
+        from clearcut.bootstrap.aws_secrets import AwsSecretsManagerResolver
+
+        return AwsSecretsManagerResolver(client=client, region_name=aws_region)
     raise SecretResolutionError(f"Unsupported secret backend: {settings.backend}")
+

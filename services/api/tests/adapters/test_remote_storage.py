@@ -5,6 +5,7 @@ import traceback
 from types import SimpleNamespace
 
 import pytest
+from botocore.exceptions import ClientError
 from clearcut.bootstrap import storage as storage_module
 from clearcut.bootstrap.settings import GCSStorageSettings, S3StorageSettings
 from clearcut.scripts.ports.object_storage import ObjectStoragePort
@@ -147,3 +148,82 @@ async def test_gcs_calls_have_bounded_timeout_without_implicit_retries():
     await storage.object_exists("org/project/key")
     await storage.delete_object("org/project/key")
     assert all(kwargs["timeout"] == 30 and kwargs["retry"] is None for _, kwargs in client.calls)
+
+
+@pytest.mark.asyncio
+async def test_s3_no_such_bucket_raises_bucket_not_found():
+    client = FakeClient()
+    error_response = {
+        "Error": {"Code": "NoSuchBucket", "Message": "The specified bucket does not exist"}
+    }
+    client.failure = ClientError(error_response, "GetObject")
+    storage = storage_module.build_object_storage(
+        S3StorageSettings(bucket="non-existent-bucket"), client=client
+    )
+    with pytest.raises(
+        storage_module.BucketNotFoundError, match="does not exist"
+    ):
+        await storage.get_object("org/project/file.txt")
+
+
+@pytest.mark.asyncio
+async def test_s3_access_denied_raises_storage_access_denied():
+    client = FakeClient()
+    error_response = {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}}
+    client.failure = ClientError(error_response, "PutObject")
+    storage = storage_module.build_object_storage(
+        S3StorageSettings(bucket="forbidden-bucket"), client=client
+    )
+    with pytest.raises(
+        storage_module.StorageAccessDeniedError, match="Access denied to storage bucket"
+    ):
+        await storage.put_object("org/project/file.txt", b"data", "text/plain")
+
+
+@pytest.mark.asyncio
+async def test_s3_no_such_key_returns_none_and_false():
+    client = FakeClient()
+    error_response = {
+        "Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist"}
+    }
+    client.failure = ClientError(error_response, "GetObject")
+    storage = storage_module.build_object_storage(
+        S3StorageSettings(bucket="valid-bucket"), client=client
+    )
+    assert await storage.get_object("org/project/missing.txt") is None
+
+    client.failure = ClientError(error_response, "HeadObject")
+    assert await storage.object_exists("org/project/missing.txt") is False
+
+
+@pytest.mark.asyncio
+async def test_s3_status_404_returns_none_and_false():
+    client = FakeClient()
+    error_response = {"Error": {"Code": "404", "Message": "Not Found"}}
+    client.failure = ClientError(error_response, "GetObject")
+    storage = storage_module.build_object_storage(
+        S3StorageSettings(bucket="valid-bucket"), client=client
+    )
+    assert await storage.get_object("org/project/missing.txt") is None
+
+    client.failure = ClientError(error_response, "HeadObject")
+    assert await storage.object_exists("org/project/missing.txt") is False
+
+
+@pytest.mark.asyncio
+async def test_s3_credential_redaction_in_exception():
+    client = FakeClient()
+    error_response = {
+        "Error": {
+            "Code": "InternalError",
+            "Message": "Fatal AWS_SECRET_ACCESS_KEY=supersecretkeyfailure",
+        }
+    }
+    client.failure = ClientError(error_response, "PutObject")
+    storage = storage_module.build_object_storage(
+        S3StorageSettings(bucket="my-bucket"), client=client
+    )
+    with pytest.raises(storage_module.ObjectStorageError) as caught:
+        await storage.put_object("org/project/file.txt", b"x", "text/plain")
+    assert "supersecretkeyfailure" not in "".join(traceback.format_exception(caught.value))
+

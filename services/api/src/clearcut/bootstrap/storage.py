@@ -11,14 +11,25 @@ from clearcut.bootstrap.settings import (
 )
 from clearcut.scripts.adapters.filesystem_storage import FilesystemObjectStorage
 from clearcut.scripts.adapters.remote_storage import (
+    BucketNotFoundError,
     GCSObjectStorage,
+    ObjectNotFoundError,
     ObjectStorageError,
     S3ObjectStorage,
+    StorageAccessDeniedError,
+    StorageConfigurationError,
 )
 from clearcut.scripts.ports.object_storage import ObjectStoragePort
 from google.cloud import storage
 
-__all__ = ["ObjectStorageError", "build_object_storage"]
+__all__ = [
+    "BucketNotFoundError",
+    "ObjectNotFoundError",
+    "ObjectStorageError",
+    "StorageAccessDeniedError",
+    "StorageConfigurationError",
+    "build_object_storage",
+]
 
 
 def build_object_storage(settings: StorageSettings, *, client: Any = None) -> ObjectStoragePort:

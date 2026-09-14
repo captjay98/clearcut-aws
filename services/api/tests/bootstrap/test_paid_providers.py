@@ -8,6 +8,9 @@ from typing import Any, cast
 
 import pytest
 from clearcut.bootstrap.paid_providers import (
+    DEFAULT_CONCURRENCY_LIMITS,
+    NestedPermitAcquisitionError,
+    PaidProviderConcurrencyError,
     PaidProviderDisabledError,
     PaidProviderGate,
     build_paid_provider_gate,
@@ -178,3 +181,181 @@ async def test_runtime_boundaries_deny_before_resolving_paid_clients(
         _ConfiguredResearchRuntime(gate).search(cast(Any, object()))
 
     assert resolved == []
+
+
+def test_default_concurrency_limits_includes_bedrock() -> None:
+    assert "bedrock" in DEFAULT_CONCURRENCY_LIMITS
+    assert DEFAULT_CONCURRENCY_LIMITS["bedrock"] == 5
+
+
+@pytest.mark.asyncio
+async def test_cross_context_sync_async_mutual_exclusion() -> None:
+    gate = PaidProviderGate(
+        enabled_providers=frozenset({"bedrock"}),
+        concurrency_limits={"bedrock": 1},
+    )
+    fake_client = FakePaidClient()
+
+    async with gate.acquire("bedrock"):
+        assert gate.active_count("bedrock") == 1
+
+        # Synchronous acquisition from thread must time out and fail
+        def try_sync_acquire() -> None:
+            with pytest.raises(PaidProviderConcurrencyError), gate.acquire_sync("bedrock", timeout=0.05):
+                fake_client.call(op="sync_during_async")
+
+        await asyncio.to_thread(try_sync_acquire)
+
+    assert gate.active_count("bedrock") == 0
+
+    # Conversely: acquire in sync thread, async acquire must time out
+    def hold_sync(held_event, release_event) -> None:
+        with gate.acquire_sync("bedrock"):
+            held_event.set()
+            release_event.wait(timeout=2.0)
+
+    import threading
+
+    held = threading.Event()
+    release = threading.Event()
+    thread = threading.Thread(target=hold_sync, args=(held, release))
+    thread.start()
+
+    await asyncio.to_thread(held.wait)
+    assert gate.active_count("bedrock") == 1
+
+    with pytest.raises(PaidProviderConcurrencyError):
+        async with gate.acquire("bedrock", timeout=0.05):
+            await fake_client.async_call(op="async_during_sync")
+
+    release.set()
+    await asyncio.to_thread(thread.join)
+    assert gate.active_count("bedrock") == 0
+
+
+@pytest.mark.asyncio
+async def test_mixed_sync_async_concurrency_limit_enforced() -> None:
+    import threading
+    import time
+
+    limit = 3
+    gate = PaidProviderGate(
+        enabled_providers=frozenset({"bedrock"}),
+        concurrency_limits={"bedrock": limit},
+    )
+
+    peak_lock = threading.Lock()
+    peak_active = 0
+
+    def update_peak():
+        nonlocal peak_active
+        with peak_lock:
+            cur = gate.active_count("bedrock")
+            if cur > peak_active:
+                peak_active = cur
+            assert cur <= limit
+
+    async def async_worker():
+        async with gate.acquire("bedrock"):
+            update_peak()
+            await asyncio.sleep(0.01)
+
+    def sync_worker():
+        with gate.acquire_sync("bedrock"):
+            update_peak()
+            time.sleep(0.01)
+
+    async_tasks = [asyncio.create_task(async_worker()) for _ in range(15)]
+    sync_tasks = [asyncio.to_thread(sync_worker) for _ in range(15)]
+
+    await asyncio.gather(*async_tasks, *sync_tasks)
+    assert peak_active <= limit
+    assert gate.active_count("bedrock") == 0
+    assert gate.available_count("bedrock") == limit
+
+
+@pytest.mark.asyncio
+async def test_async_cancellation_while_waiting_does_not_leak_permit() -> None:
+    gate = PaidProviderGate(
+        enabled_providers=frozenset({"bedrock"}),
+        concurrency_limits={"bedrock": 1},
+    )
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder():
+        async with gate.acquire("bedrock"):
+            started.set()
+            await release.wait()
+
+    holder_task = asyncio.create_task(holder())
+    await started.wait()
+    assert gate.active_count("bedrock") == 1
+    assert gate.available_count("bedrock") == 0
+
+    # Waiter task starts waiting
+    waiter_started = asyncio.Event()
+
+    async def waiter():
+        waiter_started.set()
+        async with gate.acquire("bedrock"):
+            pass
+
+    waiter_task = asyncio.create_task(waiter())
+    await waiter_started.wait()
+    await asyncio.sleep(0.01)
+
+    # Cancel waiter while it is in the queue
+    waiter_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await waiter_task
+
+    # Release the holder permit
+    release.set()
+    await holder_task
+
+    # Permit must not leak: active=0, available=1
+    assert gate.active_count("bedrock") == 0
+    assert gate.available_count("bedrock") == 1
+
+    # Next caller can acquire cleanly
+    async with gate.acquire("bedrock"):
+        assert gate.active_count("bedrock") == 1
+    assert gate.active_count("bedrock") == 0
+
+
+def test_nested_acquisition_prevention_when_disallowed() -> None:
+    gate = PaidProviderGate(
+        enabled_providers=frozenset({"bedrock"}),
+        concurrency_limits={"bedrock": 2},
+    )
+
+    with (
+        gate.acquire("bedrock", allow_nested=False),
+        pytest.raises(NestedPermitAcquisitionError),
+        gate.acquire("bedrock", allow_nested=False),
+    ):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_requested_model_property_does_not_acquire_permit(monkeypatch: pytest.MonkeyPatch) -> None:
+    class MockRuntime:
+        @property
+        def requested_model(self) -> str:
+            return "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    monkeypatch.setattr(
+        "clearcut.bootstrap.runtime.get_detection_runtime",
+        lambda: MockRuntime(),
+    )
+    # Even with provider disabled in gate, property read does not acquire permit or fail
+    disabled_gate = build_paid_provider_gate(enabled_providers=frozenset())
+    configured = _ConfiguredDetectionRuntime(disabled_gate, model_provider="bedrock")
+
+    # Accessing requested_model property must succeed without permit error
+    model_name = configured.requested_model
+    assert model_name == "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    assert disabled_gate.active_count("bedrock") == 0
+

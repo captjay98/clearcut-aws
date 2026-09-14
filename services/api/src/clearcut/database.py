@@ -35,11 +35,12 @@ if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is required for hosted deployment profiles.")
     DATABASE_URL = LOCAL_SQLITE_URL
 
-if deployment_profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP}:
+if deployment_profile in {DeploymentProfile.PORTABLE, DeploymentProfile.GCP, DeploymentProfile.AWS}:
     try:
         validate_hosted_database_url(DATABASE_URL)
     except ValueError as error:
         raise RuntimeError(str(error)) from error
+
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
 
