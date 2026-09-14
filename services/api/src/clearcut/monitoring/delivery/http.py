@@ -14,14 +14,16 @@ from clearcut.delivery_errors import error_response
 from clearcut.identity.delivery.scope import get_request_scope
 from clearcut.monitoring.adapters.sql_review_repository import SqlMonitoringReviewRepository
 from clearcut.monitoring.adapters.sql_watch_repository import SqlMonitoringWatchRepository
+from clearcut.monitoring.adapters.unavailable_providers import (
+    UnavailableExtractAdapter,
+    UnavailableSearchAdapter,
+)
 from clearcut.monitoring.application.review_change import MonitoringReviewService
 from clearcut.monitoring.application.run_scheduled_watch import ScheduledWatchService
 from clearcut.monitoring.domain.materiality import ChangeMateriality, MonitoringReviewAction
 from clearcut.monitoring.domain.models import WatchCadence, WatchConfig, WatchKind
 from clearcut.monitoring.ports.review_repository import PendingChangeSignal
 from clearcut.organizations.delivery.http import verify_csrf_origin
-from clearcut.research.adapters.hermetic_extract import HermeticExtractAdapter
-from clearcut.research.adapters.hermetic_search import HermeticSearchAdapter
 from clearcut.research.domain.snapshots import SourceSnapshot
 from fastapi import APIRouter, Path, Request, status
 from fastapi.responses import JSONResponse
@@ -56,13 +58,13 @@ _REGISTER_SOURCE_PATH = (
 _review_repository = SqlMonitoringReviewRepository()
 _review_service = MonitoringReviewService(repository=_review_repository)
 _watch_repository = SqlMonitoringWatchRepository()
-# The recheck adapters are hermetic (no paid provider call): a recheck always
-# re-derives the same deterministic excerpt, so a change is detected only when a
-# registered baseline was recorded with a *different* excerpt. No fabricated
-# provider traffic and no fabricated change.
+# Rechecks are fail-closed: with no enabled, authorized provider every recheck
+# records a FAILED run with the reason rather than succeeding on fabricated
+# content. Deterministic retrieval semantics belong to tests, which inject the
+# hermetic adapters through an explicit seam.
 _scheduled_watch_service = ScheduledWatchService(
-    extract_port=HermeticExtractAdapter(),
-    search_port=HermeticSearchAdapter(),
+    extract_port=UnavailableExtractAdapter(),
+    search_port=UnavailableSearchAdapter(),
 )
 
 # The contract exposes a neutral review vocabulary (accepted/rejected/escalated);

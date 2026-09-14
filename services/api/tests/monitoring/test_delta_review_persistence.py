@@ -68,8 +68,8 @@ async def test_recheck_detects_and_persists_a_pending_delta(seeded_monitoring_sc
     watch = _watch(org_id, project_id, item_id)
     prior = _prior_snapshot(org_id, project_id, item_id)
 
-    # The recheck's fabricated excerpt ("Active registered record") differs from
-    # the prior excerpt, so a MATERIAL change signal is produced.
+    # The hermetic adapter's derived excerpt differs from the prior excerpt,
+    # so a MATERIAL change signal is produced from real comparison.
     run, snapshot, delta = await service.execute_watch_recheck(watch, prior_snapshot=prior)
     assert delta is not None
     assert delta.materiality == ChangeMateriality.MATERIAL

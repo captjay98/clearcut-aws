@@ -210,9 +210,10 @@ class SqlMonitoringWatchRepository:
         session: AsyncSession,
         *,
         run: MonitoringRun,
-        snapshot: SourceSnapshot,
+        snapshot: SourceSnapshot | None,
     ) -> None:
-        await self._persist_snapshot(session, snapshot)
+        if snapshot is not None:
+            await self._persist_snapshot(session, snapshot)
         await session.execute(
             _INSERT_MONITORING_RUN,
             {

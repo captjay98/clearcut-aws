@@ -32,9 +32,19 @@ from clearcut.research.adapters.hermetic_search import HermeticSearchAdapter
 from clearcut.research.domain.snapshots import SourceSnapshot
 
 _TARGET_URL = "https://uspto.gov/trademarks/coca-cola"
-# The excerpt the hermetic recheck deterministically re-derives (see
-# ScheduledWatchService.execute_watch_recheck).
-_RECHECK_EXCERPT = "Active registered record"
+
+
+def _hermetic_recheck_excerpt(item_id: UUID) -> str:
+    """The excerpt the hermetic extract adapter deterministically derives for a
+    recheck of this item (mirrors ScheduledWatchService's objective)."""
+    objective = (
+        f"Monitoring recheck of clearance item {item_id} "
+        "for source changes."
+    )
+    return (
+        f"Detailed authoritative excerpt extracted from {_TARGET_URL} "
+        f"regarding {objective}"
+    )
 
 
 def _watch(org_id: UUID, project_id: UUID, item_id: UUID) -> WatchConfig:
@@ -160,7 +170,7 @@ async def test_run_check_with_material_difference_persists_pending_signal(
     assert pending[0].watch_id == watch.watch_id
     assert pending[0].signal_type == ChangeMateriality.MATERIAL
     assert pending[0].prior_excerpt == "Registered and active"
-    assert pending[0].current_excerpt == _RECHECK_EXCERPT
+    assert pending[0].current_excerpt == _hermetic_recheck_excerpt(item_id)
 
     payload = _change_payload(pending[0])
     assert payload["reviewId"] == str(pending[0].delta_id)
@@ -195,7 +205,9 @@ async def test_run_check_with_identical_content_persists_no_signal(
     watch = _watch(org_id, project_id, item_id)
     # Baseline excerpt equals the recheck's excerpt, so the comparison is
     # NON_MATERIAL and no change signal is fabricated.
-    baseline = _baseline(org_id, project_id, item_id, _RECHECK_EXCERPT)
+    baseline = _baseline(
+        org_id, project_id, item_id, _hermetic_recheck_excerpt(item_id)
+    )
 
     async with session_scope() as session:
         await watch_repository.register_watch(
