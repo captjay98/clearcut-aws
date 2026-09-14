@@ -11,6 +11,7 @@ from clearcut.database import session_scope
 from clearcut.evaluation.domain.configuration import default_active_configuration
 from clearcut.identity.delivery.scope import get_request_scope
 from clearcut.organizations.domain.capabilities import has_capability
+from clearcut.organizations.domain.invitations import normalize_email
 from fastapi import APIRouter, HTTPException, Path, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
@@ -687,6 +688,25 @@ async def accept_invitation(token: str, request: Request) -> dict:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation has expired"
             )
 
+        if normalize_email(scope.email) != normalize_email(inv["email"]):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invitation email does not match the signed-in account",
+            )
+
+        consume = await session.execute(
+            sa.text(
+                "UPDATE invitations SET status = 'accepted', accepted_at = :accepted_at "
+                "WHERE id = :id AND status = 'pending'"
+            ),
+            {"id": str(inv["id"]), "accepted_at": now},
+        )
+        if consume.rowcount == 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Invitation was already accepted",
+            )
+
         membership_id = uuid6.uuid7()
         await session.execute(
             sa.text("""
@@ -701,12 +721,6 @@ async def accept_invitation(token: str, request: Request) -> dict:
                 "role": inv["role"],
                 "created_at": now,
             },
-        )
-        await session.execute(
-            sa.text(
-                "UPDATE invitations SET status = 'accepted', accepted_at = :accepted_at WHERE id = :id"
-            ),
-            {"id": str(inv["id"]), "accepted_at": now},
         )
 
     return {
