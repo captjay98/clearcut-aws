@@ -21,7 +21,7 @@ const sections = [
 const requirements = [
   ['Docker', 'REQUIRED', 'Docker Compose v2+ for local development and single-server deployments.'],
   ['PostgreSQL 15+', 'REQUIRED', 'Stores users, organizations, scripts, evidence, decisions, and audit records. Included in docker compose.'],
-  ['Gemini API key', 'OPTIONAL', 'Enables detection, search planning, and evaluation. Disabled by default; the UI and API run without it and unresearched items stay unresolved.'],
+  ['Amazon Bedrock', 'OPTIONAL', 'Enables detection, search planning, and evaluation via Converse API. Disabled by default; the UI and API run without it and unresearched items stay unresolved.'],
   ['Parallel API key', 'OPTIONAL', 'Enables live source retrieval with provenance. Disabled by default; enabling it requires an explicit cost acknowledgement.'],
   ['Cloud Storage', 'OPTIONAL', 'For script uploads and report exports. Local filesystem works for development and single-host installs.'],
   ['Firebase', 'OPTIONAL', 'Validated as an optional identity boundary. Built-in server sessions are the default and the only wired mode.'],
@@ -114,11 +114,11 @@ CLEARCUT_DEPLOYMENT_PROFILE=local
 
 # Paid providers are disabled until acknowledged
 CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED=false
-GEMINI_API_KEY=
+BEDROCK_REGION=us-east-1
 PARALLEL_API_KEY=</code></pre>
         </div>
         <p class="small muted gap-t-4">
-          Enabling Gemini or Parallel requires both a credential and
+          Enabling Amazon Bedrock or Parallel requires both credentials and
           <span class="mono">CLEARCUT_PAID_PROVIDER_COST_ACKNOWLEDGED=true</span>, plus a positive
           per-provider concurrency limit. A missing or failing provider always becomes visible
           review work rather than invented evidence.
@@ -136,10 +136,10 @@ PARALLEL_API_KEY=</code></pre>
 /api/*       &#8594; application API
 /api/internal&#8594; protected service delivery
 
-PostgreSQL     &#8594; evidence, decisions, audit trail
+PostgreSQL     &#8594; evidence, decisions, audit trail, step receipts
 Object storage &#8594; scripts, snapshots, exports
-Gemini         &#8594; detection, evaluation, judge (opt-in)
-Parallel       &#8594; live source retrieval with provenance (opt-in)</code></pre>
+Amazon Bedrock &#8594; detection, evaluation, judge (opt-in)
+Strands Agents &#8594; bounded agentic research with Parallel (opt-in)</code></pre>
         </div>
         <p class="small muted gap-t-4">
           The API is one modular monolith with bounded modules &mdash; not backend microservices.

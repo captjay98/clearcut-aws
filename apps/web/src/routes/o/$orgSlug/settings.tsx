@@ -215,11 +215,11 @@ export function SettingsRoute() {
                   ]}
                   rows={[
                     [
-                      <strong>Gemini</strong>,
+                      <strong>Amazon Bedrock</strong>,
                       <span className="small muted">
-                        Detection and rewrite proposals
+                        Detection and model capabilities
                       </span>,
-                      paidProviders.includes("gemini") ? (
+                      paidProviders.includes("bedrock") || paidProviders.includes("gemini") ? (
                         <Badge tone="is-success">Enabled</Badge>
                       ) : (
                         <Badge tone="is-warning">Disabled by default</Badge>
@@ -265,7 +265,7 @@ export function SettingsRoute() {
                   <Banner
                     icon="ℹ"
                     title="Paid providers are off until they are acknowledged"
-                    message="Gemini and Parallel default to disabled. Enabling either takes an explicit cost acknowledgement and a bounded concurrency limit, so no paid call happens by accident. Retry history for a provider call lives in Records, not here."
+                    message="Amazon Bedrock and Parallel default to disabled. Enabling either takes an explicit cost acknowledgement and a bounded concurrency limit, so no paid call happens by accident. Retry history for a provider call lives in Records, not here."
                   />
                 </div>
               </>
