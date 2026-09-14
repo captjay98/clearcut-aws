@@ -1,4 +1,5 @@
 """Vertex Gemini Pro judge with closed structured output and one repair maximum."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,7 @@ from clearcut.ai.model_roles import (
 )
 from clearcut.evaluation.domain.rubric import (
     DimensionStatus,
+    EvaluationStage,
     JudgeDimension,
     JudgeVerdict,
     get_stage_eligible_dimensions,
@@ -104,9 +106,7 @@ class VertexJudgeAdapter(JudgePort):
     ) -> None:
         self.project = project
         self.location = location
-        self.role_configuration = role_configuration or resolve_model_role(
-            GeminiRole.JUDGE
-        )
+        self.role_configuration = role_configuration or resolve_model_role(GeminiRole.JUDGE)
         if self.role_configuration.role is not GeminiRole.JUDGE:
             raise ValueError("VertexJudgeAdapter requires the judge model role.")
         self.model = self.role_configuration.model
@@ -164,16 +164,12 @@ class VertexJudgeAdapter(JudgePort):
             total_latency_ms += latency_ms
             usage, metadata_invalid = self._usage(response)
             try:
-                returned_model = self._optional_string(
-                    getattr(response, "model_version", None)
-                )
+                returned_model = self._optional_string(getattr(response, "model_version", None))
             except ValueError:
                 returned_model = None
                 metadata_invalid = True
             try:
-                response_id = self._optional_string(
-                    getattr(response, "response_id", None)
-                )
+                response_id = self._optional_string(getattr(response, "response_id", None))
             except ValueError:
                 response_id = None
                 metadata_invalid = True
@@ -299,8 +295,7 @@ class VertexJudgeAdapter(JudgePort):
                 "inputSha256": request.bindings.input_sha256,
             },
             "eligibleDimensions": sorted(
-                dimension.value
-                for dimension in get_stage_eligible_dimensions(request.stage)
+                dimension.value for dimension in get_stage_eligible_dimensions(request.stage)
             ),
             "candidates": [
                 {
@@ -336,6 +331,25 @@ class VertexJudgeAdapter(JudgePort):
                 for evidence in request.research_evidence
             ],
         }
+        if request.stage is EvaluationStage.RESEARCH:
+            payload["candidateResponse"] = [
+                {
+                    "claimText": evidence.claim_text,
+                    "snapshotId": str(evidence.snapshot_id),
+                    "url": evidence.url,
+                    "stance": evidence.stance,
+                }
+                for evidence in request.research_evidence
+            ]
+            payload["evaluationContext"] = (
+                "Research claim evaluation: candidateResponse contains the generated claims "
+                "under review. researchEvidence contains their attributable source excerpts. "
+                "The empty detection candidates list is expected at this stage and does not "
+                "mean the candidate response is missing. Evaluate grounding, citations, "
+                "conflicts, uncertainty, and legal boundaries against these supplied claims "
+                "and sources. Keep incomplete or failed verdicts when the actual supplied "
+                "claims or sources do not support evaluation; never invent missing facts."
+            )
         instruction = (
             "The previous response violated the required schema. Return one corrected "
             "response only; use the same evidence and do not add facts."
@@ -401,10 +415,14 @@ class VertexJudgeAdapter(JudgePort):
                 raise _InvalidJudgeResponseError
             if status is DimensionStatus.SCORED and normalized_score is None:
                 raise _InvalidJudgeResponseError
-            if status in {
-                DimensionStatus.INCOMPLETE,
-                DimensionStatus.NOT_APPLICABLE,
-            } and normalized_score is not None:
+            if (
+                status
+                in {
+                    DimensionStatus.INCOMPLETE,
+                    DimensionStatus.NOT_APPLICABLE,
+                }
+                and normalized_score is not None
+            ):
                 raise _InvalidJudgeResponseError
             if status is DimensionStatus.FAILED and normalized_score != 0.0:
                 raise _InvalidJudgeResponseError
@@ -467,7 +485,8 @@ class VertexJudgeAdapter(JudgePort):
             status_code in {408, 425}
             or (status_code is not None and 500 <= status_code <= 599)
             or isinstance(error, (ConnectionError, TimeoutError))
-            or error_name in {
+            or error_name
+            in {
                 "deadlineexceeded",
                 "servererror",
                 "serviceunavailable",
@@ -495,9 +514,7 @@ class VertexJudgeAdapter(JudgePort):
             "total_token_count",
         ):
             try:
-                value = VertexJudgeAdapter._optional_int(
-                    getattr(metadata, attribute, None)
-                )
+                value = VertexJudgeAdapter._optional_int(getattr(metadata, attribute, None))
             except ValueError:
                 value = None
                 invalid = True

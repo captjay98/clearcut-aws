@@ -18,9 +18,13 @@ async def _auth_org_project(client: AsyncClient) -> tuple[str, str]:
         json={"name": "Researcher", "email": "research@studio.com", "password": "Password123!"},
     )
     assert reg.status_code == 201
-    org = await client.post("/api/v1/organizations", json={"name": "Res Studio", "slug": "res-studio"})
+    org = await client.post(
+        "/api/v1/organizations", json={"name": "Res Studio", "slug": "res-studio"}
+    )
     org_id = org.json()["data"]["orgId"]
-    proj = await client.post(f"/api/v1/organizations/{org_id}/projects", json={"title": "Res Project"})
+    proj = await client.post(
+        f"/api/v1/organizations/{org_id}/projects", json={"title": "Res Project"}
+    )
     return org_id, proj.json()["data"]["projectId"]
 
 
@@ -122,10 +126,14 @@ async def test_start_research_persists_canonical_job_and_authoritative_audit():
 
             async with session_scope() as session:
                 job = (
-                    await session.execute(
-                        sa.text("SELECT * FROM jobs WHERE id = :id"), {"id": data["jobId"]}
+                    (
+                        await session.execute(
+                            sa.text("SELECT * FROM jobs WHERE id = :id"), {"id": data["jobId"]}
+                        )
                     )
-                ).mappings().one()
+                    .mappings()
+                    .one()
+                )
                 payload = job["payload"]
                 if isinstance(payload, str):
                     payload = json.loads(payload)
@@ -143,16 +151,20 @@ async def test_start_research_persists_canonical_job_and_authoritative_audit():
                 assert job["lease_owner"] is None and job["lease_expires_at"] is None
 
                 audit = (
-                    await session.execute(
-                        sa.text(
-                            "SELECT actor_id, correlation_id, payload_redacted "
-                            "FROM authoritative_audit_events "
-                            "WHERE org_id = :org AND project_id = :proj "
-                            "AND action = 'research.started' AND target_id = :target"
-                        ),
-                        {"org": org_id, "proj": proj_id, "target": item_id},
+                    (
+                        await session.execute(
+                            sa.text(
+                                "SELECT actor_id, correlation_id, payload_redacted "
+                                "FROM authoritative_audit_events "
+                                "WHERE org_id = :org AND project_id = :proj "
+                                "AND action = 'research.started' AND target_id = :target"
+                            ),
+                            {"org": org_id, "proj": proj_id, "target": item_id},
+                        )
                     )
-                ).mappings().one()
+                    .mappings()
+                    .one()
+                )
                 audit_payload = audit["payload_redacted"]
                 if isinstance(audit_payload, str):
                     audit_payload = json.loads(audit_payload)
@@ -201,7 +213,6 @@ async def test_start_research_rejects_cross_tenant_item():
             assert res.headers["x-request-id"]
     finally:
         app.dependency_overrides.pop(get_research_runtime, None)
-
 
 
 @pytest.mark.asyncio
@@ -259,4 +270,62 @@ async def test_start_research_rolls_back_job_when_authoritative_audit_fails():
     finally:
         async with session_scope() as session:
             await session.execute(sa.text(f"DROP TRIGGER IF EXISTS {trigger_name}"))
+        app.dependency_overrides.pop(get_research_runtime, None)
+
+
+@pytest.mark.asyncio
+async def test_explicit_research_after_failure_creates_one_fresh_audited_job():
+    await init_and_seed_db()
+    original_dispatcher = app.state.job_dispatcher
+    app.state.job_dispatcher = LocalJobDispatcher(
+        runner=app.state.job_runner, mode="disabled", worker_count=None
+    )
+    app.dependency_overrides[get_research_runtime] = lambda: _FakeResearchRuntime()
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            headers={"origin": "http://test"},
+        ) as client:
+            org, project = await _auth_org_project(client)
+            item = await _insert_item(org, project)
+            url = f"/api/v1/organizations/{org}/projects/{project}/clearance-items/{item}:research"
+            first = (await client.post(url)).json()["data"]["jobId"]
+            async with session_scope() as session:
+                await session.execute(
+                    sa.text(
+                        "UPDATE jobs SET status='failed', stage='failed', error=:error WHERE id=:id"
+                    ),
+                    {
+                        "id": first,
+                        "error": json.dumps(
+                            {
+                                "code": "judge_rejected",
+                                "message": "Incomplete evaluation",
+                                "retryable": False,
+                            }
+                        ),
+                    },
+                )
+            second = await client.post(url)
+            assert second.status_code == 202
+            new_id = second.json()["data"]["jobId"]
+            assert new_id != first
+            assert (await client.post(url)).json()["data"]["jobId"] == new_id
+            async with session_scope() as session:
+                assert (
+                    await session.execute(
+                        sa.text("SELECT status FROM jobs WHERE id=:id"), {"id": first}
+                    )
+                ).scalar_one() == "failed"
+                assert (
+                    await session.execute(
+                        sa.text(
+                            "SELECT count(*) FROM authoritative_audit_events WHERE project_id=:project AND action='research.started'"
+                        ),
+                        {"project": project},
+                    )
+                ).scalar_one() == 2
+    finally:
+        app.state.job_dispatcher = original_dispatcher
         app.dependency_overrides.pop(get_research_runtime, None)

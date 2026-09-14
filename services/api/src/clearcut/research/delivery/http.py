@@ -1,4 +1,5 @@
 """Scoped research enqueue and post-commit local dispatch."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -54,24 +55,51 @@ async def start_research(
 
     async with session_scope() as session:
         item = (
-            await session.execute(
-                sa.text(
-                    "SELECT id FROM clearance_items "
-                    "WHERE id = :item_id AND org_id = :org_id "
-                    "AND project_id = :project_id"
-                ),
-                {
-                    "item_id": str(parsed_item_id),
-                    "org_id": str(scope_org_id),
-                    "project_id": str(scope_project_id),
-                },
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM clearance_items "
+                        "WHERE id = :item_id AND org_id = :org_id "
+                        "AND project_id = :project_id"
+                    ),
+                    {
+                        "item_id": str(parsed_item_id),
+                        "org_id": str(scope_org_id),
+                        "project_id": str(scope_project_id),
+                    },
+                )
             )
-        ).mappings().first()
+            .mappings()
+            .first()
+        )
     if item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Clearance item not found in project",
         )
+
+    # A human starting research after failure requests a new run. Keep failed
+    # jobs immutable; concurrent clicks for the same generation still deduplicate.
+    base_key = f"research:{parsed_item_id}"
+    async with session_scope() as session:
+        failed_count = int(
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT count(*) FROM jobs WHERE org_id = :org AND project_id = :project "
+                        "AND job_type = 'research' AND status = 'failed' "
+                        "AND (idempotency_key = :base OR idempotency_key LIKE :generations)"
+                    ),
+                    {
+                        "org": str(scope_org_id),
+                        "project": str(scope_project_id),
+                        "base": base_key,
+                        "generations": base_key + ":after:%",
+                    },
+                )
+            ).scalar_one()
+        )
+    research_key = f"{base_key}:after:{failed_count}" if failed_count else base_key
 
     result = await request.app.state.job_repository.enqueue(
         EnqueueJob(
@@ -79,7 +107,7 @@ async def start_research(
             project_id=scope_project_id,
             actor_id=scope.user_id,
             job_type="research",
-            idempotency_key=f"research:{parsed_item_id}",
+            idempotency_key=research_key,
             payload={
                 "schemaVersion": 1,
                 "target": {

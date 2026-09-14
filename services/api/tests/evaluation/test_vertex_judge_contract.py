@@ -200,7 +200,6 @@ async def test_vertex_judge_normalizes_provider_failure_without_model_fallback()
     assert client.models.calls[0]["model"] == "gemini-3.1-pro-preview"
 
 
-
 @pytest.mark.asyncio
 async def test_vertex_judge_fails_when_provider_identity_metadata_is_missing() -> None:
     response = _response(_valid_payload())
@@ -219,7 +218,6 @@ async def test_vertex_judge_fails_when_provider_identity_metadata_is_missing() -
     assert result.error.retryable is False
     assert len(result.attempts) == 1
     assert len(client.models.calls) == 1
-
 
 
 def test_judge_request_rejects_unknown_stage_before_provider_call() -> None:
@@ -305,7 +303,6 @@ async def test_vertex_judge_normalizes_malformed_usage_metadata(
     assert result.error.code == "invalid_response"
     assert result.error.retryable is False
     assert len(client.models.calls) == 1
-
 
 
 @pytest.mark.parametrize(
@@ -409,11 +406,7 @@ async def test_vertex_judge_preserves_valid_sibling_metadata(
     expected_usage: tuple[int | None, int | None, int | None],
 ) -> None:
     response = _response(_valid_payload())
-    target = (
-        response
-        if field_name in {"model_version", "response_id"}
-        else response.usage_metadata
-    )
+    target = response if field_name in {"model_version", "response_id"} else response.usage_metadata
     setattr(target, field_name, malformed_value)
     client = FakeClient([response])
     adapter = VertexJudgeAdapter(
@@ -439,3 +432,29 @@ async def test_vertex_judge_preserves_valid_sibling_metadata(
     assert attempt.latency_ms >= 0
     assert attempt.error == result.error
     assert len(client.models.calls) == 1
+
+
+def test_research_prompt_identifies_claims_as_the_response_under_review():
+    from dataclasses import replace
+
+    from clearcut.evaluation.ports.judge import ResearchEvidence
+
+    request = replace(
+        _request(),
+        stage=EvaluationStage.RESEARCH,
+        research_evidence=(
+            ResearchEvidence(
+                uuid4(),
+                "https://example.com/source",
+                "Publisher",
+                "Source text",
+                "primary",
+                "supports",
+                "A bounded supported claim",
+            ),
+        ),
+    )
+    contents = VertexJudgeAdapter._contents(request, repair=False)
+    assert '"candidateResponse"' in contents
+    assert "A bounded supported claim" in contents
+    assert "empty detection candidates" in contents
