@@ -199,16 +199,26 @@ class RescanChildWorkPort(Protocol):
         """
         ...
 
-    async def request_detection(
+    async def detect_modified_items(
         self,
         *,
         org_id: OrgId,
         project_id: ProjectId,
         after_version_id: VersionId,
-        affected_item_ids: tuple[ItemId, ...],
+        modified_after_element_ids: tuple[ElementId, ...],
         actor_id: ItemId,
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        """Request fresh detection for affected items with stable keys."""
+    ) -> tuple[ItemId, ...]:
+        """Freshly detect the modified AFTER-version passages and return new items.
+
+        Modified passages are re-detected scoped to EXACTLY their changed
+        after-version elements (never the whole version), regardless of whether
+        the prior passage carried a clearance item: an edit can introduce a new
+        concern where none was flagged before. Fresh detection materializes
+        brand-new unresolved clearance items on the after version; predecessor
+        items are never the detection target and are never re-researched. It is
+        replay-idempotent: a repeat detects no duplicate item and returns the
+        same ids.
+        """
         ...
 
     async def request_research(

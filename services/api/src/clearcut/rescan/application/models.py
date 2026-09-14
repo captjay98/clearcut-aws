@@ -144,8 +144,10 @@ class RevisionPlan:
 
     Sourced from the scripts module's persisted adjacent diff. ``carryable_elements``
     are the exact/contextual unchanged or moved elements eligible for
-    carry-forward; ``affected_element_ids`` are the BEFORE-version elements whose
-    predecessor items require fresh detection/research (modified);
+    carry-forward; ``affected_element_ids`` are the BEFORE-version elements of
+    modified passages, carried for predecessor lineage context;
+    ``modified_after_element_ids`` are their AFTER-version counterparts, the
+    changed elements that scoped re-detection targets;
     ``added_after_element_ids`` are the AFTER-version elements with no predecessor
     that require fresh detection producing brand-new unresolved items;
     ``removed_element_ids`` are before-version elements that stay historical only.
@@ -161,6 +163,9 @@ class RevisionPlan:
     affected_element_ids: frozenset[ElementId]
     removed_element_ids: frozenset[ElementId]
     added_after_element_ids: frozenset[ElementId] = frozenset()
+    # Element ids are globally unique, so a BEFORE-side id can never scope
+    # AFTER-version detection; the after-side set is carried separately.
+    modified_after_element_ids: frozenset[ElementId] = frozenset()
 
 
 @dataclass(frozen=True)

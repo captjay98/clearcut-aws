@@ -127,12 +127,16 @@ class RunSelectiveRescanJobService:
             raise self._as_execution_error(error) from error
 
         # The summary starts from the restored totals, so a resumed run reports the
-        # work a previous attempt actually completed instead of zeros.
+        # work a previous attempt actually completed instead of zeros. Modified
+        # and added item ids are disjoint (scoped detection on disjoint element
+        # sets), so the restored modified count is exact as the difference.
         summary: dict[str, Any] = {
             "afterVersionId": str(after_version_id),
             "carriedItemCount": len(restored.carried_mappings),
             "carriedEvidenceEdgeCount": restored.carried_evidence_edge_count,
             "affectedItemCount": len(restored.affected_item_ids),
+            "modifiedItemCount": len(restored.affected_item_ids)
+            - len(restored.added_item_ids),
             "addedItemCount": len(restored.added_item_ids),
         }
         carried_mappings: tuple[CarriedItemMapping, ...] = restored.carried_mappings
@@ -224,20 +228,19 @@ class RunSelectiveRescanJobService:
             )
 
         if stage is RescanStage.DETECTING_AFFECTED_PASSAGES:
-            affected_item_ids = await self._child_work.list_affected_items(
+            # Modified passages are freshly detected on the AFTER version, scoped
+            # to exactly their changed after-elements — regardless of whether the
+            # prior passage carried a clearance item, because an edit can
+            # introduce a concern where none was flagged before. The resulting
+            # brand-new after-version item ids (never predecessor ids) are the
+            # research targets.
+            modified_item_ids = await self._child_work.detect_modified_items(
                 org_id=job.org_id,
                 project_id=job.project_id,
-                before_version_id=plan.before_version_id,
-                affected_element_ids=tuple(plan.affected_element_ids),
+                after_version_id=after_version_id,
+                modified_after_element_ids=tuple(plan.modified_after_element_ids),
+                actor_id=self._actor_id(job),
             )
-            if affected_item_ids:
-                await self._child_work.request_detection(
-                    org_id=job.org_id,
-                    project_id=job.project_id,
-                    after_version_id=after_version_id,
-                    affected_item_ids=affected_item_ids,
-                    actor_id=self._actor_id(job),
-                )
             # Added passages have no predecessor item, so they are freshly
             # detected on the after version, producing brand-new unresolved items
             # (no predecessor, no carried evidence, no copied decision). Their ids
@@ -253,15 +256,17 @@ class RunSelectiveRescanJobService:
                     added_after_element_ids=tuple(plan.added_after_element_ids),
                     actor_id=self._actor_id(job),
                 )
-            affected_item_ids = tuple(dict.fromkeys((*affected_item_ids, *added_item_ids)))
+            affected_item_ids = tuple(dict.fromkeys((*modified_item_ids, *added_item_ids)))
             summary["affectedItemCount"] = len(affected_item_ids)
+            summary["modifiedItemCount"] = len(modified_item_ids)
             summary["addedItemCount"] = len(added_item_ids)
             return (
                 {
                     "affectedItemCount": len(affected_item_ids),
+                    "modifiedItemCount": len(modified_item_ids),
                     "addedItemCount": len(added_item_ids),
-                    # The research stage's input is these exact item ids. Added
-                    # items are freshly created by scoped detection, so a later
+                    # The research stage's input is these exact AFTER-version item
+                    # ids. They were materialized by scoped detection, so a later
                     # attempt cannot recompute them without repeating that child
                     # work; both id sets are persisted with the checkpoint.
                     AFFECTED_ITEM_IDS_KEY: encode_item_ids(affected_item_ids),

@@ -479,6 +479,21 @@ class _SelectiveRescanChildWorkCoordinator:
         after_version_id: UUID,
         added_after_element_ids: tuple[UUID, ...],
     ) -> tuple[UUID, ...]:
+        return await _SelectiveRescanChildWorkCoordinator._scoped_detected_item_ids(
+            org_id=org_id,
+            project_id=project_id,
+            after_version_id=after_version_id,
+            element_ids=added_after_element_ids,
+        )
+
+    @staticmethod
+    async def _scoped_detected_item_ids(
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        after_version_id: UUID,
+        element_ids: tuple[UUID, ...],
+    ) -> tuple[UUID, ...]:
         async with session_scope() as session:
             rows = (
                 await session.execute(
@@ -494,28 +509,73 @@ class _SelectiveRescanChildWorkCoordinator:
                         "org_id": str(org_id),
                         "project_id": str(project_id),
                         "version_id": str(after_version_id),
-                        "element_ids": [str(element_id) for element_id in added_after_element_ids],
+                        "element_ids": [str(element_id) for element_id in element_ids],
                     },
                 )
             ).scalars()
             return tuple(UUID(str(item_id)) for item_id in rows)
 
-    async def request_detection(
+    async def detect_modified_items(
         self,
         *,
         org_id: UUID,
         project_id: UUID,
         after_version_id: UUID,
-        affected_item_ids: tuple[UUID, ...],
+        modified_after_element_ids: tuple[UUID, ...],
         actor_id: UUID,
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        return await self._request(
-            kind="detection",
+    ) -> tuple[UUID, ...]:
+        if not modified_after_element_ids:
+            return ()
+        # Enqueue ONE detection child scoped to EXACTLY the modified
+        # after-version elements — never the whole version, never one job per
+        # predecessor item — then run it to completion so the resulting
+        # after-version items exist before research is requested. Replays reuse
+        # the same durable job and the detection fingerprint unique constraint,
+        # so no duplicate item is created and the same item ids are returned.
+        key = f"selective_rescan:detect-modified:{after_version_id}"
+        enqueued = await self._job_repository.enqueue(
+            EnqueueJob(
+                org_id=org_id,
+                project_id=project_id,
+                actor_id=actor_id,
+                job_type="detection",
+                idempotency_key=key,
+                payload={
+                    "schemaVersion": 1,
+                    "target": {"type": "script_version", "id": str(after_version_id)},
+                    "elementIds": sorted(
+                        str(element_id) for element_id in modified_after_element_ids
+                    ),
+                },
+                audit_action="detection.started",
+                target_type="script_version",
+                target_id=after_version_id,
+            )
+        )
+        completed = await RunJobService(
+            repository=self._job_repository,
+            processors={"detection": self._detection_processor},
+            lease_owner=f"local-rescan-modified:{socket.gethostname()}:{os.getpid()}",
+        ).run(enqueued.job.job_id, org_id, project_id)
+        # A failed scoped detection must surface as a visible, typed rescan
+        # failure — never a silent "0 modified items" that advances the rescan
+        # while edited passages never reach clearance or research.
+        if completed.status is not RunStatus.SUCCEEDED:
+            error = completed.error
+            raise RescanSafeError(
+                code=error.code if error is not None else "modified_detection_failed",
+                message=(
+                    error.message
+                    if error is not None
+                    else "Fresh detection of modified passages did not complete."
+                ),
+                retryable=error.retryable if error is not None else True,
+            )
+        return await self._scoped_detected_item_ids(
             org_id=org_id,
             project_id=project_id,
             after_version_id=after_version_id,
-            affected_item_ids=affected_item_ids,
-            actor_id=actor_id,
+            element_ids=modified_after_element_ids,
         )
 
     async def request_research(
@@ -527,44 +587,26 @@ class _SelectiveRescanChildWorkCoordinator:
         affected_item_ids: tuple[UUID, ...],
         actor_id: UUID,
     ) -> tuple[RescanChildWorkTicket, ...]:
-        return await self._request(
-            kind="research",
-            org_id=org_id,
-            project_id=project_id,
-            after_version_id=after_version_id,
-            affected_item_ids=affected_item_ids,
-            actor_id=actor_id,
-        )
-
-    async def _request(
-        self,
-        *,
-        kind: str,
-        org_id: UUID,
-        project_id: UUID,
-        after_version_id: UUID,
-        affected_item_ids: tuple[UUID, ...],
-        actor_id: UUID,
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        target_type = "script_version" if kind == "detection" else "clearance_item"
+        # One research child per after-version clearance item with a stable
+        # idempotency key: research targets the NEW items materialized on this
+        # version, never their predecessors.
         tickets: list[RescanChildWorkTicket] = []
         for item_id in affected_item_ids:
-            key = f"selective_rescan:{kind}:{item_id}"
-            target_id = after_version_id if kind == "detection" else item_id
+            key = f"selective_rescan:research:{item_id}"
             await self._job_repository.enqueue(
                 EnqueueJob(
                     org_id=org_id,
                     project_id=project_id,
                     actor_id=actor_id,
-                    job_type=kind,
+                    job_type="research",
                     idempotency_key=key,
                     payload={
                         "schemaVersion": 1,
-                        "target": {"type": target_type, "id": str(target_id)},
+                        "target": {"type": "clearance_item", "id": str(item_id)},
                     },
-                    audit_action=f"{kind}.started",
-                    target_type=target_type,
-                    target_id=target_id,
+                    audit_action="research.started",
+                    target_type="clearance_item",
+                    target_id=item_id,
                 )
             )
             tickets.append(RescanChildWorkTicket(item_id=item_id, idempotency_key=key))
@@ -606,10 +648,15 @@ async def _drain_due_local_jobs(
 
 async def _local_job_maintenance_loop(
     repository: SqlJobRepository,
+    runner: RunJobService,
     *,
     interval_seconds: float,
 ) -> None:
-    """Recover bounded batches of expired local leases until lifespan cancellation."""
+    """Recover expired local leases and drain due queued work until shutdown.
+
+    Recovery alone only rescues interrupted claims; without the drain, queued
+    child jobs would sit forever in local mode even after a clean restart.
+    """
     while True:
         await asyncio.sleep(interval_seconds)
         try:
@@ -618,6 +665,7 @@ async def _local_job_maintenance_loop(
             raise
         except Exception:
             logger.exception("Periodic local job lease recovery failed.")
+        await _drain_due_local_jobs(repository, runner)
 
 
 @asynccontextmanager
@@ -626,12 +674,16 @@ async def lifespan(_app: FastAPI):
     recovery_task: asyncio.Task[None] | None = None
     if _app.state.job_dispatcher.mode == "local":
         await _app.state.job_repository.recover_interrupted_local_jobs()
+        # A restart must clear stranded child work immediately, not on the
+        # first interval tick.
+        await _drain_due_local_jobs(_app.state.job_repository, _app.state.job_runner)
         interval_seconds = _app.state.local_job_recovery_interval_seconds
         if interval_seconds <= 0:
             raise RuntimeError("Local job recovery interval must be positive.")
         recovery_task = asyncio.create_task(
-            _recover_expired_local_jobs_periodically(
+            _local_job_maintenance_loop(
                 _app.state.job_repository,
+                _app.state.job_runner,
                 interval_seconds=interval_seconds,
             ),
             name="local-job-lease-recovery",
@@ -674,9 +726,6 @@ async def handle_http_exception(
     )
 
 
-        # A restart must clear stranded child work immediately, not on the
-        # first interval tick.
-        await _drain_due_local_jobs(_app.state.job_repository, _app.state.job_runner)
 async def handle_request_validation_error(
     _request: Request,
     _error: RequestValidationError,

@@ -99,6 +99,7 @@ def _revision_plan(org_id: UUID, project_id: UUID) -> RevisionPlan:
         ),
         affected_element_ids=frozenset({uuid6.uuid7()}),
         removed_element_ids=frozenset({uuid6.uuid7()}),
+        modified_after_element_ids=frozenset({uuid6.uuid7()}),
     )
 
 
@@ -196,39 +197,40 @@ class _FakeCarryEvidence:
 
 
 class _FakeChildWork:
-    """Records affected-item child rescan requests and proves idempotency."""
+    """Records scoped child rescan work and proves idempotency."""
 
     def __init__(
         self,
         *,
-        affected_item_ids: tuple[UUID, ...] | None = None,
+        modified_item_ids: tuple[UUID, ...] | None = None,
         added_item_ids: tuple[UUID, ...] | None = None,
     ) -> None:
-        self._affected_item_ids = affected_item_ids
+        self._modified_item_ids = modified_item_ids
         self._added_item_ids = added_item_ids
-        self.detect_calls: list[frozenset[UUID]] = []
+        self.modified_detect_calls: list[frozenset[UUID]] = []
         self.research_calls: list[frozenset[UUID]] = []
         self.added_detect_calls: list[frozenset[UUID]] = []
         self._issued: dict[UUID, RescanChildWorkTicket] = {}
 
-    async def list_affected_items(
-        self, *, org_id, project_id, before_version_id, affected_element_ids
+    async def detect_modified_items(
+        self,
+        *,
+        org_id,
+        project_id,
+        after_version_id,
+        modified_after_element_ids,
+        actor_id,
     ) -> tuple[UUID, ...]:
-        if self._affected_item_ids is not None:
-            return self._affected_item_ids
-        return tuple(uuid6.uuid7() for _ in affected_element_ids)
+        self.modified_detect_calls.append(frozenset(modified_after_element_ids))
+        if self._modified_item_ids is not None:
+            return self._modified_item_ids
+        return tuple(uuid6.uuid7() for _ in modified_after_element_ids)
 
     async def detect_added_items(
         self, *, org_id, project_id, after_version_id, added_after_element_ids, actor_id
     ) -> tuple[UUID, ...]:
         self.added_detect_calls.append(frozenset(added_after_element_ids))
         return self._added_item_ids or ()
-
-    async def request_detection(
-        self, *, org_id, project_id, after_version_id, affected_item_ids, actor_id
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        self.detect_calls.append(frozenset(affected_item_ids))
-        return self._tickets("detect", affected_item_ids)
 
     async def request_research(
         self, *, org_id, project_id, after_version_id, affected_item_ids, actor_id
@@ -312,7 +314,7 @@ async def test_only_affected_items_reach_child_work_and_carry_only_covers_unchan
     checkpoint_repository = SqlSelectiveRescanRepository()
     plan = _revision_plan(org_id, project_id)
     affected_item = uuid6.uuid7()
-    child = _FakeChildWork(affected_item_ids=(affected_item,))
+    child = _FakeChildWork(modified_item_ids=(affected_item,))
     evidence = _FakeCarryEvidence()
     materialize = _FakeMaterializeItems()
     enqueued = await _enqueue_rescan_job(
@@ -340,8 +342,9 @@ async def test_only_affected_items_reach_child_work_and_carry_only_covers_unchan
     # Only carryable (unchanged/moved) elements were materialized + carried.
     assert materialize.calls == [tuple(e.after_element_id for e in plan.carryable_elements)]
     assert len(evidence.calls) == len(plan.carryable_elements)
-    # Only affected items reached child detection and research.
-    assert child.detect_calls == [frozenset({affected_item})]
+    # Modified passages were detected scoped to exactly their changed
+    # after-elements, and only the resulting NEW items reached research.
+    assert child.modified_detect_calls == [frozenset(plan.modified_after_element_ids)]
     assert child.research_calls == [frozenset({affected_item})]
 
 
@@ -361,7 +364,7 @@ async def test_reload_through_new_service_skips_completed_stage_writes() -> None
 
     first_materialize = _FakeMaterializeItems()
     first_evidence = _FakeCarryEvidence()
-    first_child = _FakeChildWork(affected_item_ids=(uuid6.uuid7(),))
+    first_child = _FakeChildWork(modified_item_ids=(uuid6.uuid7(),))
     await RunJobService(
         repository=job_repository,
         processors={
@@ -387,7 +390,7 @@ async def test_reload_through_new_service_skips_completed_stage_writes() -> None
 
     replay_materialize = _FakeMaterializeItems()
     replay_evidence = _FakeCarryEvidence()
-    replay_child = _FakeChildWork(affected_item_ids=(uuid6.uuid7(),))
+    replay_child = _FakeChildWork(modified_item_ids=(uuid6.uuid7(),))
     replayed = await RunJobService(
         repository=job_repository,
         processors={
@@ -408,7 +411,7 @@ async def test_reload_through_new_service_skips_completed_stage_writes() -> None
     # provider/child work is performed.
     assert replay_materialize.calls == []
     assert replay_evidence.calls == []
-    assert replay_child.detect_calls == []
+    assert replay_child.modified_detect_calls == []
     assert replay_child.research_calls == []
 
 
@@ -455,7 +458,7 @@ async def test_typed_stage_failure_maps_to_safe_job_error_with_no_later_stage() 
     assert failed.error.code == "carried_item_conflict"
     # No later stage ran after the failure.
     assert evidence.calls == []
-    assert child.detect_calls == []
+    assert child.modified_detect_calls == []
     assert child.research_calls == []
 
     history = await checkpoint_repository.load_stage_history(
@@ -657,7 +660,7 @@ async def test_resumed_run_restores_completed_stage_outputs_and_reports_true_tot
                 plan=plan,
                 materialize=first_materialize,
                 evidence=_InterruptingCarryEvidence(),
-                child=_FakeChildWork(affected_item_ids=(uuid6.uuid7(),)),
+                child=_FakeChildWork(modified_item_ids=(uuid6.uuid7(),)),
             )
         },
         lease_owner="local-rescan",
@@ -686,7 +689,7 @@ async def test_resumed_run_restores_completed_stage_outputs_and_reports_true_tot
                 plan=plan,
                 materialize=resumed_materialize,
                 evidence=resumed_evidence,
-                child=_FakeChildWork(affected_item_ids=(affected_item,)),
+                child=_FakeChildWork(modified_item_ids=(affected_item,)),
             )
         },
         lease_owner="local-rescan-resumed",

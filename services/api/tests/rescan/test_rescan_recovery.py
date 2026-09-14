@@ -97,6 +97,7 @@ class SeededRevision:
     after_version_id: UUID
     carryable: tuple[CarryablePassage, ...]
     modified_before_element_id: UUID
+    modified_after_element_id: UUID
     modified_item_id: UUID
     added_after_element_id: UUID
 
@@ -540,8 +541,8 @@ async def _seed_recovery_revision() -> SeededRevision:
             )
         )
 
-    # One modified passage: it has a predecessor item, so it reaches child
-    # detection/research as an affected item.
+    # One modified passage: scoped after-version detection targets its changed
+    # AFTER element, and the resulting brand-new item id reaches research.
     modified_before_element_id = uuid6.uuid7()
     modified_after_element_id = uuid6.uuid7()
     modified_item_id = uuid6.uuid7()
@@ -610,6 +611,7 @@ async def _seed_recovery_revision() -> SeededRevision:
         after_version_id=after_version_id,
         carryable=tuple(carryable),
         modified_before_element_id=modified_before_element_id,
+        modified_after_element_id=modified_after_element_id,
         modified_item_id=modified_item_id,
         added_after_element_id=added_after_element_id,
     )
@@ -687,30 +689,16 @@ class _FakeChildWork:
     def __init__(
         self,
         *,
+        modified_item_ids: tuple[UUID, ...] = (),
         added_item_ids: tuple[UUID, ...] = (),
         fail_stage: str | None = None,
     ) -> None:
-        self._item_lineage = SqlItemLineageAdapter()
+        self._modified_item_ids = modified_item_ids
         self._added_item_ids = added_item_ids
         self._fail_stage = fail_stage
         self.added_detect_calls: list[frozenset[UUID]] = []
-        self.detect_calls: list[frozenset[UUID]] = []
+        self.modified_detect_calls: list[frozenset[UUID]] = []
         self.research_calls: list[frozenset[UUID]] = []
-
-    async def list_affected_items(
-        self,
-        *,
-        org_id: UUID,
-        project_id: UUID,
-        before_version_id: UUID,
-        affected_element_ids: tuple[UUID, ...],
-    ) -> tuple[UUID, ...]:
-        return await self._item_lineage.list_affected_items(
-            org_id=org_id,
-            project_id=project_id,
-            before_version_id=before_version_id,
-            affected_element_ids=affected_element_ids,
-        )
 
     async def detect_added_items(
         self,
@@ -726,19 +714,19 @@ class _FakeChildWork:
         self.added_detect_calls.append(frozenset(added_after_element_ids))
         return self._added_item_ids
 
-    async def request_detection(
+    async def detect_modified_items(
         self,
         *,
         org_id: UUID,
         project_id: UUID,
         after_version_id: UUID,
-        affected_item_ids: tuple[UUID, ...],
+        modified_after_element_ids: tuple[UUID, ...],
         actor_id: UUID,
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        if self._fail_stage == "detect":
+    ) -> tuple[UUID, ...]:
+        if self._fail_stage == "detect_modified":
             raise _WORKER_LOSS
-        self.detect_calls.append(frozenset(affected_item_ids))
-        return self._tickets("detect", affected_item_ids)
+        self.modified_detect_calls.append(frozenset(modified_after_element_ids))
+        return self._modified_item_ids
 
     async def request_research(
         self,
@@ -800,6 +788,7 @@ async def _run_fresh_attempt(
     *,
     attempt_label: str,
     evidence_interrupt_after: int | None = None,
+    modified_item_ids: tuple[UUID, ...] | None = None,
     added_item_ids: tuple[UUID, ...] = (),
     child_fail_stage: str | None = None,
 ) -> Attempt:
@@ -814,7 +803,11 @@ async def _run_fresh_attempt(
     checkpoints = SqlSelectiveRescanRepository()
     lineage = _RecordingLineage()
     evidence = _RecordingEvidence(interrupt_after=evidence_interrupt_after)
-    child = _FakeChildWork(added_item_ids=added_item_ids, fail_stage=child_fail_stage)
+    child = _FakeChildWork(
+        modified_item_ids=(seed.modified_item_id,) if modified_item_ids is None else modified_item_ids,
+        added_item_ids=added_item_ids,
+        fail_stage=child_fail_stage,
+    )
     processor = RunSelectiveRescanJobService(
         revision_plan=SqlRevisionPlanAdapter(SqlImportRepository()),
         materialize_items=lineage,
@@ -1009,7 +1002,7 @@ async def test_resume_after_detection_delivers_its_item_ids_to_research() -> Non
     completed = await _completed_stages(seed, job_id)
     assert RescanStage.DETECTING_AFFECTED_PASSAGES in completed
     assert RescanStage.RESEARCHING_AFFECTED_ITEMS not in completed
-    assert first.child.detect_calls == [frozenset({seed.modified_item_id})]
+    assert first.child.modified_detect_calls == [frozenset({seed.modified_after_element_id})]
 
     await _resume(seed, job_id)
     # A different added-item id on the resumed attempt: if research receives it,
@@ -1019,7 +1012,7 @@ async def test_resume_after_detection_delivers_its_item_ids_to_research() -> Non
     )
 
     assert second.record.status is RunStatus.SUCCEEDED
-    assert second.child.detect_calls == []
+    assert second.child.modified_detect_calls == []
     assert second.child.added_detect_calls == []
     assert second.child.research_calls == [frozenset({seed.modified_item_id, first_added_item_id})]
 
@@ -1050,7 +1043,7 @@ async def test_replay_after_full_success_duplicates_no_governed_or_provider_work
     # No repeated writes and no repeated provider/child work.
     assert replay.lineage.calls == []
     assert replay.evidence.calls == []
-    assert replay.child.detect_calls == []
+    assert replay.child.modified_detect_calls == []
     assert replay.child.added_detect_calls == []
     assert replay.child.research_calls == []
     assert await _carried_items(seed) == carried_before
@@ -1089,6 +1082,7 @@ async def test_resumed_run_summary_reports_true_totals_not_zeros() -> None:
     assert summary["carriedItemCount"] == 2
     assert summary["carriedEvidenceEdgeCount"] == 2
     assert summary["affectedItemCount"] == 2
+    assert summary["modifiedItemCount"] == 1
     assert summary["addedItemCount"] == 1
     assert summary["afterVersionId"] == str(seed.after_version_id)
 
@@ -1137,5 +1131,5 @@ async def test_unrestorable_completed_stage_fails_closed_instead_of_running_empt
     assert attempt.record.error is not None
     assert attempt.record.error.code == "unrestorable_rescan_checkpoint"
     assert attempt.evidence.calls == []
-    assert attempt.child.detect_calls == []
+    assert attempt.child.modified_detect_calls == []
     assert attempt.child.research_calls == []

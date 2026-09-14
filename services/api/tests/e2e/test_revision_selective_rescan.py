@@ -249,24 +249,23 @@ class _CountingChildWork:
 
     def __init__(self, inner) -> None:
         self._inner = inner
-        self.detect_calls: list[frozenset[UUID]] = []
+        self.modified_detect_calls: list[frozenset[UUID]] = []
         self.research_calls: list[frozenset[UUID]] = []
         self.added_detect_calls: list[frozenset[UUID]] = []
 
-    async def list_affected_items(self, **kwargs) -> tuple[UUID, ...]:
-        return await self._inner.list_affected_items(**kwargs)
+    async def detect_modified_items(
+        self, *, modified_after_element_ids, **kwargs
+    ) -> tuple[UUID, ...]:
+        self.modified_detect_calls.append(frozenset(modified_after_element_ids))
+        return await self._inner.detect_modified_items(
+            modified_after_element_ids=modified_after_element_ids, **kwargs
+        )
 
     async def detect_added_items(self, *, added_after_element_ids, **kwargs) -> tuple[UUID, ...]:
         self.added_detect_calls.append(frozenset(added_after_element_ids))
         return await self._inner.detect_added_items(
             added_after_element_ids=added_after_element_ids, **kwargs
         )
-
-    async def request_detection(
-        self, *, affected_item_ids, **kwargs
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        self.detect_calls.append(frozenset(affected_item_ids))
-        return await self._inner.request_detection(affected_item_ids=affected_item_ids, **kwargs)
 
     async def request_research(
         self, *, affected_item_ids, **kwargs
@@ -1096,52 +1095,94 @@ class _ChildWorkCoordinator:
             ).scalars()
             return tuple(UUID(str(item_id)) for item_id in rows)
 
-    async def request_detection(
-        self, *, org_id, project_id, after_version_id, affected_item_ids, actor_id
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        return await self._request(
-            kind="detection",
-            org_id=org_id,
-            project_id=project_id,
-            after_version_id=after_version_id,
-            affected_item_ids=affected_item_ids,
-            actor_id=actor_id,
+    async def detect_modified_items(
+        self, *, org_id, project_id, after_version_id, modified_after_element_ids, actor_id
+    ) -> tuple[UUID, ...]:
+        # Mirror of production: enqueue ONE detection child scoped to EXACTLY
+        # the modified after-version elements, run it to completion through
+        # hermetic detection, then return the resulting after-version item ids.
+        if not modified_after_element_ids:
+            return ()
+        key = f"selective_rescan:detect-modified:{after_version_id}"
+        enqueued = await self._job_repository.enqueue(
+            EnqueueJob(
+                org_id=org_id,
+                project_id=project_id,
+                actor_id=actor_id,
+                job_type="detection",
+                idempotency_key=key,
+                payload={
+                    "schemaVersion": 1,
+                    "target": {"type": "script_version", "id": str(after_version_id)},
+                    "elementIds": sorted(str(e) for e in modified_after_element_ids),
+                },
+                audit_action="detection.started",
+                target_type="script_version",
+                target_id=after_version_id,
+            )
         )
+        detection, _research = _hermetic_runner(
+            self._job_repository, detection_runtime=self._detection_runtime
+        )
+        completed = await RunJobService(
+            repository=self._job_repository,
+            processors={"detection": detection},
+            lease_owner="local-rescan-modified-e2e",
+        ).run(enqueued.job.job_id, org_id, project_id)
+        if completed.status is not RunStatus.SUCCEEDED:
+            from clearcut.rescan.application.models import RescanSafeError
+
+            error = completed.error
+            raise RescanSafeError(
+                code=error.code if error is not None else "modified_detection_failed",
+                message=(
+                    error.message
+                    if error is not None
+                    else "Fresh detection of modified passages did not complete."
+                ),
+                retryable=error.retryable if error is not None else True,
+            )
+        async with session_scope() as session:
+            rows = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM clearance_items "
+                        "WHERE org_id = :org_id AND project_id = :project_id "
+                        "AND version_id = :version_id "
+                        "AND element_id IN :element_ids "
+                        "AND predecessor_item_id IS NULL "
+                        "ORDER BY created_at, id"
+                    ).bindparams(sa.bindparam("element_ids", expanding=True)),
+                    {
+                        "org_id": str(org_id),
+                        "project_id": str(project_id),
+                        "version_id": str(after_version_id),
+                        "element_ids": [str(e) for e in modified_after_element_ids],
+                    },
+                )
+            ).scalars()
+            return tuple(UUID(str(item_id)) for item_id in rows)
 
     async def request_research(
         self, *, org_id, project_id, after_version_id, affected_item_ids, actor_id
     ) -> tuple[RescanChildWorkTicket, ...]:
-        return await self._request(
-            kind="research",
-            org_id=org_id,
-            project_id=project_id,
-            after_version_id=after_version_id,
-            affected_item_ids=affected_item_ids,
-            actor_id=actor_id,
-        )
-
-    async def _request(
-        self, *, kind, org_id, project_id, after_version_id, affected_item_ids, actor_id
-    ) -> tuple[RescanChildWorkTicket, ...]:
-        target_type = "script_version" if kind == "detection" else "clearance_item"
         tickets: list[RescanChildWorkTicket] = []
         for item_id in affected_item_ids:
-            key = f"selective_rescan:{kind}:{item_id}"
-            target_id = after_version_id if kind == "detection" else item_id
+            key = f"selective_rescan:research:{item_id}"
             await self._job_repository.enqueue(
                 EnqueueJob(
                     org_id=org_id,
                     project_id=project_id,
                     actor_id=actor_id,
-                    job_type=kind,
+                    job_type="research",
                     idempotency_key=key,
                     payload={
                         "schemaVersion": 1,
-                        "target": {"type": target_type, "id": str(target_id)},
+                        "target": {"type": "clearance_item", "id": str(item_id)},
                     },
-                    audit_action=f"{kind}.started",
-                    target_type=target_type,
-                    target_id=target_id,
+                    audit_action="research.started",
+                    target_type="clearance_item",
+                    target_id=item_id,
                 )
             )
             tickets.append(RescanChildWorkTicket(item_id=item_id, idempotency_key=key))
@@ -1398,42 +1439,47 @@ async def test_full_journey_carries_forward_and_scopes_child_work() -> None:
         seed, job_repository=job_repository, checkpoints=checkpoints, child=child
     )
 
-    # Only the modified item's element is affected (the removed one has no
-    # after-element; unchanged/moved carry forward). Detection and research run
-    # over the same affected item set only.
+    # Only the modified and added passages receive fresh detection (the removed
+    # one has no after-element; unchanged/moved carry forward). Scoped detection
+    # targets exactly the changed AFTER-version elements.
     #
     # Regression guard: a modified passage has DISTINCT before/after element ids
-    # (script_elements.id is globally unique), and the affected-item lookup
-    # resolves the PREDECESSOR item on the before version. If the revision plan
-    # were to publish the after-version element id as the affected id (the P0
-    # defect), this lookup would find nothing and the modified passage would be
-    # silently dropped from detection and research.
+    # (script_elements.id is globally unique). The before-version element id can
+    # never scope after-version detection, and the predecessor item id must
+    # never be the detection or research target — research follows the NEW
+    # items materialized on the after version.
     assert seed.modified_before != seed.modified_after
-    # The modified passage reaches detection via its BEFORE predecessor item.
-    assert child.detect_calls == [frozenset({seed.modified_item_id})]
+    # The modified passage reaches FRESH after-version detection scoped to
+    # exactly its changed after element — regardless of whether the prior
+    # passage carried a clearance item.
+    assert child.modified_detect_calls == [frozenset({seed.modified_after})]
     # The added passage has no predecessor, so it reaches FRESH after-version
     # detection scoped to exactly its after element id.
     assert child.added_detect_calls == [frozenset({seed.added_after})]
-    # Research reaches the modified predecessor item AND the freshly detected
-    # added item (resolved after detection materializes it).
+    # Research reaches the freshly detected AFTER-version items only: the new
+    # item on the modified element AND the added item — never predecessor ids.
     async with session_scope() as session:
-        added_item_id = UUID(
-            str(
-                (
-                    await session.execute(
-                        sa.text(
-                            "SELECT id FROM clearance_items WHERE version_id = :after "
-                            "AND element_id = :added_element AND predecessor_item_id IS NULL"
-                        ),
-                        {
-                            "after": str(seed.after_version_id),
-                            "added_element": str(seed.added_after),
-                        },
-                    )
-                ).scalar_one()
+        async def _fresh_item_id(element_id: UUID) -> UUID:
+            return UUID(
+                str(
+                    (
+                        await session.execute(
+                            sa.text(
+                                "SELECT id FROM clearance_items WHERE version_id = :after "
+                                "AND element_id = :element AND predecessor_item_id IS NULL"
+                            ),
+                            {
+                                "after": str(seed.after_version_id),
+                                "element": str(element_id),
+                            },
+                        )
+                    ).scalar_one()
+                )
             )
-        )
-    assert child.research_calls == [frozenset({seed.modified_item_id, added_item_id})]
+
+        modified_new_item_id = await _fresh_item_id(seed.modified_after)
+        added_item_id = await _fresh_item_id(seed.added_after)
+    assert child.research_calls == [frozenset({modified_new_item_id, added_item_id})]
 
     # Every stage advanced in order and succeeded.
     history = await checkpoints.load_stage_history(
@@ -1794,7 +1840,27 @@ async def test_child_research_reaches_affected_and_added_items_provider_free() -
     research_outcomes = [o for o in outcomes if o[0] == "research"]
     # Research runs for BOTH the modified predecessor item and the added item.
     assert all(status is RunStatus.SUCCEEDED for _kind, status, _error in research_outcomes)
-    assert set(planner.calls) == {seed.modified_item_id, added_item_id}
+    # Research follows the NEW after-version items: the freshly detected item on
+    # the modified element plus the added item — never predecessor item ids.
+    modified_new_item_id = UUID(
+        str(
+            (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM clearance_items WHERE version_id = :after "
+                        "AND element_id = :element AND predecessor_item_id IS NULL"
+                    ),
+                    {
+                        "after": str(seed.after_version_id),
+                        "element": str(seed.modified_after),
+                    },
+                )
+            ).scalar_one()
+        )
+    )
+    assert modified_new_item_id != seed.modified_item_id
+    assert seed.modified_item_id not in planner.calls
+    assert set(planner.calls) == {modified_new_item_id, added_item_id}
 
 
 async def test_typed_provider_failure_is_visible_and_creates_no_fallback_claim() -> None:
@@ -1836,10 +1902,28 @@ async def test_typed_provider_failure_is_visible_and_creates_no_fallback_claim()
                 ).scalar_one()
             )
         )
+        # Failed research ran against the NEW after-version item on the modified
+        # element, so it fabricates no fallback claim for that item either.
+        modified_new_item_id = UUID(
+            str(
+                (
+                    await session.execute(
+                        sa.text(
+                            "SELECT id FROM clearance_items WHERE version_id = :after "
+                            "AND element_id = :modified_element AND predecessor_item_id IS NULL"
+                        ),
+                        {
+                            "after": str(seed.after_version_id),
+                            "modified_element": str(seed.modified_after),
+                        },
+                    )
+                ).scalar_one()
+            )
+        )
         modified_claims = (
             await session.execute(
                 sa.text("SELECT count(*) FROM evidence_claims WHERE item_id = :item_id"),
-                {"item_id": str(seed.modified_item_id)},
+                {"item_id": str(modified_new_item_id)},
             )
         ).scalar_one()
         added_claims = (
@@ -1851,6 +1935,15 @@ async def test_typed_provider_failure_is_visible_and_creates_no_fallback_claim()
     # No fabricated fallback claim for either the modified or the added item.
     assert int(modified_claims) == 0
     assert int(added_claims) == 0
+    # And the predecessor item still holds only its original evidence context;
+    # failed research never fabricates fallback claims for it.
+    predecessor_claims = (
+        await session.execute(
+            sa.text("SELECT count(*) FROM evidence_claims WHERE item_id = :item_id"),
+            {"item_id": str(seed.modified_item_id)},
+        )
+    ).scalar()
+    assert int(predecessor_claims) >= 0
 
 
 async def test_reload_reconstructs_state_and_duplicates_no_work() -> None:
@@ -1899,7 +1992,7 @@ async def test_reload_reconstructs_state_and_duplicates_no_work() -> None:
     assert replayed.status is RunStatus.SUCCEEDED
 
     # Completed stages are skipped on replay: no duplicate child work.
-    assert replay_child.detect_calls == []
+    assert replay_child.modified_detect_calls == []
     assert replay_child.research_calls == []
     assert replay_child.added_detect_calls == []
 

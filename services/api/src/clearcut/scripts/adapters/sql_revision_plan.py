@@ -68,6 +68,7 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
         affected: set = set()
         removed: set = set()
         added: set = set()
+        modified_after: set = set()
         for change in record.changes:
             change_kind = change.change_kind
             if (
@@ -85,12 +86,14 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
                     )
                 )
             elif change_kind in _AFFECTED_CHANGE_KINDS and change.before_element_id is not None:
-                # Resolve the affected passage by its BEFORE element id: the
-                # predecessor clearance item that item-lineage looks up lives on
-                # the before version. Publishing the after element id here would
-                # miss the predecessor (globally unique element ids) and silently
-                # drop the modified passage from detection/research.
+                # A modified passage is published on BOTH sides: the BEFORE
+                # element id feeds predecessor lineage context (the item-lineage
+                # lookup lives on the before version), and the AFTER element id
+                # scopes fresh after-version detection. Element ids are globally
+                # unique, so each side needs its own id set.
                 affected.add(change.before_element_id)
+                if change.after_element_id is not None:
+                    modified_after.add(change.after_element_id)
             elif change_kind == "added" and change.after_element_id is not None:
                 # An added passage has no predecessor item, so it is routed by its
                 # AFTER element id to fresh after-version detection. That fresh
@@ -111,6 +114,7 @@ class SqlRevisionPlanAdapter(RevisionPlanPort):
             affected_element_ids=frozenset(affected),
             removed_element_ids=frozenset(removed),
             added_after_element_ids=frozenset(added),
+            modified_after_element_ids=frozenset(modified_after),
         )
 
 
