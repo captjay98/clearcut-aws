@@ -692,6 +692,41 @@ class SqlJobRepository:
                 return await self._record_from_row(session, row)
             raise JobTransitionError("The job changed before it could be cancelled.")
 
+    async def dequeue_due_local_jobs(self, batch_size: int) -> tuple[JobRecord, ...]:
+        """List due queued/awaiting-retry jobs across tenants for local draining.
+
+        Selection mirrors :meth:`claim` exactly (``queued``/``retry_wait`` with
+        ``available_at`` reached), so claiming stays guarded by claim's per-job
+        transition: a job cannot double-execute if an HTTP dispatch raced this
+        listing. This is the durable execution path for child jobs enqueued
+        outside an HTTP request — without it, selective-rescan detection and
+        research children sit queued forever in local mode.
+        """
+        if batch_size < 1:
+            raise ValueError("Local drain batch size must be positive.")
+        async with session_scope() as session:
+            clock_sql = database_wall_clock_sql(session.get_bind().dialect.name)
+            rows = (
+                (
+                    await session.execute(
+                        sa.text(
+                            "SELECT * FROM jobs "
+                            "WHERE status IN ('queued', 'retry_wait') "
+                            f"AND available_at <= {clock_sql} "
+                            "ORDER BY available_at, created_at, id "
+                            "LIMIT :batch_size"
+                        ),
+                        {"batch_size": batch_size},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            records: list[JobRecord] = []
+            for row in rows:
+                records.append(await self._record_from_row(session, row))
+            return tuple(records)
+
     async def recover_interrupted_local_jobs(self) -> tuple[JobRecord, ...]:
         error = SafeJobError(
             code="interrupted",

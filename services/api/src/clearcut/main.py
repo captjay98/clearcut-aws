@@ -571,7 +571,40 @@ class _SelectiveRescanChildWorkCoordinator:
         return tuple(tickets)
 
 
-async def _recover_expired_local_jobs_periodically(
+_LOCAL_JOB_DRAIN_BATCH_SIZE = 8
+
+
+async def _drain_due_local_jobs(
+    repository: SqlJobRepository, runner: RunJobService
+) -> None:
+    """Execute every due queued/awaiting-retry job through the local runner.
+
+    Child jobs enqueued outside an HTTP request (selective-rescan detection and
+    research) have no dispatcher call, so this drainer is their durable,
+    restart-safe execution path in local mode. Claiming is per-job guarded, so
+    a drained job cannot double-execute against a concurrent dispatch.
+    """
+    try:
+        due = await repository.dequeue_due_local_jobs(_LOCAL_JOB_DRAIN_BATCH_SIZE)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Local job queue drain listing failed.")
+        return
+    for job in due:
+        try:
+            await runner.run(job.job_id, job.org_id, job.project_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "Local job drain execution failed: job_id=%s job_type=%s",
+                job.job_id,
+                job.job_type,
+            )
+
+
+async def _local_job_maintenance_loop(
     repository: SqlJobRepository,
     *,
     interval_seconds: float,
@@ -641,6 +674,9 @@ async def handle_http_exception(
     )
 
 
+        # A restart must clear stranded child work immediately, not on the
+        # first interval tick.
+        await _drain_due_local_jobs(_app.state.job_repository, _app.state.job_runner)
 async def handle_request_validation_error(
     _request: Request,
     _error: RequestValidationError,
