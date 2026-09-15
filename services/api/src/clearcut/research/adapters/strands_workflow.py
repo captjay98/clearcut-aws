@@ -15,6 +15,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
+import time
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any
@@ -22,7 +24,7 @@ from uuid import UUID
 
 import sqlalchemy as sa
 import uuid6
-from clearcut.ai.budgets import JobBudgetTracker
+from clearcut.ai.budgets import BudgetExceededError, JobBudget, JobBudgetTracker
 from clearcut.bootstrap.paid_providers import PaidProviderGate
 from clearcut.database import session_scope
 from clearcut.evaluation.application.evaluate import EvaluationService
@@ -257,6 +259,7 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
         validator: DeterministicCompletionValidator | None = None,
         model: Model | None = None,
         budget_tracker: JobBudgetTracker | None = None,
+        default_budget: JobBudget | None = None,
         provider_name: str = "bedrock",
     ) -> None:
         self._repository = repository
@@ -270,12 +273,23 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
         self._validator = validator or DeterministicCompletionValidator()
         self._model = model
         self._budget_tracker = budget_tracker
+        self._default_budget = default_budget or (budget_tracker.budget if budget_tracker else None) or JobBudget(
+            max_model_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_MODEL_CALLS", "15")),
+            max_tool_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_TOOL_CALLS", "30")),
+            max_search_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_SEARCH_CALLS", "10")),
+            max_extract_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_EXTRACT_CALLS", "10")),
+            max_total_tokens=int(os.getenv("CLEARCUT_RESEARCH_MAX_TOKENS", "100000")),
+            max_elapsed_seconds=float(os.getenv("CLEARCUT_RESEARCH_MAX_DURATION_SECONDS", "120.0")),
+        )
         self._provider_name = provider_name
 
     async def execute_research(
         self,
         context: ResearchWorkflowContext,
     ) -> ResearchWorkflowResult:
+        # Fresh budget tracker per execution
+        execution_budget_tracker = JobBudgetTracker(budget=self._default_budget)
+
         # 1. Build server-side scoped tools
         loop = asyncio.get_running_loop()
         aligned_extract = _SessionAlignedExtract(self._extract, loop)
@@ -287,7 +301,7 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
             extract=aligned_extract,
             synthesizer=self._synthesizer,
             evaluation=self._evaluation,
-            budget_tracker=self._budget_tracker,
+            budget_tracker=execution_budget_tracker,
         )
 
         # 2. Resolve model with leaf-only permit acquisition wrapper
@@ -297,7 +311,7 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
             wrapped_model = LeafPermitModelWrapper(
                 underlying=self._model,
                 gate=self._gate,
-                budget_tracker=self._budget_tracker,
+                budget_tracker=execution_budget_tracker,
                 provider_name=self._provider_name,
             )
         elif self._provider_name == "gemini":
@@ -326,7 +340,7 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
             wrapped_model = LeafPermitModelWrapper(
                 underlying=raw_model,
                 gate=self._gate,
-                budget_tracker=self._budget_tracker,
+                budget_tracker=execution_budget_tracker,
                 provider_name="gemini",
             )
         else:
@@ -336,7 +350,7 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
             wrapped_model = LeafPermitModelWrapper(
                 underlying=raw_model,
                 gate=self._gate,
-                budget_tracker=self._budget_tracker,
+                budget_tracker=execution_budget_tracker,
                 provider_name="bedrock",
             )
 
@@ -379,16 +393,52 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
                 },
             )
 
-        # 4. Invoke the Strands agent loop
+        # 4. Invoke the Strands agent loop with execution bounds
+        from strands.types.agent import Limits
+
+        cancel_signal = threading.Event()
+        max_turns = self._default_budget.max_model_calls or 20
+        max_tokens = self._default_budget.max_total_tokens
+        strands_limits = Limits(turns=max_turns)
+        if max_tokens:
+            strands_limits["total_tokens"] = max_tokens
+
+        timeout_sec = self._default_budget.max_elapsed_seconds or 120.0
         workflow_error: str | None = None
+        start_exec = time.monotonic()
         try:
-            agent_result = await agent.invoke_async(prompt)
+            agent_result = await asyncio.wait_for(
+                agent.invoke_async(
+                    prompt,
+                    limits=strands_limits,
+                    cancel_signal=cancel_signal,
+                ),
+                timeout=timeout_sec,
+            )
+            elapsed = time.monotonic() - start_exec
+            execution_budget_tracker.record_elapsed_seconds(elapsed)
+
             agent_text = (
                 agent_result.message.get("content", [{}])[0].get("text", "")
                 if agent_result and agent_result.message
                 else ""
             )
+            if (
+                agent_result
+                and agent_result.stop_reason
+                and agent_result.stop_reason.startswith("limit_")
+            ):
+                workflow_error = f"Strands execution limit reached: {agent_result.stop_reason}"
+        except TimeoutError:
+            cancel_signal.set()
+            agent_text = f"Agent execution timed out after {timeout_sec}s"
+            workflow_error = agent_text
+        except BudgetExceededError as b_err:
+            cancel_signal.set()
+            agent_text = f"Agent budget exceeded: {b_err}"
+            workflow_error = agent_text
         except Exception as err:
+            cancel_signal.set()
             agent_text = f"Agent failed with exception: {err}"
             workflow_error = str(err)
 
@@ -503,6 +553,8 @@ class StrandsResearchWorkflow(ResearchWorkflowPort):
                 project_id=context.project_id,
                 run_id=context.run_id,
                 item_id=context.item_id,
+                job_id=context.job_id,
+                attempt_number=context.attempt_number,
                 step_receipts=receipts,
                 claims=persisted_claims,
                 raw_summary=raw_summary,

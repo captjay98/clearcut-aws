@@ -1091,6 +1091,22 @@ class SqlResearchRepository:
                 job_attempt_number=job_attempt_number,
                 lease_owner=lease_owner,
             )
+            # Delete prior claims for this item & run to prevent duplicate claims upon re-evaluation
+            await session.execute(
+                sa.text(
+                    """
+                    DELETE FROM evidence_claims
+                    WHERE org_id = :org_id AND project_id = :project_id
+                      AND item_id = :item_id AND run_id = :run_id
+                    """
+                ),
+                {
+                    "org_id": str(org_id),
+                    "project_id": str(project_id),
+                    "item_id": str(item_id),
+                    "run_id": str(run_id),
+                },
+            )
             now = datetime.now(UTC)
             await session.execute(
                 sa.text(

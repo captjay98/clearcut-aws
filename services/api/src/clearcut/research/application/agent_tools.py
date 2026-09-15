@@ -27,6 +27,9 @@ from clearcut.research.adapters.sql_research_repository import (
     ResearchQueryRecord,
     SqlResearchRepository,
 )
+from clearcut.research.application.completion_validator import (
+    compute_admitted_evidence_fingerprint,
+)
 from clearcut.research.application.select_extract_targets import canonicalize_https_url
 from clearcut.research.domain.extraction import ExtractRequest
 from clearcut.research.domain.queries import SearchRequest
@@ -566,17 +569,6 @@ def create_scoped_research_tools(
     async def evaluate_source_evidence() -> dict[str, Any]:
         """Synthesize claims from admitted evidence and run rubric evaluation."""
         EvaluateSourceEvidenceArgs()
-        tool_input: dict[str, Any] = {}
-        in_hash = compute_canonical_hash(tool_input)
-        replay = await step_receipt_repo.find_replay_receipt(
-            run_id=context.run_id,
-            attempt_number=context.attempt_number,
-            tool_name="evaluate_source_evidence",
-            tool_input_hash=in_hash,
-        )
-        if replay and replay.output_payload:
-            return replay.output_payload
-
         start = time.monotonic()
         admissible_tuple, admission_gates = await repository.load_admissible_evidence(
             org_id=context.org_id,
@@ -585,6 +577,26 @@ def create_scoped_research_tools(
             item_id=context.item_id,
         )
         admissible = list(admissible_tuple)
+
+        evidence_fingerprint = compute_admitted_evidence_fingerprint(admissible)
+        rubric_version = "clearcut-ten-dimension-rubric-v1"
+        tool_input: dict[str, Any] = {
+            "evidence_fingerprint": evidence_fingerprint,
+            "prompt_version": str(context.prompt_version),
+            "policy_version": str(context.policy_version),
+            "rubric_version": rubric_version,
+            "admissible_count": len(admissible),
+        }
+        in_hash = compute_canonical_hash(tool_input)
+
+        replay = await step_receipt_repo.find_replay_receipt(
+            run_id=context.run_id,
+            attempt_number=context.attempt_number,
+            tool_name="evaluate_source_evidence",
+            tool_input_hash=in_hash,
+        )
+        if replay and replay.output_payload:
+            return replay.output_payload
 
         if not admissible:
             duration_ms = int((time.monotonic() - start) * 1000)
@@ -614,12 +626,16 @@ def create_scoped_research_tools(
                 status="succeeded",
                 duration_ms=duration_ms,
             )
+            if budget_tracker:
+                budget_tracker.record_tool_call()
             return output
 
         # Synthesize claims if synthesizer provided
         claims: list[ResearchEvidence] = []
         if synthesizer:
             for item in admissible:
+                if budget_tracker:
+                    budget_tracker.check_budget()
                 synth_result = await synthesizer.synthesize_claim(
                     ClaimSynthesisRequest(
                         item_id=context.item_id,
@@ -633,6 +649,21 @@ def create_scoped_research_tools(
                         research_run_id=context.run_id,
                     )
                 )
+                if budget_tracker:
+                    in_tok = 0
+                    out_tok = 0
+                    tot_tok = 0
+                    meta = getattr(synth_result, "metadata", None) or getattr(synth_result, "attempt", None)
+                    if meta and getattr(meta, "usage", None):
+                        u = meta.usage
+                        in_tok = getattr(u, "input_tokens", 0) or 0
+                        out_tok = getattr(u, "output_tokens", 0) or 0
+                        tot_tok = getattr(u, "total_tokens", 0) or 0
+                    budget_tracker.record_model_call(
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                        total_tokens=tot_tok,
+                    )
                 if isinstance(synth_result, ClaimSynthesisSuccess):
                     stance_val = (
                         synth_result.stance.value
@@ -659,11 +690,14 @@ def create_scoped_research_tools(
         if evaluation and claims:
             from clearcut.evaluation.ports.judge import JudgeBindings
 
+            if budget_tracker:
+                budget_tracker.check_budget()
+
             bindings = JudgeBindings(
-                rubric_version="clearcut-ten-dimension-rubric-v1",
+                rubric_version=rubric_version,
                 prompt_version=str(context.prompt_version),
                 policy_version=str(context.policy_version),
-                input_sha256="0" * 64,
+                input_sha256=evidence_fingerprint,
             )
             eval_record = await evaluation.evaluate_research_run(
                 org_id=context.org_id,
@@ -679,6 +713,13 @@ def create_scoped_research_tools(
                 eval_record.headline_score if eval_record.headline_score is not None else 1.0
             )
             evaluation_id = str(eval_record.evaluation_id)
+
+            if budget_tracker:
+                budget_tracker.record_model_call(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                )
 
         if claims and context.job_id:
             await repository.persist_context_claims(

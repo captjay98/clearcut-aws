@@ -19,7 +19,10 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from clearcut.database import session_scope
-from clearcut.research.ports.step_receipt_repository import StepReceiptRecord
+from clearcut.research.ports.step_receipt_repository import (
+    StepReceiptRecord,
+    compute_canonical_hash,
+)
 
 
 class CompletionValidationError(Exception):
@@ -56,6 +59,54 @@ class IllegalSelfCertificationError(CompletionValidationError):
         super().__init__("illegal_self_certification", message)
 
 
+class MissingEvaluationError(CompletionValidationError):
+    """Raised when claims exist but no persisted research evaluation was found."""
+
+    def __init__(
+        self, message: str = "Evidence claims require a persisted research evaluation."
+    ) -> None:
+        super().__init__("missing_evaluation", message)
+
+
+class EvaluationBlockedError(CompletionValidationError):
+    """Raised when research evaluation records blocking violations."""
+
+    def __init__(
+        self, message: str = "Research evaluation recorded blocking violations."
+    ) -> None:
+        super().__init__("evaluation_blocked", message)
+
+
+class OutdatedEvaluationError(CompletionValidationError):
+    """Raised when persisted evaluation input hash does not match current evidence."""
+
+    def __init__(
+        self, message: str = "Persisted evaluation does not match current evidence fingerprint."
+    ) -> None:
+        super().__init__("outdated_evaluation", message)
+
+
+def compute_admitted_evidence_fingerprint(items: Any) -> str:
+    """Deterministic canonical fingerprint of admitted evidence snapshots."""
+    records = []
+    for item in items:
+        if isinstance(item, dict):
+            s_id = str(item.get("snapshot_id") or item.get("id") or "")
+            url = str(item.get("url") or "")
+            excerpt = str(item.get("excerpt") or item.get("provenance_excerpt") or "")
+        else:
+            s_id = str(getattr(item, "snapshot_id", None) or getattr(item, "id", "") or "")
+            url = str(getattr(item, "url", "") or "")
+            excerpt = str(getattr(item, "excerpt", None) or getattr(item, "provenance_excerpt", "") or "")
+        records.append({
+            "snapshot_id": s_id,
+            "url": url,
+            "excerpt": excerpt,
+        })
+    records.sort(key=lambda r: (r["snapshot_id"], r["url"]))
+    return compute_canonical_hash(records)
+
+
 @dataclass(frozen=True)
 class ValidationOutcome:
     valid: bool
@@ -80,6 +131,8 @@ class DeterministicCompletionValidator:
         step_receipts: list[StepReceiptRecord],
         claims: list[Any] | None = None,
         raw_summary: dict[str, Any] | None = None,
+        job_id: UUID | None = None,
+        attempt_number: int | None = None,
         raise_exc: bool = True,
     ) -> ValidationOutcome:
         claims = claims or []
@@ -251,6 +304,107 @@ class DeterministicCompletionValidator:
             needs_human_review = True
             cleared = False
         else:
+            # When claims exist, a persisted evaluation is mandatory
+            async with session_scope() as session:
+                eval_rows = (
+                    await session.execute(
+                        sa.text(
+                            """
+                            SELECT id, run_id, stage, blockers_count, input_sha256, headline_score
+                            FROM agent_evaluations
+                            WHERE org_id = :org_id
+                              AND project_id = :project_id
+                              AND (run_id = :run_id OR (:job_id IS NOT NULL AND run_id = :job_id))
+                              AND stage = 'research'
+                            ORDER BY created_at DESC
+                            """
+                        ),
+                        {
+                            "org_id": str(org_id),
+                            "project_id": str(project_id),
+                            "run_id": str(run_id),
+                            "job_id": str(job_id) if job_id else None,
+                        },
+                    )
+                ).mappings().all()
+
+            if not eval_rows:
+                if raise_exc:
+                    raise MissingEvaluationError(
+                        "Evidence claims require a persisted research evaluation."
+                    )
+                return ValidationOutcome(
+                    valid=False,
+                    review_status="unresolved",
+                    reason="missing_evaluation",
+                    needs_human_review=True,
+                    cleared=False,
+                    error="missing_evaluation",
+                    sanitized_summary=summary,
+                )
+
+            latest_eval = eval_rows[0]
+
+            # Compute expected evidence fingerprint from snapshots linked to claims
+            async with session_scope() as session:
+                snap_records = (
+                    await session.execute(
+                        sa.text(
+                            """
+                            SELECT id, url, excerpt FROM source_snapshots
+                            WHERE org_id = :org_id
+                              AND project_id = :project_id
+                              AND run_id = :run_id
+                              AND item_id = :item_id
+                            """
+                        ),
+                        {
+                            "org_id": str(org_id),
+                            "project_id": str(project_id),
+                            "run_id": str(run_id),
+                            "item_id": str(item_id),
+                        },
+                    )
+                ).mappings().all()
+
+            relevant_snaps = [
+                s for s in snap_records
+                if UUID(str(s["id"])) in cited_snapshot_ids
+            ] if cited_snapshot_ids else snap_records
+
+            expected_fingerprint = compute_admitted_evidence_fingerprint(relevant_snaps)
+            eval_input_hash = latest_eval["input_sha256"]
+
+            if eval_input_hash != expected_fingerprint:
+                if raise_exc:
+                    raise OutdatedEvaluationError(
+                        "Persisted evaluation input_sha256 does not match current evidence fingerprint."
+                    )
+                return ValidationOutcome(
+                    valid=False,
+                    review_status="unresolved",
+                    reason="outdated_evaluation",
+                    needs_human_review=True,
+                    cleared=False,
+                    error="outdated_evaluation",
+                    sanitized_summary=summary,
+                )
+
+            if int(latest_eval["blockers_count"]) > 0:
+                if raise_exc:
+                    raise EvaluationBlockedError(
+                        f"Research evaluation recorded {latest_eval['blockers_count']} blocking violation(s)."
+                    )
+                return ValidationOutcome(
+                    valid=False,
+                    review_status="unresolved",
+                    reason="evaluation_blocked",
+                    needs_human_review=True,
+                    cleared=False,
+                    error="evaluation_blocked",
+                    sanitized_summary=summary,
+                )
+
             review_status = "unresolved"
             reason = "human_review_required"
             needs_human_review = True

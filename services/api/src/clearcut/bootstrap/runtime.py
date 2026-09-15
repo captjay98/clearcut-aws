@@ -15,6 +15,7 @@ from typing import Any
 from uuid import UUID
 
 import sqlalchemy as sa
+from clearcut.ai.budgets import JobBudget
 from clearcut.bootstrap.paid_providers import (
     PaidProviderGate,
     build_paid_provider_gate,
@@ -758,6 +759,14 @@ def build_runtime_composition(
         "bedrock" if settings.model_backend == ModelBackend.BEDROCK else "gemini"
     )
     step_receipt_repo = SqlStepReceiptRepository()
+    default_research_budget = JobBudget(
+        max_model_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_MODEL_CALLS", "15")),
+        max_tool_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_TOOL_CALLS", "30")),
+        max_search_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_SEARCH_CALLS", "10")),
+        max_extract_calls=int(os.getenv("CLEARCUT_RESEARCH_MAX_EXTRACT_CALLS", "10")),
+        max_total_tokens=int(os.getenv("CLEARCUT_RESEARCH_MAX_TOKENS", "100000")),
+        max_elapsed_seconds=float(os.getenv("CLEARCUT_RESEARCH_MAX_DURATION_SECONDS", "120.0")),
+    )
     strands_workflow = StrandsResearchWorkflow(
         repository=research_repository,
         step_receipt_repo=step_receipt_repo,
@@ -767,6 +776,7 @@ def build_runtime_composition(
         planner=research_planner,
         synthesizer=research_synthesizer,
         evaluation=evaluation_service,
+        default_budget=default_research_budget,
         provider_name=active_orchestrator_provider,
     )
     run_research_job = RunResearchJobService(
